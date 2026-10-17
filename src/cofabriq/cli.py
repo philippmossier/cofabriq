@@ -34,6 +34,7 @@ from cofabriq.context.ingest.source import LocalGitSource, Source
 from cofabriq.context.store import graph as kg
 from cofabriq.context.store import postgres
 from cofabriq.eval import dedupe
+from cofabriq.eval import features as features_eval
 from cofabriq.eval import gate as gate_eval
 from cofabriq.eval import human as human_eval
 from cofabriq.eval import impact as impact_eval
@@ -1359,6 +1360,50 @@ def eval_refine(
         TypeAdapter(dict[str, refine_mod.Refined]).dump_json(done, indent=2)
     )
     typer.echo(f"  -> {out}")
+
+
+@eval_app.command("feature-set")
+def eval_feature_set(
+    repo: str = "philippmossier/local-ai-chat-playground",
+    features: Path = Path("playground/features.toml"),
+) -> None:
+    """Prove the removed-feature set: per feature, its removal applied to
+    the tip of main leaves every check of the target green, and the hidden
+    reference tests red; on main itself they are green. Free (no agent),
+    needs podman; one install, then each removal in turn."""
+    settings = get_settings()
+    target = check_repo(repo)
+    rules = run_mod.load_rules(settings.targets_dir, target)
+    if rules is None:
+        typer.echo(f"no [loop] in the target file of {target}", err=True)
+        raise typer.Exit(code=1)
+    feats = features_eval.load_features(features)
+    clone = settings.clones_dir / target.replace("/", "-")
+    commit = refine_mod.update_clone(target, clone)
+    typer.echo(f"{target} at {commit[:7]}: {len(feats)} removed features")
+    sandbox = Podman(image=rules.image, setup=rules.setup)
+    worktree = settings.work_dir / "feature-set"
+    run_mod.add_worktree(clone, worktree, commit)
+    try:
+        if not sandbox(rules.install, worktree, network=True).ok:
+            typer.echo("install failed", err=True)
+            raise typer.Exit(code=1)
+        tests = sorted({t for f in feats for t in f.tests})
+        on_main = sandbox(run_mod.repro_command(rules, tests), worktree, network=False)
+        typer.echo(f"  hidden tests on main: {'green' if on_main.ok else 'RED'}")
+        proofs = features_eval.prove(worktree, commit, feats, features, rules, sandbox)
+    finally:
+        run_mod.remove_worktree(clone, worktree)
+    for f, p in zip(feats, proofs, strict=True):
+        failed = [c.name for c in p.checks if not c.ok]
+        checks = "checks green" if not failed else f"checks red: {', '.join(failed)}"
+        hidden = "hidden red" if not p.hidden.ok else "hidden GREEN"
+        mark = "valid  " if p.valid else "INVALID"
+        typer.echo(f"  {f.key:<22} {f.size}  {mark}  {checks}, {hidden}")
+    valid = sum(p.valid for p in proofs)
+    typer.echo(f"  {valid}/{len(proofs)} valid")
+    if not on_main.ok or valid < len(proofs):
+        raise typer.Exit(code=1)
 
 
 @eval_app.command("loop")

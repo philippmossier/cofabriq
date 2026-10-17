@@ -1,0 +1,59 @@
+diff --git a/docs/ARCHITECTURE.md b/docs/ARCHITECTURE.md
+index 2164bf57..7a6838e2 100644
+--- a/docs/ARCHITECTURE.md
++++ b/docs/ARCHITECTURE.md
+@@ -133,8 +133,8 @@ The chat is meant to look calm to non-technical people, with the privacy explain
+   (`SidebarChrome`).
+ - **Model switcher in the message box**, as a button showing the running model. It goes through the picker page,
+   because loading a model needs the progress screen anyway. The placeholder carries the Shift+Enter hint.
+-- **History rows are one line.** Times sit under the messages ("Today 8:13 PM", "Yesterday ...", weekday within a
+-  week, full date before that) and in the row tooltip. Messages have an optional `at` timestamp; older saved chats
++- **History rows are one line.** Times sit under the messages ("Today 8:13 PM", "Yesterday ...", full date before
++  that) and in the row tooltip. Messages have an optional `at` timestamp; older saved chats
+   show no time. Delete confirms inline in the row.
+ - **Grey palette, sidebar darker than the content**, one green accent (white text on it, at least 4.5:1). Light,
+   dark or system, remembered in localStorage. 16 px for messages and the message box, 14 px elsewhere, system UI
+diff --git a/src/lib/chat/time.test.ts b/src/lib/chat/time.test.ts
+index 7a89d099..61751aaf 100644
+--- a/src/lib/chat/time.test.ts
++++ b/src/lib/chat/time.test.ts
+@@ -12,10 +12,6 @@ describe("messageTime", () => {
+     expect(messageTime(at(9, 4, 18, 45), NOW, "en")).toMatch(/^Yesterday 6:45\sPM$/);
+   });
+ 
+-  it("weekday name within the last week", () => {
+-    expect(messageTime(at(9, 2, 12, 33), NOW, "en")).toMatch(/^Friday 12:33\sPM$/);
+-  });
+-
+   it("date with 'at' when older, year only when it differs", () => {
+     expect(messageTime(at(8, 19, 1, 21), NOW, "en")).toMatch(/^Sat, Sep 19 at 1:21\sAM$/);
+     expect(messageTime(at(8, 19, 1, 21, 2025), NOW, "en")).toContain("2025");
+@@ -24,7 +20,6 @@ describe("messageTime", () => {
+   it("German", () => {
+     expect(messageTime(at(9, 5, 9, 5), NOW, "de")).toBe("Heute 09:05");
+     expect(messageTime(at(9, 4, 18, 45), NOW, "de")).toBe("Gestern 18:45");
+-    expect(messageTime(at(9, 2, 12, 33), NOW, "de")).toBe("Freitag 12:33");
+     expect(messageTime(at(8, 19, 1, 21), NOW, "de")).toMatch(/ um 01:21$/);
+   });
+ });
+diff --git a/src/lib/chat/time.ts b/src/lib/chat/time.ts
+index bcf26043..fc860486 100644
+--- a/src/lib/chat/time.ts
++++ b/src/lib/chat/time.ts
+@@ -3,7 +3,7 @@ import { lang } from "../lang";
+ const DAY = 24 * 60 * 60_000;
+ 
+ /**
+- * "Today 8:13 PM", "Yesterday 6:45 PM", "Friday 12:33 PM" (within the last week), "Sat, Sep 19 at 1:21 AM" (older),
++ * "Today 8:13 PM", "Yesterday 6:45 PM", "Sat, Sep 19 at 1:21 AM" (older),
+  * in the browser's language and clock style, from the platform's own date formatting (no strings to maintain).
+  */
+ export function messageTime(at: number, now: number, locale: string = lang): string {
+@@ -20,7 +20,6 @@ export function messageTime(at: number, now: number, locale: string = lang): str
+     );
+     return `${word.charAt(0).toLocaleUpperCase(locale)}${word.slice(1)} ${time}`;
+   }
+-  if (days < 7) return `${when.toLocaleDateString(locale, { weekday: "long" })} ${time}`;
+   const sameYear = when.getFullYear() === new Date(now).getFullYear();
+   const date = when.toLocaleDateString(locale, {
+     weekday: "short",

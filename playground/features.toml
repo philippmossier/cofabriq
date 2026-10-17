@@ -1,0 +1,148 @@
+# Small features of github.com/philippmossier/local-ai-chat-playground,
+# removed on purpose: the answer key for the feature route (0.3).
+#
+# The playground has no feature history to revert (one squashed commit), so
+# each feature is taken out of the tip of main instead, the planted bugs run
+# backwards: features/remove/<key>.patch strips the feature's code, its test
+# cases and the doc lines describing it (ADRs stay: a decision in force is
+# context a dev would have too). The reference is main itself.
+#
+#   size    S one function | M a few places or two files
+#   files   source files the reference changes against the removed state
+#           (truth for refine's hit@k; tests and docs left out)
+#   tests   test files at main that judge the feature (the hidden reference
+#           tests): green on main, red with the removal applied
+#   title, body  the ticket as a dev would file it: behaviour, and the
+#           interface only where a hidden test calls it by name
+#
+# Each removal is isolated and applies to main on its own; after it the
+# target's checks are green (the app is consistent without the feature).
+# Proved by `cofabriq eval feature-set` (free). Not on GitHub: the tickets
+# live here, the eval builds the issue from them (number 0).
+
+[[feature]]
+key = "room-to-grow"
+size = "M"
+files = ["src/lib/hardware/advice.ts", "src/components/advice-banner.tsx"]
+tests = ["src/lib/hardware/hardware.test.ts"]
+title = "Speed advice: suggest a bigger model when the machine is clearly fast"
+body = """
+After the first answer the app only speaks up when the model is too slow. It should also say so when the machine has room to spare.
+
+**What**
+- `adviseFromSpeed` returns `{ kind: "room-to-grow", suggest: <next heavier model> }` when the measured speed is 30 tokens/s or more (same minimum token count as the too-slow advice).
+- Only suggest the heavier model if this machine can carry it: its option's fit is `good`, `recommended` or `slow`, never `not-advised`. Otherwise stay `ok`.
+- The advice banner shows it: "Your computer is fast (N tokens/s)" / "<model> would give better answers.", in English and German.
+"""
+
+[[feature]]
+key = "max-auto-tier"
+size = "S"
+files = ["src/lib/hardware/recommend.ts"]
+tests = ["src/lib/hardware/hardware.test.ts"]
+title = "Never preselect the largest model, however fast the GPU looks"
+body = """
+On a machine with a very fast measured GPU the app now preselects Gemma 4 E4B (Best quality). It can run out of memory on machines that only look fast on paper, so the one-click choice should stop at the Strong tier (Gemma 4 E2B).
+
+**What**
+- With a measured GPU speed, the recommendation is the strongest comfortable model up to the Strong tier, never above.
+- E4B stays in the list with its normal fit (e.g. `good`), it is just not preselected.
+"""
+
+[[feature]]
+key = "amd-strong-gpu"
+size = "S"
+files = ["src/lib/hardware/classify.ts"]
+tests = ["src/lib/hardware/hardware.test.ts"]
+title = "Treat capable AMD GPUs as strong when the speed test didn't run"
+body = """
+Without a measured GPU speed, only Apple and NVIDIA count as strong GPUs by name. Recent AMD cards are just as capable, but older ones lack half-precision shaders.
+
+**What**
+- Without a bandwidth measurement, an AMD GPU counts as `strong-gpu` when it supports `shader-f16` and its max buffer size is at least 2048 MB.
+- Every other AMD GPU stays `basic-gpu`. A measurement still wins over the vendor name.
+"""
+
+[[feature]]
+key = "german-anywhere"
+size = "S"
+files = ["src/lib/lang.ts"]
+tests = ["src/lib/lang.test.ts"]
+title = "German interface when German is anywhere in my browser languages"
+body = """
+My browser languages are English (US) first and German second. The app shows English because only the first language counts. I can read both, but I'd prefer German.
+
+**What**
+- Pick German when any of the browser's preferred languages is a German variant (`de`, `de-AT`, `de-CH`, any case), not only the first one.
+- Everything else stays English.
+"""
+
+[[feature]]
+key = "year-when-older"
+size = "S"
+files = ["src/lib/chat/time.ts"]
+tests = ["src/lib/chat/time.test.ts"]
+title = "Show the year on message times from an earlier year"
+body = """
+A message from September last year shows "Sat, Sep 19 at 1:21 AM", the same as one from this September.
+
+**What**
+- Older message times (past the last week) include the year when it differs from the current year.
+- Times from the current year stay as they are, without a year.
+"""
+
+[[feature]]
+key = "weekday-last-week"
+size = "S"
+files = ["src/lib/chat/time.ts"]
+tests = ["src/lib/chat/time.test.ts"]
+title = "Message times: weekday name within the last week"
+body = """
+A message from three days ago shows a full date ("Fri, Oct 2 at 12:33 PM"). Within the last week the weekday is easier to read.
+
+**What**
+- Messages from 2 to 6 days ago show the weekday and the time: "Friday 12:33 PM", in German "Freitag 12:33".
+- Today, yesterday and older dates stay as they are.
+"""
+
+[[feature]]
+key = "delete-selects-next"
+size = "S"
+files = ["src/lib/chat/store.ts"]
+tests = ["src/lib/chat/chat.test.ts"]
+title = "After deleting the open chat, open another one"
+body = """
+When I delete the chat I'm in, the app shows no chat at all, although others are still in the sidebar.
+
+**What**
+- Deleting the active chat makes the first remaining chat in the list active.
+- Deleting the last chat leaves no chat active (as now). Deleting a chat that isn't open keeps the current one.
+"""
+
+[[feature]]
+key = "network-host-order"
+size = "S"
+files = ["src/lib/privacy/network.ts"]
+tests = ["src/lib/privacy/network.test.ts"]
+title = "Privacy panel: list model downloads first, biggest first"
+body = """
+The network summary lists hosts in the order their first request happened, so the large model downloads end up somewhere in the middle.
+
+**What**
+- `summarizeNetwork` orders hosts by kind: model hosts first, then the app's own host, then anything else.
+- Within the same kind, the host with the most bytes comes first.
+"""
+
+[[feature]]
+key = "q4-speed-penalty"
+size = "S"
+files = ["src/lib/hardware/estimate.ts"]
+tests = ["src/lib/hardware/hardware.test.ts"]
+title = "Speed estimate should account for q4 files reading more bytes"
+body = """
+GPUs without half-precision shaders run the q4 files, which read more bytes per token than q4f16. The speed estimate ignores the weight format, so it is too optimistic on those machines.
+
+**What**
+- `estimateTokensPerSecond(model, dtype, bandwidth)` scales the estimate by how many more bytes the format reads per token: `activeMB.q4f16 / activeMB[dtype]`.
+- q4f16 estimates stay exactly as they are.
+"""

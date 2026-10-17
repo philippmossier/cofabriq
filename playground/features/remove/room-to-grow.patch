@@ -1,0 +1,137 @@
+diff --git a/docs/ARCHITECTURE.md b/docs/ARCHITECTURE.md
+index 2164bf57..47e230fc 100644
+--- a/docs/ARCHITECTURE.md
++++ b/docs/ARCHITECTURE.md
+@@ -35,7 +35,7 @@ is the only place that coordinates things; the components are presentational.
+ | `src/lib/hardware/classify.ts`              | Sorts a machine into strong GPU / basic GPU / CPU only / unsupported, with typed reason ids                                                                                                             |
+ | `src/lib/hardware/estimate.ts`              | Expected tokens/s per model from measured bandwidth                                                                                                                                                     |
+ | `src/lib/hardware/recommend.ts`             | The recommendation: per model fit, the one-click pick, backend (device + weight format)                                                                                                                 |
+-| `src/lib/hardware/advice.ts`                | After the first answer: compare measured speed with the estimate, suggest one step up or down                                                                                                           |
++| `src/lib/hardware/advice.ts`                | After the first answer: compare measured speed with the estimate, suggest one step down                                                                                                                 |
+ | `src/lib/hardware/fixtures.ts`              | Representative machines for tests (Apple chip, Intel Mac, RTX, no WebGPU, phone, hidden vendor...)                                                                                                      |
+ | `src/lib/models/catalog.ts`                 | The four models: repo, pinned revision, download and read sizes, measured reference speed                                                                                                               |
+ | `src/lib/engine/`                           | `worker.ts` (Transformers.js, runs the model), `client.ts` (main-thread handle), `protocol.ts` (messages), `singleton.ts`                                                                               |
+@@ -58,7 +58,7 @@ is the only place that coordinates things; the components are presentational.
+    The recommendation is the strongest comfortable model, never above the Strong tier. Without a measurement
+    (or on the CPU), fixed heuristics apply.
+ 5. **Correct** (`advice.ts`): after the first answer of 24+ tokens, the real speed is compared with the estimate:
+-   under 5 tokens/s suggests the next lighter model, over 30 suggests the next heavier one.
++   under 5 tokens/s suggests the next lighter model.
+ 
+ Storage is a warning, never a blocker, because browsers clamp what they report.
+ 
+diff --git a/src/components/advice-banner.tsx b/src/components/advice-banner.tsx
+index 9cc184fe..ff9bafe1 100644
+--- a/src/components/advice-banner.tsx
++++ b/src/components/advice-banner.tsx
+@@ -5,7 +5,7 @@ import { decimal } from "~/lib/format";
+ import type { SpeedAdvice } from "~/lib/hardware/advice";
+ import { tr } from "~/lib/lang";
+ 
+-/** One-time suggestion after the first answer: this model is too slow, or the machine could run a stronger one. */
++/** One-time suggestion after the first answer: this model is too slow. */
+ export function AdviceBanner({
+   advice,
+   tokensPerSecond,
+@@ -23,26 +23,13 @@ export function AdviceBanner({
+     <Alert>
+       <GaugeIcon />
+       <AlertTitle>
+-        {advice.kind === "too-slow"
+-          ? tr(
+-              `This model is slow on your computer (${tps} tokens/s)`,
+-              `Dieses Modell ist auf Ihrem Computer langsam (${tps} Tokens/s)`,
+-            )
+-          : tr(
+-              `Your computer is fast (${tps} tokens/s)`,
+-              `Ihr Computer ist schnell (${tps} Tokens/s)`,
+-            )}
++        {tr(
++          `This model is slow on your computer (${tps} tokens/s)`,
++          `Dieses Modell ist auf Ihrem Computer langsam (${tps} Tokens/s)`,
++        )}
+       </AlertTitle>
+       <AlertDescription>
+-        {advice.kind === "too-slow"
+-          ? tr(
+-              `${model} would feel much faster.`,
+-              `Mit ${model} wäre es deutlich flotter.`,
+-            )
+-          : tr(
+-              `${model} would give better answers.`,
+-              `${model} würde bessere Antworten liefern.`,
+-            )}
++        {tr(`${model} would feel much faster.`, `Mit ${model} wäre es deutlich flotter.`)}
+       </AlertDescription>
+       <AlertAction className="flex gap-2">
+         <Button size="sm" onClick={onSwitch}>
+diff --git a/src/lib/hardware/advice.ts b/src/lib/hardware/advice.ts
+index 30afbe3b..045b91a0 100644
+--- a/src/lib/hardware/advice.ts
++++ b/src/lib/hardware/advice.ts
+@@ -3,25 +3,22 @@ import type { Option } from "./recommend";
+ 
+ export type SpeedAdvice =
+   | { kind: "ok" }
+-  | { kind: "too-slow"; suggest: ModelSpec }
+-  | { kind: "room-to-grow"; suggest: ModelSpec };
++  | { kind: "too-slow"; suggest: ModelSpec };
+ 
+ /** Below this a chat feels broken; a reply of 200 tokens would take over 40 s. */
+ export const TOO_SLOW_TPS = 5;
+-/** Above this a bigger model is likely still pleasant. */
+-export const FAST_TPS = 30;
+ /** Speed measured over fewer tokens than this is noise (warm-up, first-token latency). */
+ export const MIN_TOKENS_FOR_ADVICE = 24;
+ 
+ /**
+  * The hardware guess is a starting point. After the first real answer we know the actual speed, which
+- * is better evidence than any vendor string, so use it to suggest moving one step down or up.
++ * is better evidence than any vendor string, so use it to suggest moving one step down.
+  */
+ export function adviseFromSpeed(
+   tokensPerSecond: number,
+   tokens: number,
+   current: ModelSpec,
+-  options: Option[],
++  _options: Option[],
+ ): SpeedAdvice {
+   if (tokens < MIN_TOKENS_FOR_ADVICE) return { kind: "ok" };
+ 
+@@ -30,13 +27,5 @@ export function adviseFromSpeed(
+     if (lighter) return { kind: "too-slow", suggest: lighter };
+     return { kind: "ok" };
+   }
+-
+-  if (tokensPerSecond >= FAST_TPS) {
+-    const heavier = neighbour(current, 1);
+-    const fit = options.find((o) => o.model.id === heavier?.id)?.fit;
+-    if (heavier && (fit === "good" || fit === "recommended" || fit === "slow")) {
+-      return { kind: "room-to-grow", suggest: heavier };
+-    }
+-  }
+   return { kind: "ok" };
+ }
+diff --git a/src/lib/hardware/hardware.test.ts b/src/lib/hardware/hardware.test.ts
+index 6c2b4077..593255da 100644
+--- a/src/lib/hardware/hardware.test.ts
++++ b/src/lib/hardware/hardware.test.ts
+@@ -124,18 +124,6 @@ describe("adviseFromSpeed", () => {
+   it("ignores speed measured on a short reply", () => {
+     expect(adviseFromSpeed(1, 10, e2b, options)).toEqual({ kind: "ok" });
+   });
+-  it("suggests growing when the machine is clearly fast", () => {
+-    expect(adviseFromSpeed(45, 80, e2b, options)).toEqual({
+-      kind: "room-to-grow",
+-      suggest: getModel("gemma4-e4b"),
+-    });
+-  });
+-  it("does not suggest a model the hardware cannot carry", () => {
+-    const weak = recommend(PROFILES.windowsIntelLaptop).options;
+-    expect(adviseFromSpeed(45, 80, getModel("gemma4-e2b")!, weak)).toEqual({
+-      kind: "ok",
+-    });
+-  });
+   it("stays quiet in the comfortable middle", () => {
+     expect(adviseFromSpeed(15, 80, e2b, options)).toEqual({ kind: "ok" });
+   });

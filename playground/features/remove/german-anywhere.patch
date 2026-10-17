@@ -1,0 +1,28 @@
+diff --git a/src/lib/lang.test.ts b/src/lib/lang.test.ts
+index 224fa772..d8738efe 100644
+--- a/src/lib/lang.test.ts
++++ b/src/lib/lang.test.ts
+@@ -7,7 +7,6 @@ describe("detectLang", () => {
+     [["de"], "de"],
+     [["de-AT", "en"], "de"],
+     [["de-CH"], "de"],
+-    [["en-US", "de"], "de"], // any preferred German wins: a German reader can read the German text
+     [["DE-de"], "de"],
+     [["en-GB"], "en"],
+     [["fr-FR", "es"], "en"], // everything else falls back to English
+diff --git a/src/lib/lang.ts b/src/lib/lang.ts
+index 08c9fab6..4cd4f243 100644
+--- a/src/lib/lang.ts
++++ b/src/lib/lang.ts
+@@ -7,9 +7,9 @@
+  */
+ export type Lang = "en" | "de";
+ 
+-/** German if any of the browser's preferred languages is German (de, de-AT, de-CH...), else English. */
++/** German if the browser's first language is German (de, de-AT, de-CH...), else English. */
+ export function detectLang(languages: readonly string[]): Lang {
+-  return languages.some((l) => l.toLowerCase().startsWith("de")) ? "de" : "en";
++  return languages[0]?.toLowerCase().startsWith("de") ? "de" : "en";
+ }
+ 
+ export const lang: Lang = detectLang(

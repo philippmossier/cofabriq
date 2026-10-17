@@ -1,0 +1,37 @@
+diff --git a/src/lib/privacy/network.test.ts b/src/lib/privacy/network.test.ts
+index c6c72556..059605e3 100644
+--- a/src/lib/privacy/network.test.ts
++++ b/src/lib/privacy/network.test.ts
+@@ -37,16 +37,6 @@ describe("summarizeNetwork", () => {
+     rec("cdn-lfs.hf.co", 1_000, 220),
+   ];
+ 
+-  it("groups by host, model hosts first, biggest first", () => {
+-    const { hosts } = summarizeNetwork(records, own, null);
+-    expect(hosts.map((h) => [h.host, h.kind, h.requests])).toEqual([
+-      ["cdn-lfs.hf.co", "model", 2],
+-      ["huggingface.co", "model", 1],
+-      ["chat.example.com", "app", 1],
+-    ]);
+-    expect(hosts[0]!.bytes).toBe(570_001_000);
+-  });
+-
+   it("has no counter until a message was sent", () => {
+     expect(summarizeNetwork(records, own, null).requestsAfterFirstMessage).toBeNull();
+   });
+diff --git a/src/lib/privacy/network.ts b/src/lib/privacy/network.ts
+index 06d70eaa..dd808773 100644
+--- a/src/lib/privacy/network.ts
++++ b/src/lib/privacy/network.ts
+@@ -44,10 +44,7 @@ export function summarizeNetwork(
+     existing.bytes += r.bytes;
+     byHost.set(r.host, existing);
+   }
+-  const order: Record<HostKind, number> = { model: 0, app: 1, other: 2 };
+-  const hosts = [...byHost.values()].sort(
+-    (a, b) => order[a.kind] - order[b.kind] || b.bytes - a.bytes,
+-  );
++  const hosts = [...byHost.values()];
+ 
+   return {
+     hosts,

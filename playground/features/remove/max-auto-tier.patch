@@ -1,0 +1,76 @@
+diff --git a/docs/ARCHITECTURE.md b/docs/ARCHITECTURE.md
+index 2164bf57..0d0ced57 100644
+--- a/docs/ARCHITECTURE.md
++++ b/docs/ARCHITECTURE.md
+@@ -55,7 +55,7 @@ is the only place that coordinates things; the components are presentational.
+    largest tier offered. No WebGPU or a software renderer means the CPU path.
+ 4. **Recommend** (`recommend.ts`): with a measurement, each model's expected speed
+    (`referenceTps * bandwidth / referenceBandwidth`) decides its fit: comfortable at 15 tokens/s or more, slow from 6.
+-   The recommendation is the strongest comfortable model, never above the Strong tier. Without a measurement
++   The recommendation is the strongest comfortable model. Without a measurement
+    (or on the CPU), fixed heuristics apply.
+ 5. **Correct** (`advice.ts`): after the first answer of 24+ tokens, the real speed is compared with the estimate:
+    under 5 tokens/s suggests the next lighter model, over 30 suggests the next heavier one.
+diff --git a/src/lib/hardware/hardware.test.ts b/src/lib/hardware/hardware.test.ts
+index 6c2b4077..c3a365f6 100644
+--- a/src/lib/hardware/hardware.test.ts
++++ b/src/lib/hardware/hardware.test.ts
+@@ -146,8 +146,6 @@ describe("recommend with a measured GPU speed", () => {
+     const r = recommend(PROFILES.hiddenVendorFastGpu);
+     expect(r.classification.class).toBe("strong-gpu");
+     expect(r.classification.reasons[0]).toBe("hw.speedFast");
+-    expect(r.recommended?.model.id).toBe("gemma4-e2b");
+-    expect(r.recommended?.estimatedTps).toBe(34.7);
+   });
+ 
+   it("recommends the strongest model that stays comfortable on a middling GPU", () => {
+@@ -173,12 +171,6 @@ describe("recommend with a measured GPU speed", () => {
+     });
+   });
+ 
+-  it("never pre-selects the largest model, however fast the GPU", () => {
+-    const r = recommend(PROFILES.veryFastGpuMeasured);
+-    expect(r.recommended?.model.id).toBe("gemma4-e2b");
+-    expect(fitsOf(r)["gemma4-e4b"]).toBe("good"); // available, just not pre-selected
+-  });
+-
+   it("still offers the lightest model on a very weak GPU", () => {
+     expect(recommend(PROFILES.veryWeakGpuMeasured).recommended?.model.id).toBe(
+       "qwen3-0.6b",
+@@ -188,9 +180,6 @@ describe("recommend with a measured GPU speed", () => {
+   it("counts cached models as needing no download and no free space", () => {
+     const tight = { ...PROFILES.hiddenVendorFastGpu, storageFreeMB: 2000 };
+     expect(recommend(tight).recommended?.lowStorage).toBe(true);
+-    const withCached = recommend(tight, new Set(["gemma4-e2b"]));
+-    expect(withCached.recommended?.model.id).toBe("gemma4-e2b");
+-    expect(withCached.recommended?.downloadMB).toBe(0);
+   });
+ 
+   it("ignores the speed test on the CPU path", () => {
+diff --git a/src/lib/hardware/recommend.ts b/src/lib/hardware/recommend.ts
+index 48dc9816..19c3caff 100644
+--- a/src/lib/hardware/recommend.ts
++++ b/src/lib/hardware/recommend.ts
+@@ -54,9 +54,6 @@ const SWEET_SPOT: Record<HardwareClass, number> = {
+   unsupported: -1,
+ };
+ 
+-/** Never pre-select the largest model: it can exhaust memory on machines that look fast on paper. */
+-const MAX_AUTO_TIER = 2;
+-
+ /** `cached` = ids of models already stored in the browser: they need no download, so no free space. */
+ export function recommend(
+   p: HardwareProfile,
+@@ -130,10 +127,8 @@ function recommendFromMeasurement(
+     };
+   });
+ 
+-  // The strongest model that is comfortable, but never past MAX_AUTO_TIER; else the lightest that fits.
+-  const candidates = options.filter(
+-    (o) => o.fit === "good" && TIER_ORDER.indexOf(o.model.tier) <= MAX_AUTO_TIER,
+-  );
++  // The strongest model that is comfortable; else the lightest that fits.
++  const candidates = options.filter((o) => o.fit === "good");
+   const pickOption =
+     candidates.at(-1) ??
+     options.find((o) => o.fit === "slow") ??

@@ -1,0 +1,36 @@
+diff --git a/src/lib/hardware/classify.ts b/src/lib/hardware/classify.ts
+index 4c465984..cac888f6 100644
+--- a/src/lib/hardware/classify.ts
++++ b/src/lib/hardware/classify.ts
+@@ -67,9 +67,7 @@ export function classify(p: HardwareProfile): Classification {
+   }
+ 
+   const vendor = (p.gpu.vendor ?? "").toLowerCase();
+-  const bigBuffers = (p.gpu.maxBufferMB ?? 0) >= 2048;
+-  const vendorStrong =
+-    STRONG_VENDORS.has(vendor) || (vendor === "amd" && p.gpu.shaderF16 && bigBuffers);
++  const vendorStrong = STRONG_VENDORS.has(vendor);
+ 
+   // A measurement beats a name: browsers often hide the vendor, and a name says little about speed.
+   const bw = p.gpu.bandwidthGBs;
+diff --git a/src/lib/hardware/hardware.test.ts b/src/lib/hardware/hardware.test.ts
+index 6c2b4077..4b9d331f 100644
+--- a/src/lib/hardware/hardware.test.ts
++++ b/src/lib/hardware/hardware.test.ts
+@@ -41,16 +41,6 @@ describe("classify", () => {
+       "unsupported",
+     );
+   });
+-
+-  it("only trusts AMD as strong with half-precision shaders and big buffers", () => {
+-    const amd = (shaderF16: boolean, maxBufferMB: number) => ({
+-      ...PROFILES.windowsRtx,
+-      gpu: { ...PROFILES.windowsRtx.gpu, vendor: "amd", shaderF16, maxBufferMB },
+-    });
+-    expect(classify(amd(true, 4096)).class).toBe("strong-gpu");
+-    expect(classify(amd(false, 4096)).class).toBe("basic-gpu");
+-    expect(classify(amd(true, 512)).class).toBe("basic-gpu");
+-  });
+ });
+ 
+ describe("recommend", () => {

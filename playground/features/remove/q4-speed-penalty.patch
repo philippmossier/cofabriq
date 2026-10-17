@@ -1,0 +1,64 @@
+diff --git a/docs/ARCHITECTURE.md b/docs/ARCHITECTURE.md
+index 2164bf57..61e02a74 100644
+--- a/docs/ARCHITECTURE.md
++++ b/docs/ARCHITECTURE.md
+@@ -154,7 +154,7 @@ German or English from `navigator.languages`, one `tr("English", "Deutsch")` at
+ | What                              | How                                                                                                                                      |
+ | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+ | Classification and recommendation | Fixture machines: expected class, pick and fits; hidden-vendor and measured-speed cases; storage and cache                               |
+-| Speed estimate and advice         | Reference speeds, linear scaling, q4 penalty, thresholds                                                                                 |
++| Speed estimate and advice         | Reference speeds, linear scaling, thresholds                                                                                             |
+ | Catalog                           | Ordered tiers, q4f16 smaller than q4, pinned 40-character revisions, licences, measured speeds                                           |
+ | Chat                              | Reducer, titles, persistence round trip, corrupt storage, history for the model                                                          |
+ | Privacy                           | Host classification, grouping, "requests after first message"                                                                            |
+diff --git a/src/lib/hardware/estimate.ts b/src/lib/hardware/estimate.ts
+index 9fbe4930..f057affd 100644
+--- a/src/lib/hardware/estimate.ts
++++ b/src/lib/hardware/estimate.ts
+@@ -4,7 +4,7 @@ import { REFERENCE_BANDWIDTH_GBS, type Dtype, type ModelSpec } from "../models/c
+  * Expected generation speed in tokens per second on a GPU with the given measured memory bandwidth.
+  *
+  * Each model has a speed that was actually measured on a reference machine. Other machines are scaled
+- * linearly by bandwidth, and a q4 file (no half-precision shaders) by how much more it has to read.
++ * linearly by bandwidth.
+  * Crude on purpose: the measured speed of the first real answer corrects it (advice.ts).
+  *
+  * An earlier version derived speed from model size alone. It predicted Qwen3 1.7B to be as fast as
+@@ -12,11 +12,10 @@ import { REFERENCE_BANDWIDTH_GBS, type Dtype, type ModelSpec } from "../models/c
+  */
+ export function estimateTokensPerSecond(
+   model: ModelSpec,
+-  dtype: Dtype,
++  _dtype: Dtype,
+   bandwidthGBs: number,
+ ): number {
+-  const bytesRatio = model.activeMB.q4f16 / model.activeMB[dtype];
+-  const tps = model.referenceTps * (bandwidthGBs / REFERENCE_BANDWIDTH_GBS) * bytesRatio;
++  const tps = model.referenceTps * (bandwidthGBs / REFERENCE_BANDWIDTH_GBS);
+   return Math.round(tps * 10) / 10;
+ }
+ 
+diff --git a/src/lib/hardware/hardware.test.ts b/src/lib/hardware/hardware.test.ts
+index 6c2b4077..335899b5 100644
+--- a/src/lib/hardware/hardware.test.ts
++++ b/src/lib/hardware/hardware.test.ts
+@@ -215,19 +215,6 @@ describe("estimateTokensPerSecond", () => {
+       estimateTokensPerSecond(model("gemma4-e2b"), "q4f16", REFERENCE_BANDWIDTH_GBS / 2),
+     ).toBe(17.4);
+   });
+-  it("is slower for files that need more bytes read (no half-precision shaders)", () => {
+-    const q4f16 = estimateTokensPerSecond(
+-      model("qwen3-0.6b"),
+-      "q4f16",
+-      REFERENCE_BANDWIDTH_GBS,
+-    );
+-    const q4 = estimateTokensPerSecond(
+-      model("qwen3-0.6b"),
+-      "q4",
+-      REFERENCE_BANDWIDTH_GBS,
+-    );
+-    expect(q4).toBeLessThan(q4f16);
+-  });
+ });
+ 
+ function fitsOf(r: ReturnType<typeof recommend>) {

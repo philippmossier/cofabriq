@@ -1,0 +1,32 @@
+diff --git a/src/lib/chat/time.test.ts b/src/lib/chat/time.test.ts
+index 7a89d099..153bda35 100644
+--- a/src/lib/chat/time.test.ts
++++ b/src/lib/chat/time.test.ts
+@@ -16,9 +16,8 @@ describe("messageTime", () => {
+     expect(messageTime(at(9, 2, 12, 33), NOW, "en")).toMatch(/^Friday 12:33\sPM$/);
+   });
+ 
+-  it("date with 'at' when older, year only when it differs", () => {
++  it("date with 'at' when older", () => {
+     expect(messageTime(at(8, 19, 1, 21), NOW, "en")).toMatch(/^Sat, Sep 19 at 1:21\sAM$/);
+-    expect(messageTime(at(8, 19, 1, 21, 2025), NOW, "en")).toContain("2025");
+   });
+ 
+   it("German", () => {
+diff --git a/src/lib/chat/time.ts b/src/lib/chat/time.ts
+index bcf26043..4fe8c909 100644
+--- a/src/lib/chat/time.ts
++++ b/src/lib/chat/time.ts
+@@ -21,12 +21,10 @@ export function messageTime(at: number, now: number, locale: string = lang): str
+     return `${word.charAt(0).toLocaleUpperCase(locale)}${word.slice(1)} ${time}`;
+   }
+   if (days < 7) return `${when.toLocaleDateString(locale, { weekday: "long" })} ${time}`;
+-  const sameYear = when.getFullYear() === new Date(now).getFullYear();
+   const date = when.toLocaleDateString(locale, {
+     weekday: "short",
+     month: "short",
+     day: "numeric",
+-    ...(sameYear ? {} : { year: "numeric" }),
+   });
+   return `${date} ${locale === "de" ? "um" : "at"} ${time}`;
+ }

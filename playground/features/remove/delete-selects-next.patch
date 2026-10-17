@@ -1,0 +1,34 @@
+diff --git a/src/lib/chat/chat.test.ts b/src/lib/chat/chat.test.ts
+index 41cf7e9c..b2e99c5b 100644
+--- a/src/lib/chat/chat.test.ts
++++ b/src/lib/chat/chat.test.ts
+@@ -63,16 +63,6 @@ describe("chatReducer", () => {
+     expect(s.chats[0]!.messages[1]).toMatchObject({ content: "Hi you", stats });
+   });
+ 
+-  it("deleting the active chat selects another one", () => {
+-    let s = started();
+-    s = chatReducer(s, { type: "new", id: "c2", now: 5 });
+-    expect(s.activeId).toBe("c2");
+-    s = chatReducer(s, { type: "delete", id: "c2" });
+-    expect(s.activeId).toBe("c1");
+-    s = chatReducer(s, { type: "delete", id: "c1" });
+-    expect(s).toEqual(initialState);
+-  });
+-
+   it("keeps updatedAt current so the history orders by last use", () => {
+     let s = chatReducer(initialState, { type: "new", id: "c1", now: 1 });
+     expect(s.chats[0]).toMatchObject({ createdAt: 1, updatedAt: 1 });
+diff --git a/src/lib/chat/store.ts b/src/lib/chat/store.ts
+index 8a1f17c4..e0d3f469 100644
+--- a/src/lib/chat/store.ts
++++ b/src/lib/chat/store.ts
+@@ -92,7 +92,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
+       const chats = state.chats.filter((c) => c.id !== action.id);
+       return {
+         chats,
+-        activeId: state.activeId === action.id ? (chats[0]?.id ?? null) : state.activeId,
++        activeId: state.activeId === action.id ? null : state.activeId,
+       };
+     }
+     case "clear":
