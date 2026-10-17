@@ -46,6 +46,27 @@ real issues, a different reviewer model.
 Reproduce: `cofabriq eval refine`, `eval loop`, `eval loop --wrong`,
 `eval witness`, `eval review`, `eval gate` (all paid, results in `data/`).
 
+### 0.2.1: with the target's CLAUDE.md
+
+Until 0.2.1 the agent never saw the playground's CLAUDE.md (`--bare` skips
+discovery). The same evals with it loaded, run on a Claude plan
+(`AGENT_AUTH=subscription`, so `--safe-mode` instead of `--bare`). Costs are
+API list prices the CLI reports, not money spent, and safe mode's larger
+system prompt inflates them: compare times and rates, not dollars.
+
+| Stage                       | 0.2.0 (`--bare`, no CLAUDE.md)                     | 0.2.1 (`--safe-mode`, CLAUDE.md)                                    |
+| --------------------------- | -------------------------------------------------- | ------------------------------------------------------------------- |
+| refine, all 22              | hit@1 1.00, precision 0.88; size 16/22; 34 s       | hit@1 1.00, precision 0.91; size 15/22 (all 6 M called S); 27 s     |
+| loop, 10 logic bugs         | 10/10 reproduced, valid, resolved, first try; 97 s | 10/10 reproduced, valid, resolved, first try; 98 s                  |
+| review gate: 10 right, 8 wrong | right published 10/10; wrong fixed 8/8, leaked 0 | right published 10/10; wrong fixed 7/8, **leaked 1**; 9 proofs, all valid |
+
+The leak is the first miss on any set: on the same stored wrong fix
+(`reload-active-chat`, a `messages.length > 0` check the spec never asked
+for) the reviewer names the exact defect both times, but now files it as a
+concern instead of a blocker, 3 runs out of 3. The gate only tries to prove
+blockers, so an unproven concern publishes. Whether the CLAUDE.md or safe
+mode's system prompt moved the severity isn't separated yet.
+
 ## 0.2: impact from the repo map
 
 A map of a repo from paths and git history only (components, co-change,
