@@ -14,7 +14,14 @@ from cofabriq.loop.engine import (
     _env,  # pyright: ignore[reportPrivateUsage]
     parse,
 )
-from cofabriq.loop.refine import FileChange, Spec, prompt, refine
+from cofabriq.loop.refine import (
+    FileChange,
+    NoCriteria,
+    Spec,
+    prompt,
+    refine,
+    route_for,
+)
 from tests.gitrepo import init_repo
 from tests.test_dedupe import issue
 
@@ -158,3 +165,44 @@ def test_summary_averages_and_handles_empty() -> None:
     assert (total.hit[1], total.precision, total.size_ok) == (0.5, 0.5, 1.0)
     assert summarize([]).n == 0
     assert FileChange(path="p", why="w").path == "p"
+
+
+def test_route_follows_the_triage_type() -> None:
+    assert route_for("bug") == "bug"
+    assert route_for("feature") == "feature"
+    assert route_for("question") is None and route_for("chore") is None
+
+
+def test_feature_prompt_asks_for_criteria() -> None:
+    assert "criteria" in prompt(issue(1), "feature")
+    assert "criteria" not in prompt(issue(1), "bug")
+
+
+def test_feature_spec_needs_criteria(tmp_path: Path) -> None:
+    clone = init_repo(tmp_path / "clone", {"src/a.ts": "x"})
+    with pytest.raises(NoCriteria):
+        refine(issue(3), clone, FakeAgent(spec("src/a.ts")), "feature")
+    with_criteria = spec("src/a.ts").model_copy(update={"criteria": ["f(1) is 2"]})
+    refined = refine(issue(3), clone, FakeAgent(with_criteria), "feature")
+    assert refined.route == "feature" and refined.spec.criteria == ["f(1) is 2"]
+
+
+def test_bug_spec_drops_criteria(tmp_path: Path) -> None:
+    clone = init_repo(tmp_path / "clone", {"src/a.ts": "x"})
+    stray = spec("src/a.ts").model_copy(update={"criteria": ["guess"]})
+    refined = refine(issue(3), clone, FakeAgent(stray))
+    assert refined.route == "bug" and refined.spec.criteria == []
+
+
+def test_a_spec_stored_before_criteria_still_loads() -> None:
+    old = spec("src/a.ts").model_dump()
+    del old["criteria"]
+    assert Spec.model_validate(old).criteria == []
+
+
+def test_docs_in_the_spec_are_not_scored() -> None:
+    bug = PlantedBug(
+        key="k", kind="logic", size="S", files=["src/a.ts"], repro="k.test.ts"
+    )
+    score = score_bug(bug, spec("src/a.ts", "docs/ARCHITECTURE.md"))
+    assert (score.precision, score.listed) == (1.0, 1)

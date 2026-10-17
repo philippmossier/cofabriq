@@ -184,6 +184,8 @@ def render_spec(spec: Spec, tests: bool = False) -> str:
     ]
     if tests and spec.tests:
         lines += ["tests:", *[f"- {f.path}: {f.why}" for f in spec.tests]]
+    if spec.criteria:
+        lines += ["acceptance criteria:", *[f"- {c}" for c in spec.criteria]]
     lines += [
         "plan:",
         *[f"{n}. {step}" for n, step in enumerate(spec.plan, 1)],

@@ -1,7 +1,8 @@
 """Refine against the planted bugs: are the files in the spec the files the
-reference fix changes, and is the size estimate right?
+reference fix changes, and is the size estimate right? The removed
+features (0.3) are scored the same way.
 
-Truth is `files` in `playground/bugs.toml` (code only, so the spec's
+Truth is `files` in `playground/bugs.toml` or `features.toml` (code only, so the spec's
 `tests` don't count). The spec's `files` are ranked, most likely first:
 hit@k = at least one truth file in the top k, recall@k = share of truth
 files in the top k, precision = share of all listed files that are truth.
@@ -11,8 +12,8 @@ and one overall rate would hide that.
 
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from typing import Protocol
 
-from cofabriq.eval.bugs import PlantedBug
 from cofabriq.loop.refine import Spec
 
 KS = (1, 3)
@@ -29,8 +30,22 @@ class BugScore:
     size_guess: str
 
 
-def score_bug(bug: PlantedBug, spec: Spec) -> BugScore:
-    listed = list(dict.fromkeys(f.path for f in spec.files))
+class Answer(Protocol):
+    """An answer key entry: a planted bug or a removed feature."""
+
+    @property
+    def key(self) -> str: ...
+    @property
+    def size(self) -> str: ...
+    @property
+    def files(self) -> list[str]: ...
+
+
+def score_bug(bug: Answer, spec: Spec) -> BugScore:
+    """Docs the spec lists (`.md`) are left out like the truth leaves them
+    out: a feature's spec rightly names the doc it updates."""
+    code = [f.path for f in spec.files if not f.path.endswith(".md")]
+    listed = list(dict.fromkeys(code))
     truth = set(bug.files)
 
     def found(k: int) -> int:

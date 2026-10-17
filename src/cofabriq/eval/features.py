@@ -18,8 +18,15 @@ from typing import Literal
 from pydantic import BaseModel, TypeAdapter
 
 from cofabriq.issues.model import Issue
-from cofabriq.loop.refine import git_env
-from cofabriq.loop.run import CheckResult, Rules, repro_command
+from cofabriq.loop.engine import Agent
+from cofabriq.loop.refine import Refined, git_env, refine
+from cofabriq.loop.run import (
+    CheckResult,
+    Rules,
+    add_worktree,
+    remove_worktree,
+    repro_command,
+)
 from cofabriq.loop.sandbox import Sandbox
 
 _PATCHED = re.compile(r"^\+\+\+ b/(.+)$", re.MULTILINE)
@@ -101,10 +108,11 @@ def _git(worktree: Path, *args: str) -> str:
     ).stdout
 
 
-def remove(worktree: Path, patch: Path, key: str) -> None:
+def remove(worktree: Path, patch: Path) -> None:
     """Applies the removal and commits it in the (detached) worktree, so
     every later diff against HEAD shows only the agent's work. The commit
-    stays local: the worktree is never pushed."""
+    stays local (the worktree is never pushed); its message says nothing
+    about the feature, since the agent may read the worktree."""
     _git(worktree, "apply", str(patch.resolve()))
     _git(worktree, "add", "-A")
     _git(
@@ -117,7 +125,7 @@ def remove(worktree: Path, patch: Path, key: str) -> None:
         "-q",
         "--no-verify",
         "-m",
-        f"remove feature {key} (eval base)",
+        "eval base",
     )
 
 
@@ -171,9 +179,67 @@ def prove(
     for f in features:
         _git(worktree, "reset", "-q", "--hard", commit)
         _git(worktree, "clean", "-q", "-fd")
-        remove(worktree, removal_path(features_file, f.key), f.key)
+        remove(worktree, removal_path(features_file, f.key))
         checks = [_check(c.name, c.cmd, worktree, sandbox) for c in rules.checks]
         hidden = hidden_tests(worktree, commit, f, rules, sandbox)
         proofs.append(Proof(key=f.key, checks=checks, hidden=hidden))
     _git(worktree, "reset", "-q", "--hard", commit)
     return proofs
+
+
+def refine_feature(
+    feature: Feature,
+    features_file: Path,
+    repo: str,
+    clone: Path,
+    commit: str,
+    worktree: Path,
+    agent: Agent,
+) -> Refined:
+    """Refine on the feature's removed state: a worktree at `commit` with
+    the removal committed, the ticket as the issue, the feature route. The
+    spec is stored against `commit` (the removal commit is rebuilt by the
+    loop, it lives only in the worktree)."""
+    add_worktree(clone, worktree, commit)
+    try:
+        remove(worktree, removal_path(features_file, feature.key))
+        refined = refine(ticket(feature, repo), worktree, agent, "feature")
+    finally:
+        remove_worktree(clone, worktree)
+    return refined.model_copy(update={"commit": commit})
+
+
+def removed_tests(features_file: Path, feature: Feature) -> list[str]:
+    """The test lines the removal deletes: what the hidden tests check, for
+    a dev to read next to the spec's criteria."""
+    lines: list[str] = []
+    current = ""
+    patch = removal_path(features_file, feature.key).read_text("utf-8")
+    for line in patch.splitlines():
+        if line.startswith("+++ b/"):
+            current = line[6:]
+        elif line.startswith("--- "):
+            current = ""
+        elif current in feature.tests and line.startswith("-") and line[1:].strip():
+            lines.append(line[1:])
+    return lines
+
+
+def side_by_side(
+    features_file: Path, features: list[Feature], specs: dict[str, Refined]
+) -> str:
+    """Markdown for the dev: per feature, the ticket's title, the spec's
+    criteria and the hidden tests' removed lines."""
+    parts = ["# Feature specs: criteria next to the hidden tests\n"]
+    for f in features:
+        parts.append(f"## {f.key} ({f.size}): {f.title}\n")
+        spec = specs.get(f.key)
+        if spec is None:
+            parts.append("(no spec: the refine run failed)\n")
+            continue
+        parts.append("Criteria:\n")
+        parts += [f"{n}. {c}" for n, c in enumerate(spec.spec.criteria, 1)]
+        parts.append("\nRemoved test lines (the hidden tests):\n\n```ts")
+        parts += removed_tests(features_file, f)
+        parts.append("```\n")
+    return "\n".join(parts)

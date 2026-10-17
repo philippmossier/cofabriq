@@ -2,6 +2,7 @@
 
 import json as json_mod
 import time
+import typing
 import webbrowser
 from collections import Counter
 from collections.abc import Callable
@@ -62,7 +63,14 @@ from cofabriq.loop import pr as pr_mod
 from cofabriq.loop import publish as publish_mod
 from cofabriq.loop import refine as refine_mod
 from cofabriq.loop import run as run_mod
-from cofabriq.loop.engine import AgentError, ApiKey, Auth, ClaudeCode, Subscription
+from cofabriq.loop.engine import (
+    AgentError,
+    AgentRun,
+    ApiKey,
+    Auth,
+    ClaudeCode,
+    Subscription,
+)
 from cofabriq.loop.sandbox import Podman
 from cofabriq.map import build as map_build_mod
 from cofabriq.map import components as components_mod
@@ -968,16 +976,32 @@ def _render_spec(out: Console, refined: refine_mod.Refined) -> None:
 
     out.print(
         Text(
-            f"{refined.repo}#{refined.number} at {refined.commit[:7]}, size {s.size}",
+            f"{refined.repo}#{refined.number} at {refined.commit[:7]}, "
+            f"{refined.route}, size {s.size}",
             style="bold",
         )
     )
     section("problem", [s.problem])
     section("files", [f"{f.path}: {f.why}" for f in s.files])
     section("tests", [f"{f.path}: {f.why}" for f in s.tests])
+    if refined.route == "feature":
+        criteria = [f"{n}. {c}" for n, c in enumerate(s.criteria, 1)]
+        section("acceptance criteria", criteria)
     section("plan", [f"{n}. {step}" for n, step in enumerate(s.plan, 1)])
     section("assumptions", s.assumptions)
     section("open questions", s.open_questions)
+
+
+def _route(issue_type: str) -> refine_mod.Route:
+    types = typing.get_args(triage_mod.IssueType.__value__)
+    if issue_type not in types:
+        typer.echo(f"--type must be one of {', '.join(types)}", err=True)
+        raise typer.Exit(code=1)
+    route = refine_mod.route_for(issue_type)
+    if route is None:
+        typer.echo(f"a {issue_type} is not for the loop: a person answers it", err=True)
+        raise typer.Exit(code=1)
+    return route
 
 
 @app.command()
@@ -989,6 +1013,7 @@ def run(
     keep: bool = False,
     planted: bool = False,
     apply: bool = False,
+    issue_type: str = typer.Option("bug", "--type"),
     bugs: Path = Path("playground/bugs.toml"),
     seed: Path = Path("playground/seed.toml"),
 ) -> None:
@@ -1000,7 +1025,10 @@ def run(
     dev may edit it); `--yes` skips the plan gate; `--keep` leaves the
     worktree in data/work/. When green, a reviewer reads the change and the
     PR body goes to data/runs/ with the result; `--apply` also pushes a new
-    branch and opens a draft PR (playground only, GITHUB_WRITE_TOKEN)."""
+    branch and opens a draft PR (playground only, GITHUB_WRITE_TOKEN).
+    `--type` is the triage card's type: bug or feature (a feature spec
+    comes with acceptance criteria); anything else is not for the loop."""
+    route = _route(issue_type)
     settings = get_settings()
     target = check_repo(repo)
     rules = run_mod.load_rules(settings.targets_dir, target)
@@ -1036,8 +1064,8 @@ def run(
     else:
         with steps.step("refine", f"reading the code ({agent.model})") as done:
             try:
-                refined = refine_mod.refine(issue, clone, agent)
-            except AgentError as exc:
+                refined = refine_mod.refine(issue, clone, agent, route)
+            except (AgentError, refine_mod.NoCriteria) as exc:
                 typer.echo(str(exc), err=True)
                 raise typer.Exit(code=1) from exc
             r = refined.run
@@ -1275,16 +1303,23 @@ def eval_refine(
     repo: str = "philippmossier/local-ai-chat-playground",
     only: str | None = None,
     workers: int = 4,
+    features: bool = False,
     bugs: Path = Path("playground/bugs.toml"),
     seed: Path = Path("playground/seed.toml"),
+    feature_set: Path = Path("playground/features.toml"),
 ) -> None:
     """Refine on the planted bugs: spec files vs the reference fix's files
     (hit@k, recall@k, precision) and the size guess, per bug size.
+    `--features`: on the removed features instead (feature route, criteria;
+    results in data/refine/features-*).
 
     Paid: one agent run per bug, nothing cached; `--only key,key` for a few.
     Needs the seeded issues fetched (`fetch-issues`). The clone is updated to
     the tip of main, the planted code. Every result goes to data/refine/.
     """
+    if features:
+        _eval_refine_features(repo, only, workers, feature_set)
+        return
     settings = get_settings()
     target = check_repo(repo)
     agent = _agent()
@@ -1334,6 +1369,21 @@ def eval_refine(
             f"  {b.key:<30} {b.size}->{sc.size_guess}  {mark}  "
             f"${r.run.cost_usd:.3f} {r.run.turns:>2}t  {listed}"
         )
+    _refine_summary(scores, [r.run for r in done.values()], len(results) - len(done))
+    out = settings.refine_dir / f"eval-{datetime.now(UTC):%Y%m%dT%H%M%S}.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(
+        TypeAdapter(dict[str, refine_mod.Refined]).dump_json(done, indent=2)
+    )
+    typer.echo(f"  -> {out}")
+
+
+def _refine_summary(
+    scores: list[refine_eval.BugScore],
+    runs: list[AgentRun],
+    failed: int,
+    unit: str = "bug",
+) -> None:
     for label, group in [
         ("all", scores),
         *[(f"size {z}", [x for x in scores if x.size == z]) for z in ("S", "M", "L")],
@@ -1345,21 +1395,82 @@ def eval_refine(
                 f"recall@3 {t.recall[3]:.2f}  precision {t.precision:.2f}  "
                 f"size {t.size_ok:.2f}  files listed {t.listed:.1f}"
             )
-    runs = [r.run for r in done.values()]
     if runs:
         typer.echo(
-            f"  per bug: ${fmean(r.cost_usd for r in runs):.3f} mean, "
+            f"  per {unit}: ${fmean(r.cost_usd for r in runs):.3f} mean, "
             f"{median(r.turns for r in runs):.0f} turns and "
             f"{median(r.latency_ms for r in runs) / 1000:.0f} s median, "
             f"${sum(r.cost_usd for r in runs):.2f} total, "
-            f"{len(results) - len(done)} failed"
+            f"{failed} failed"
         )
-    out = settings.refine_dir / f"eval-{datetime.now(UTC):%Y%m%dT%H%M%S}.json"
+
+
+def _eval_refine_features(
+    repo: str, only: str | None, workers: int, path: Path
+) -> None:
+    """`eval refine --features`: refine on each removed feature's state,
+    scored like the bugs, plus the criteria next to the removed tests in a
+    markdown file for the dev (the executable check is `eval loop
+    --features`)."""
+    settings = get_settings()
+    target = check_repo(repo)
+    agent = _agent()
+    feats = features_eval.load_features(path)
+    if only is not None:
+        keys = only.split(",")
+        unknown = set(keys) - {f.key for f in feats}
+        if unknown:
+            typer.echo(f"unknown feature keys: {', '.join(sorted(unknown))}", err=True)
+            raise typer.Exit(code=1)
+        feats = [f for f in feats if f.key in keys]
+    clone = settings.clones_dir / target.replace("/", "-")
+    commit = refine_mod.update_clone(target, clone)
+    typer.echo(f"{target} at {commit[:7]}: {len(feats)} features, {agent.model}")
+
+    def run(f: features_eval.Feature) -> refine_mod.Refined | Exception:
+        worktree = settings.work_dir / f"refine-{f.key}"
+        try:
+            return features_eval.refine_feature(
+                f, path, target, clone, commit, worktree, agent
+            )
+        except (AgentError, refine_mod.NoCriteria) as exc:
+            return exc
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        results = dict(zip([f.key for f in feats], pool.map(run, feats), strict=True))
+    done = {k: r for k, r in results.items() if isinstance(r, refine_mod.Refined)}
+    scores = [
+        refine_eval.score_bug(f, done[f.key].spec) for f in feats if f.key in done
+    ]
+    for f in feats:
+        r = results[f.key]
+        if not isinstance(r, refine_mod.Refined):
+            typer.echo(f"  {f.key:<22} {f.size}  failed: {r}")
+            continue
+        sc = next(x for x in scores if x.key == f.key)
+        listed = ", ".join(x.path for x in r.spec.files)
+        mark = "hit@1" if sc.hit[1] else "hit@3" if sc.hit[3] else "miss "
+        typer.echo(
+            f"  {f.key:<22} {f.size}->{sc.size_guess}  {mark}  "
+            f"{len(r.spec.criteria)} criteria  ${r.run.cost_usd:.3f} "
+            f"{r.run.turns:>2}t  {listed}"
+        )
+    runs = [r.run for r in done.values()]
+    _refine_summary(scores, runs, len(feats) - len(done), "feature")
+    if done:
+        typer.echo(
+            "  criteria per feature: "
+            f"{median(len(r.spec.criteria) for r in done.values()):.0f} median"
+        )
+    stamp = f"{datetime.now(UTC):%Y%m%dT%H%M%S}"
+    out = settings.refine_dir / f"features-{stamp}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(
         TypeAdapter(dict[str, refine_mod.Refined]).dump_json(done, indent=2)
     )
-    typer.echo(f"  -> {out}")
+    side = settings.refine_dir / f"features-{stamp}.md"
+    side.write_text(features_eval.side_by_side(path, feats, done), "utf-8")
+    typer.echo(f"  -> {out}\n  -> {side}")
 
 
 @eval_app.command("feature-set")

@@ -67,6 +67,25 @@ concern instead of a blocker, 3 runs out of 3. The gate only tries to prove
 blockers, so an unproven concern publishes. Whether the CLAUDE.md or safe
 mode's system prompt moved the severity isn't separated yet.
 
+## 0.3: the feature route
+
+Features take the same loop once the spec is the truth. The playground has
+no feature history to revert (one squashed commit), so 9 small features
+(8 S, 1 M, all logic) were taken out of the tip of main instead, the planted
+bugs run backwards: a patch strips the code, its test cases and the doc lines
+that describe it. The reference is main, and the feature's test files there
+are the hidden judge. `cofabriq eval feature-set` (free) proves each
+removal: every check green without the feature, the hidden tests red.
+
+| Stage (Claude, plan, CLAUDE.md loaded)        | Result                                                        | Per feature |
+| --------------------------------------------- | ------------------------------------------------------------- | ----------- |
+| refine, 9 features: spec names the files      | hit@1 1.00, precision 0.85; size right 9/9; 7 criteria median | 35 s        |
+
+Docs the spec lists are left out of precision, as they are left out of the
+truth (a feature's spec rightly names the doc it updates; with them, 0.65).
+Whether the criteria say what the hidden tests check is measured by running
+them, in the loop.
+
 ## 0.2: impact from the repo map
 
 A map of a repo from paths and git history only (components, co-change,

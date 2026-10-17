@@ -6,8 +6,11 @@ from cofabriq.eval.features import (
     load_features,
     patched_files,
     removal_path,
+    removed_tests,
     ticket,
 )
+from cofabriq.loop.refine import Spec
+from cofabriq.loop.run import render_spec
 
 PLAYGROUND = Path(__file__).parent.parent / "playground"
 
@@ -42,3 +45,27 @@ def test_ticket_is_an_open_issue_without_a_number() -> None:
     issue = ticket(f, "owner/repo")
     assert (issue.number, issue.state, issue.title) == (0, "open", f.title)
     assert issue.body == f.body.strip()
+
+
+def test_removed_tests_are_the_deleted_test_lines() -> None:
+    features = {f.key: f for f in load_features(PLAYGROUND / "features.toml")}
+    lines = removed_tests(PLAYGROUND / "features.toml", features["german-anywhere"])
+    assert lines == [
+        '    [["en-US", "de"], "de"], // any preferred German wins: '
+        "a German reader can read the German text"
+    ]
+
+
+def test_render_spec_shows_criteria_to_the_agent() -> None:
+    spec = Spec(
+        problem="p",
+        files=[],
+        tests=[],
+        criteria=["detectLang(['en', 'de']) is 'de'"],
+        plan=[],
+        assumptions=[],
+        open_questions=[],
+        size="S",
+    )
+    shown = render_spec(spec)
+    assert "acceptance criteria:\n- detectLang(['en', 'de']) is 'de'" in shown
