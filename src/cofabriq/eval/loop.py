@@ -26,7 +26,7 @@ from statistics import median
 
 from pydantic import BaseModel, TypeAdapter
 
-from cofabriq.eval.bugs import PlantedBug
+from cofabriq.eval.refine import Answer
 from cofabriq.loop.refine import Refined, git_env
 from cofabriq.loop.run import (
     CheckResult,
@@ -141,7 +141,7 @@ class BugResult:
     checks_s: float  # all attempts, both agents
 
 
-def score_bug(bug: PlantedBug, judged: Judged) -> BugResult:
+def score_bug(bug: Answer, judged: Judged) -> BugResult:
     result = judged.result
     attempts = [*result.reproduce, *result.attempts]
     runs = [a.run for a in attempts if a.run is not None]

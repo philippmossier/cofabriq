@@ -80,11 +80,26 @@ removal: every check green without the feature, the hidden tests red.
 | Stage (Claude, plan, CLAUDE.md loaded)        | Result                                                        | Per feature |
 | --------------------------------------------- | ------------------------------------------------------------- | ----------- |
 | refine, 9 features: spec names the files      | hit@1 1.00, precision 0.85; size right 9/9; 7 criteria median | 35 s        |
+| loop, 9 features: acceptance test, then build | test red 9/9; built 9/9, all first try; hidden tests green 9/9; agent's test green on main 7/9 | 94 s |
 
 Docs the spec lists are left out of precision, as they are left out of the
 truth (a feature's spec rightly names the doc it updates; with them, 0.65).
-Whether the criteria say what the hidden tests check is measured by running
-them, in the loop.
+The acceptance test is written from the approved criteria, has to be red,
+and is frozen: the builder can't change it. "Hidden tests green": the
+feature's original tests pass on the agent's code, so the criteria and the
+build say what the feature was. "Agent's test green on main": the agent's
+test passes on the original code, so it tests the feature as it was built.
+Both misses there are not misreads. In room-to-grow the test pins the
+too-slow advice to the lighter model, which is planted bug
+`too-slow-suggests-lighter`: main is wrong, and the build fixed it on the
+way. In amd-strong-gpu the test uses AMD fixtures the build added to a
+helper file, which main doesn't have.
+
+Same caveat as the bugs: small features in a small repo, one model writing
+criteria, test and code, so a misread feature would go green on all three;
+the hidden tests are the only outside judge here, the dev's look at the
+criteria and the test is it in a real run (`run --type feature` shows the
+frozen test before any code).
 
 ## 0.2: impact from the repo map
 

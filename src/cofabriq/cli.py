@@ -1,11 +1,12 @@
 """Command-line entry point (`cofabriq ...`)."""
 
+import contextlib
 import json as json_mod
 import time
 import typing
 import webbrowser
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Generator
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime
 from functools import partial
@@ -992,6 +993,19 @@ def _render_spec(out: Console, refined: refine_mod.Refined) -> None:
     section("open questions", s.open_questions)
 
 
+@contextlib.contextmanager
+def _plain_step(steps: Steps, name: str) -> Generator[Callable[[str], None]]:
+    """A step without a spinner, for one that asks the dev something."""
+    yield lambda detail: steps.note(name, detail)
+
+
+def _approve_test(test_diff: str) -> bool:
+    """The test gate: the frozen acceptance test, before any code."""
+    typer.echo("acceptance test (frozen once approved):")
+    typer.echo(test_diff)
+    return typer.confirm("Approve the test and let the agent build against it?")
+
+
 def _route(issue_type: str) -> refine_mod.Route:
     types = typing.get_args(triage_mod.IssueType.__value__)
     if issue_type not in types:
@@ -1075,7 +1089,13 @@ def run(
         raise typer.Exit(code=1)
     worktree = settings.work_dir / f"{target.replace('/', '-')}-{number}"
     sandbox = Podman(image=rules.image, setup=rules.setup)
-    with steps.step("loop", f"repro, fix, checks in {worktree}") as done:
+    test_gate = refined.route == "feature" and not yes
+    loop_step = (
+        _plain_step(steps, "loop")  # the test gate prompts: no spinner over it
+        if test_gate
+        else steps.step("loop", f"repro, fix, checks in {worktree}")
+    )
+    with loop_step as done:
         try:
             result = run_mod.run_loop(
                 repo=target,
@@ -1088,6 +1108,8 @@ def run(
                 rules=rules,
                 agent=agent.editing(budget_usd=1.0),
                 sandbox=sandbox,
+                route=refined.route,
+                approve_test=_approve_test if test_gate else None,
             )
             # the review gate on the green tree, before the judge resets it:
             # review, blockers proven by a test, fixed, reviewed again
@@ -1524,8 +1546,10 @@ def eval_loop(
     workers: int = 4,
     planted: bool = False,
     wrong: bool = False,
+    features: bool = False,
     bugs: Path = Path("playground/bugs.toml"),
     seed: Path = Path("playground/seed.toml"),
+    feature_set: Path = Path("playground/features.toml"),
 ) -> None:
     """The core loop on the planted logic bugs: the agent writes the repro
     (red rate, valid against the reference fix), then fixes; resolved = the
@@ -1541,7 +1565,15 @@ def eval_loop(
     `--wrong`: the implementer is told to make a plausible fix that does
     not fix the bug (wrong-*.json, the reviewer eval's negatives; a judge
     red is the goal there).
+
+    `--features`: the feature route on the removed features, from the specs
+    `eval refine --features` stored: the acceptance test (red before, then
+    frozen), built, the hidden reference tests green on the agent's code,
+    and the agent's test green on main (results in data/runs/features-*).
     """
+    if features:
+        _eval_loop_features(repo, only, workers, feature_set)
+        return
     if planted and wrong:
         typer.echo("--wrong needs the agent's own repro, not --planted", err=True)
         raise typer.Exit(code=1)
@@ -1634,6 +1666,92 @@ def eval_loop(
         kept = sum(review_eval.is_case(j, "wrong") for j in results.values())
         typer.echo(f"  wrong fixes kept (green, judge red): {kept}/{len(results)}")
     out = settings.runs_dir / f"{prefix}-{datetime.now(UTC):%Y%m%dT%H%M%S}.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(
+        TypeAdapter(dict[str, loop_eval.Judged]).dump_json(results, indent=2)
+    )
+    typer.echo(f"  -> {out}")
+
+
+def _eval_loop_features(repo: str, only: str | None, workers: int, path: Path) -> None:
+    settings = get_settings()
+    target = check_repo(repo)
+    rules = run_mod.load_rules(settings.targets_dir, target)
+    if rules is None:
+        typer.echo(f"no [loop] in the target file of {target}", err=True)
+        raise typer.Exit(code=1)
+    agent = _agent().editing(budget_usd=1.0)
+    feats = features_eval.load_features(path)
+    if only is not None:
+        keys = only.split(",")
+        unknown = set(keys) - {f.key for f in feats}
+        if unknown:
+            typer.echo(f"unknown feature keys: {', '.join(sorted(unknown))}", err=True)
+            raise typer.Exit(code=1)
+        feats = [f for f in feats if f.key in keys]
+    clone = settings.clones_dir / target.replace("/", "-")
+    commit = refine_mod.update_clone(target, clone)
+    specs = features_eval.load_specs(settings.refine_dir)
+    ready = [f for f in feats if f.key in specs and specs[f.key].commit == commit]
+    for f in feats:
+        if f not in ready:
+            typer.echo(f"  {f.key:<22} skipped: no stored spec at {commit[:7]}")
+    typer.echo(f"{target} at {commit[:7]}: {len(ready)} features, {agent.model}")
+    sandbox = Podman(image=rules.image, setup=rules.setup)
+
+    def run(f: features_eval.Feature) -> loop_eval.Judged:
+        refined = specs[f.key]
+        worktree = settings.work_dir / f"feature-{f.key}"
+        patch = features_eval.removal_path(path, f.key)
+        try:
+            result = run_mod.run_loop(
+                repo=target,
+                number=refined.number,
+                commit=refined.commit,
+                spec=refined.spec,
+                clone=clone,
+                worktree=worktree,
+                repro_file=None,
+                rules=rules,
+                agent=agent,
+                sandbox=sandbox,
+                route="feature",
+                prepare=partial(features_eval.remove, patch=patch),
+            )
+            return features_eval.against_reference(result, worktree, f, rules, sandbox)
+        finally:
+            run_mod.remove_worktree(clone, worktree)
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        results = dict(zip([f.key for f in ready], pool.map(run, ready), strict=True))
+    scores = [loop_eval.score_bug(f, results[f.key]) for f in ready]
+    for sc in scores:
+        target_mark = "on target" if sc.on_target else "elsewhere"
+        valid = {None: "-", True: "valid", False: "INVALID"}[sc.valid]
+        verdict = "hidden green" if sc.resolved else sc.status
+        if sc.status == "green" and not sc.resolved:
+            verdict = "hidden red"
+        typer.echo(
+            f"  {sc.key:<22} {sc.size}  test {valid:<7} {verdict:<12} "
+            f"{sc.attempts} tries  {target_mark:<9}  ${sc.cost_usd:.3f}  "
+            f"setup {sc.setup_s:.0f}s agent {sc.agent_s:.0f}s "
+            f"checks {sc.checks_s:.0f}s"
+        )
+    for label, group in [
+        ("all", scores),
+        *[(f"size {z}", [x for x in scores if x.size == z]) for z in ("S", "M", "L")],
+    ]:
+        t = loop_eval.summarize(group)
+        if t.n:
+            typer.echo(
+                f"  {label:<7} n={t.n:<3} test red {t.reproduced:.2f}  "
+                f"test valid on main {t.valid:.2f}  built {t.green:.2f}  "
+                f"hidden green {t.resolved:.2f}  first try {t.first_try:.2f}  "
+                f"on target {t.on_target:.2f}  ${t.cost_usd:.3f}/feature  "
+                f"{t.attempts:.0f} tries and {t.seconds:.0f} s median"
+            )
+    typer.echo(f"  total ${sum(sc.cost_usd for sc in scores):.2f}")
+    out = settings.runs_dir / f"features-{datetime.now(UTC):%Y%m%dT%H%M%S}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(
         TypeAdapter(dict[str, loop_eval.Judged]).dump_json(results, indent=2)

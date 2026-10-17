@@ -446,3 +446,74 @@ def test_test_globs_and_quoted_repro_paths() -> None:
     assert not is_test("src/a.ts", globs) and not is_test("e2e/a.test.ts", globs)
     cmd = repro_command(RULES, ["src/a b.test.ts", "src/x;rm.test.ts"])
     assert cmd == "sh 'src/a b.test.ts' 'src/x;rm.test.ts'"
+
+
+FEATURE_RULES = AGENT_RULES.model_copy(update={"acceptance_checks": []})
+
+
+def feature_loop(
+    tmp_path: Path,
+    agent: EditingAgent,
+    approve: Callable[[str], bool] | None = None,
+    prepared: list[Path] | None = None,
+) -> tuple[LoopResult, Path]:
+    clone, _, commit = setup(tmp_path)
+    worktree = tmp_path / "work" / "w"
+    criteria = spec("src/a.ts").model_copy(update={"criteria": ["a.ts says fixed"]})
+    result = run_loop(
+        repo="o/r",
+        number=0,
+        commit=commit,
+        spec=criteria,
+        clone=clone,
+        worktree=worktree,
+        repro_file=None,
+        rules=FEATURE_RULES,
+        agent=agent,
+        sandbox=HostSandbox(),
+        route="feature",
+        prepare=None if prepared is None else prepared.append,
+        approve_test=approve,
+    )
+    return result, worktree
+
+
+def test_feature_route_writes_the_acceptance_test_then_builds(tmp_path: Path) -> None:
+    agent = EditingAgent(
+        # the acceptance test may break types: only acceptance_checks gate it
+        write("src/a.test.sh", "TYPEERR=1\n" + REPRO),
+        # the builder can't weaken it (reverted), and must get types green
+        both(write("src/a.ts", "fixed\n"), write("src/a.test.sh", "true\n")),
+        write("src/a.test.sh", REPRO),  # reverted again
+        write("src/a.ts", "fixed\n"),
+    )
+    prepared: list[Path] = []
+    result, worktree = feature_loop(tmp_path, agent, prepared=prepared)
+    assert prepared == [worktree]
+    assert agent.roles == ["reproduce", "implement", "implement", "implement"]
+    assert "acceptance test for a feature" in agent.prompts[0]
+    assert "acceptance criteria:\n- a.ts says fixed" in agent.prompts[0]
+    assert "You build a feature" in agent.prompts[1]
+    assert [c.ok for c in result.reproduce[0].checks] == [True]  # red, no types
+    assert result.attempts[0].reverted == ["src/a.test.sh"]
+    # types stay red on the frozen test: the builder can't make it pass
+    assert result.status == "escalated"
+
+
+def test_the_dev_can_reject_the_acceptance_test(tmp_path: Path) -> None:
+    agent = EditingAgent(write("src/a.test.sh", REPRO))
+    seen: list[str] = []
+
+    def reject(diff: str) -> bool:
+        seen.append(diff)
+        return False
+
+    result, _ = feature_loop(tmp_path, agent, approve=reject)
+    assert result.status == "test_rejected" and result.attempts == []
+    assert "+grep -q fixed" in seen[0]
+
+
+def test_acceptance_checks_default_to_repro_checks() -> None:
+    assert AGENT_RULES.gate("feature") == ["types"]
+    assert FEATURE_RULES.gate("feature") == []
+    assert FEATURE_RULES.gate("bug") == ["types"]

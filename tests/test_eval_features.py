@@ -69,3 +69,20 @@ def test_render_spec_shows_criteria_to_the_agent() -> None:
     )
     shown = render_spec(spec)
     assert "acceptance criteria:\n- detectLang(['en', 'de']) is 'de'" in shown
+
+
+def test_on_reference_runs_the_agents_test_on_main(tmp_path: Path) -> None:
+    from cofabriq.eval.features import on_reference
+    from cofabriq.loop.run import add_worktree
+    from tests.gitrepo import git, init_repo
+    from tests.test_loop import AGENT_RULES, HostSandbox
+
+    clone = init_repo(tmp_path / "clone", {"src/a.ts": "fixed\n"})
+    commit = git(clone, "rev-parse", "HEAD")
+    worktree = tmp_path / "w"
+    add_worktree(clone, worktree, commit)
+    (worktree / "src/a.ts").write_text("removed\n")  # the agent's build, gone
+    (worktree / "src/a.test.sh").write_text('grep -q fixed "$(dirname "$0")/a.ts"\n')
+    ran = on_reference(worktree, commit, ["src/a.test.sh"], AGENT_RULES, HostSandbox())
+    assert ran.ok
+    assert (worktree / "src/a.ts").read_text() == "fixed\n"

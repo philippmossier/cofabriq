@@ -8,6 +8,7 @@ the set was made. The tickets live there too, not on GitHub: `ticket` turns
 one into the `Issue` the loop takes.
 """
 
+import json
 import re
 import subprocess
 import tomllib
@@ -17,11 +18,13 @@ from typing import Literal
 
 from pydantic import BaseModel, TypeAdapter
 
+from cofabriq.eval.loop import Judged
 from cofabriq.issues.model import Issue
 from cofabriq.loop.engine import Agent
 from cofabriq.loop.refine import Refined, git_env, refine
 from cofabriq.loop.run import (
     CheckResult,
+    LoopResult,
     Rules,
     add_worktree,
     remove_worktree,
@@ -243,3 +246,48 @@ def side_by_side(
         parts += removed_tests(features_file, f)
         parts.append("```\n")
     return "\n".join(parts)
+
+
+def load_specs(refine_dir: Path) -> dict[str, Refined]:
+    """Feature key -> its newest stored spec, over all `features-*.json`."""
+    specs: dict[str, Refined] = {}
+    for path in sorted(refine_dir.glob("features-*.json")):  # names sort by time
+        specs |= _refined_adapter.validate_python(json.loads(path.read_text("utf-8")))
+    return specs
+
+
+_refined_adapter = TypeAdapter(dict[str, Refined])
+
+
+def on_reference(
+    worktree: Path, commit: str, tests: list[str], rules: Rules, sandbox: Sandbox
+) -> CheckResult:
+    """The agent's acceptance test on the reference (main, the feature in):
+    green = it tests the feature as it was built. Resets the worktree's
+    code to `commit`, so it runs last."""
+    kept = {p: (worktree / p).read_bytes() for p in tests}
+    _git(worktree, "checkout", "-qf", "--detach", commit)
+    _git(worktree, "clean", "-q", "-fd")
+    for p, data in kept.items():
+        (worktree / p).parent.mkdir(parents=True, exist_ok=True)
+        (worktree / p).write_bytes(data)
+    ran = sandbox(repro_command(rules, tests), worktree, network=False)
+    return CheckResult(name="valid", ok=ran.ok, seconds=ran.seconds, output=ran.output)
+
+
+def against_reference(
+    result: LoopResult,
+    worktree: Path,
+    feature: Feature,
+    rules: Rules,
+    sandbox: Sandbox,
+) -> Judged:
+    """Judge (the hidden reference tests on the agent's code, when built)
+    and validity (the agent's test on main). Needs the worktree the loop
+    left; resets its code. `result.commit` is main."""
+    judge, valid = None, None
+    if result.status == "green":
+        judge = hidden_tests(worktree, result.commit, feature, rules, sandbox)
+    if result.repro:  # last: it resets the code
+        valid = on_reference(worktree, result.commit, result.repro, rules, sandbox)
+    return Judged(result=result, judge=judge, valid=valid)
