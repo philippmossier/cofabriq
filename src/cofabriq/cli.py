@@ -2059,7 +2059,7 @@ def _eval_loop_features(repo: str, only: str | None, workers: int, path: Path) -
                 rules=rules,
                 agent=guarded,
                 sandbox=sandbox,
-                route="feature",
+                route=f.route,
                 prepare=partial(features_eval.remove, patch=patch),
             )
             return features_eval.against_reference(result, worktree, f, rules, sandbox)

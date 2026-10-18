@@ -1,0 +1,38 @@
+diff --git a/src/lib/format.ts b/src/lib/format.ts
+index 415990b9..403522e9 100644
+--- a/src/lib/format.ts
++++ b/src/lib/format.ts
+@@ -3,7 +3,7 @@ import { lang } from "./lang";
+ /** A number with a fixed number of decimals, written the way the reader expects (3.1 or 3,1). */
+ export const decimal = (n: number, digits = 1): string =>
+   n.toLocaleString(lang === "de" ? "de-DE" : "en-US", {
+-    minimumFractionDigits: digits,
++    minimumFractionDigits: 0,
+     maximumFractionDigits: digits,
+   });
+ 
+diff --git a/src/lib/lang.test.ts b/src/lib/lang.test.ts
+index 224fa772..62829957 100644
+--- a/src/lib/lang.test.ts
++++ b/src/lib/lang.test.ts
+@@ -1,5 +1,5 @@
+ import { describe, expect, it } from "vitest";
+-import { decimal, formatBytes, formatMB } from "./format";
++import { formatBytes, formatMB } from "./format";
+ import { detectLang, tr } from "./lang";
+ 
+ describe("detectLang", () => {
+@@ -23,13 +23,6 @@ describe("tr", () => {
+   });
+ });
+ 
+-describe("decimal", () => {
+-  it("uses the English format when the browser is not German", () => {
+-    expect(decimal(3.14159)).toBe("3.1");
+-    expect(decimal(2, 2)).toBe("2.00");
+-  });
+-});
+-
+ describe("formatBytes", () => {
+   it("formats sizes for people", () => {
+     expect(formatBytes(512)).toBe("1 KB");

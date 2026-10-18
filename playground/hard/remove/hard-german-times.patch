@@ -1,0 +1,36 @@
+diff --git a/src/lib/chat/time.test.ts b/src/lib/chat/time.test.ts
+index 7a89d099..c9bb6b17 100644
+--- a/src/lib/chat/time.test.ts
++++ b/src/lib/chat/time.test.ts
+@@ -20,11 +20,4 @@ describe("messageTime", () => {
+     expect(messageTime(at(8, 19, 1, 21), NOW, "en")).toMatch(/^Sat, Sep 19 at 1:21\sAM$/);
+     expect(messageTime(at(8, 19, 1, 21, 2025), NOW, "en")).toContain("2025");
+   });
+-
+-  it("German", () => {
+-    expect(messageTime(at(9, 5, 9, 5), NOW, "de")).toBe("Heute 09:05");
+-    expect(messageTime(at(9, 4, 18, 45), NOW, "de")).toBe("Gestern 18:45");
+-    expect(messageTime(at(9, 2, 12, 33), NOW, "de")).toBe("Freitag 12:33");
+-    expect(messageTime(at(8, 19, 1, 21), NOW, "de")).toMatch(/ um 01:21$/);
+-  });
+ });
+diff --git a/src/lib/chat/time.ts b/src/lib/chat/time.ts
+index bcf26043..63dae7e5 100644
+--- a/src/lib/chat/time.ts
++++ b/src/lib/chat/time.ts
+@@ -10,7 +10,7 @@ export function messageTime(at: number, now: number, locale: string = lang): str
+   const days = Math.floor((now - at) / DAY);
+   const when = new Date(at);
+   const time = when.toLocaleTimeString(locale, {
+-    hour: locale === "de" ? "2-digit" : "numeric",
++    hour: locale === "de-DE" ? "2-digit" : "numeric",
+     minute: "2-digit",
+   });
+   if (days < 2) {
+@@ -28,5 +28,5 @@ export function messageTime(at: number, now: number, locale: string = lang): str
+     day: "numeric",
+     ...(sameYear ? {} : { year: "numeric" }),
+   });
+-  return `${date} ${locale === "de" ? "um" : "at"} ${time}`;
++  return `${date} ${locale === "de-DE" ? "um" : "at"} ${time}`;
+ }

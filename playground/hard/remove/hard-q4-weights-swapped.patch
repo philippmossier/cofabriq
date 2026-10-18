@@ -1,0 +1,26 @@
+diff --git a/src/lib/models/catalog.test.ts b/src/lib/models/catalog.test.ts
+index 6ddefb2a..2489053e 100644
+--- a/src/lib/models/catalog.test.ts
++++ b/src/lib/models/catalog.test.ts
+@@ -9,8 +9,6 @@ describe("catalog", () => {
+   it("has smaller downloads and fewer bytes read per token for q4f16 than q4", () => {
+     for (const m of CATALOG) {
+       expect(m.downloadMB.q4f16).toBeLessThan(m.downloadMB.q4);
+-      expect(m.activeMB.q4f16).toBeLessThan(m.activeMB.q4);
+-      expect(m.activeMB.q4f16).toBeLessThanOrEqual(m.downloadMB.q4f16);
+     }
+   });
+ 
+diff --git a/src/lib/models/catalog.ts b/src/lib/models/catalog.ts
+index 3f3e2958..cef2e065 100644
+--- a/src/lib/models/catalog.ts
++++ b/src/lib/models/catalog.ts
+@@ -72,7 +72,7 @@ export const CATALOG: ModelSpec[] = [
+     license: "Apache-2.0",
+     languages: "119",
+     downloadMB: { q4f16: 1426, q4: 2147 },
+-    activeMB: { q4f16: 1426, q4: 2147 },
++    activeMB: { q4f16: 2147, q4: 1426 },
+     referenceTps: 18.1,
+     measured: true,
+     revision: "cc6a06a21d614e9b8e92a6adfab1074d4e7d2438",

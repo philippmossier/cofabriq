@@ -86,3 +86,10 @@ def test_on_reference_runs_the_agents_test_on_main(tmp_path: Path) -> None:
     ran = on_reference(worktree, commit, ["src/a.test.sh"], AGENT_RULES, HostSandbox())
     assert ran.ok
     assert (worktree / "src/a.ts").read_text() == "fixed\n"
+
+
+def test_the_hard_set_is_on_the_bug_route() -> None:
+    hard = load_features(PLAYGROUND / "hard.toml")
+    assert len(hard) == 5 and {f.route for f in hard} == {"bug"}
+    assert removal_path(PLAYGROUND / "hard.toml", hard[0].key).parent.name == "remove"
+    assert {f.size for f in hard} == {"S", "M"}

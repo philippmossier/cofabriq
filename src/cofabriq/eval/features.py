@@ -21,7 +21,7 @@ from pydantic import BaseModel, TypeAdapter
 from cofabriq.eval.loop import Judged
 from cofabriq.issues.model import Issue
 from cofabriq.loop.engine import Agent
-from cofabriq.loop.refine import Refined, git_env, refine
+from cofabriq.loop.refine import Refined, Route, git_env, refine
 from cofabriq.loop.run import (
     CheckResult,
     LoopResult,
@@ -36,7 +36,12 @@ _PATCHED = re.compile(r"^\+\+\+ b/(.+)$", re.MULTILINE)
 
 
 class Feature(BaseModel):
+    """One entry of a removed set: a removed feature, or (0.6, `route =
+    "bug"`) a planted hard bug, the same mechanism: a patch on main, main's
+    test files as the hidden judge."""
+
     key: str
+    route: Route = "feature"
     size: Literal["S", "M", "L"]
     files: list[str]  # source files the reference changes
     tests: list[str]  # test files at main that judge it (hidden)
@@ -48,7 +53,9 @@ _features_adapter = TypeAdapter(list[Feature])
 
 
 def removal_path(features_file: Path, key: str) -> Path:
-    return features_file.parent / "features" / "remove" / f"{key}.patch"
+    """`playground/features.toml` -> `playground/features/remove/<key>.patch`
+    (and `hard.toml` -> `hard/remove/`)."""
+    return features_file.parent / features_file.stem / "remove" / f"{key}.patch"
 
 
 def patched_files(patch: str) -> set[str]:
@@ -206,7 +213,7 @@ def refine_feature(
     add_worktree(clone, worktree, commit)
     try:
         remove(worktree, removal_path(features_file, feature.key))
-        refined = refine(ticket(feature, repo), worktree, agent, "feature")
+        refined = refine(ticket(feature, repo), worktree, agent, feature.route)
     finally:
         remove_worktree(clone, worktree)
     return refined.model_copy(update={"commit": commit})

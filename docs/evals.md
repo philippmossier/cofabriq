@@ -75,6 +75,28 @@ right published 10/10; wrong fixed 8/8, **leaked 0**; 17 proof tests, all
 valid; $0.289 per case notional ($0.201 before: the extra proofs land on
 the wrong fixes only, every right fix is approved).
 
+## 0.6: a harder set that wasn't harder
+
+Every stage was saturated, so 5 harder bugs were planted (`playground/
+hard.toml`, the features mechanism on the bug route): tickets that describe
+only the symptom; a cause in a validation filter, in data, in a shared
+helper; two wrong constants in two files; the same mistake in two places.
+`eval feature-set` proves them: 5/5, checks green with the plant, the
+hidden tests red.
+
+| Stage (Claude, plan) | Result | Per bug |
+| --- | --- | --- |
+| refine: the fix's file first | 5/5 (both files of the two-file bug), precision 1.00, size 4/5 | 30 s |
+| loop: own test red, then fixed | 5/5, all first try; hidden tests green 5/5; agent's test valid on main 4/5 | $0.22, 93 s |
+
+None of it was hard for the model on a small repo. The one invalid test is
+stricter than the reference: it asks for "de-DE" too, which main never
+handled (the app only passes "de"), and the fix accepts every German
+variant. What would discriminate is out of the playground's reach: a much
+bigger codebase, a requirement that needs a judgement call, a fix that is a
+design decision. So the set stays as a regression check, not as a
+benchmark.
+
 ## 0.5: runs that wait, approved in the browser
 
 0.5 adds no new eval set; what it changes is checked by running it.

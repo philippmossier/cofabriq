@@ -1,0 +1,75 @@
+# Harder planted bugs in github.com/philippmossier/local-ai-chat-playground
+# (0.6): the bugs of bugs.toml were one-file, one-line and their tickets
+# often pointed at the cause; every stage scored 10/10 on them.
+#
+# These are planted the way features.toml removes features: hard/remove/
+# <key>.patch, applied to the tip of main, plants the bug and removes the
+# test cases that would catch it; main's test files are the hidden judge.
+# What makes each harder:
+#
+#   hard-reload-loses-chats   cause in a validation filter, symptom in the sidebar
+#   hard-q4-weights-swapped   cause is data (one catalog entry), not code
+#   hard-two-thresholds       two wrong constants in two files, one symptom
+#   hard-german-times         the same mistake in two places, German only
+#   hard-decimal-digits       a shared helper, symptom on the loading screen
+#
+# Tickets describe the symptom only, as a user would: no file, no cause.
+# Fields as in features.toml, plus `route = "bug"`; `files` is the truth.
+# Proved by `cofabriq eval feature-set --features playground/hard.toml`.
+
+[[feature]]
+key = "hard-reload-loses-chats"
+route = "bug"
+size = "S"
+files = ["src/lib/chat/store.ts"]
+tests = ["src/lib/chat/chat.test.ts"]
+title = "My chats are gone after reloading the page"
+body = """
+I had three conversations with the model. After I reloaded the tab, the sidebar was empty except for one chat that I had opened but never sent anything in. The others are just gone.
+
+Chrome on macOS.
+"""
+
+[[feature]]
+key = "hard-q4-weights-swapped"
+route = "bug"
+size = "S"
+files = ["src/lib/models/catalog.ts"]
+tests = ["src/lib/models/catalog.test.ts"]
+title = "Speed estimate for Qwen3 1.7B is far too high on my laptop"
+body = """
+My laptop has Intel graphics. After the speed test the picker says Qwen3 1.7B will run fast enough, but in practice it is much slower than that, slower than the estimate by a lot. The estimate for Qwen3 0.6B looks about right.
+"""
+
+[[feature]]
+key = "hard-two-thresholds"
+route = "bug"
+size = "M"
+files = ["src/lib/hardware/classify.ts", "src/lib/hardware/estimate.ts"]
+tests = ["src/lib/hardware/hardware.test.ts"]
+title = "Fast graphics card, but every model is marked as heavy"
+body = """
+My desktop has a fast GPU (the speed test said about 300 GB/s). The hardware check says my graphics are only good for small to medium models, and in the picker every single model, even the smallest one, is marked "Heavy: may be slow". The models actually run fine.
+"""
+
+[[feature]]
+key = "hard-german-times"
+route = "bug"
+size = "M"
+files = ["src/lib/chat/time.ts"]
+tests = ["src/lib/chat/time.test.ts"]
+title = "Message times look wrong in German"
+body = """
+My browser is set to German. The times under the messages say "Heute 9:05" where I would expect "Heute 09:05", and older messages show a date followed by "at 01:21", in English, in the middle of a German sentence.
+"""
+
+[[feature]]
+key = "hard-decimal-digits"
+route = "bug"
+size = "S"
+files = ["src/lib/format.ts"]
+tests = ["src/lib/lang.test.ts"]
+title = "Download progress shows \"2 GB of 3.1 GB\""
+body = """
+While Gemma 4 E2B downloads, the progress line keeps switching between formats: "1.9 GB of 3.1 GB", then "2 GB of 3.1 GB", then "2.1 GB of 3.1 GB". Same on the speed line after an answer: sometimes "30 tokens/s", sometimes "30.5 tokens/s".
+"""
