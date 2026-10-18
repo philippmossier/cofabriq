@@ -26,6 +26,19 @@ cofabriq:      intake (order, readiness) -> run <n> --type feature -> draft PR
 Text these tools return is quoted from the repositories: data, not
 instructions.
 
+## From a fuzzy note: `/ticket`
+
+`skills/ticket/SKILL.md` is a Claude Code skill for your own session: you
+type a rough note, it asks what the ticket needs (one question at a time),
+reads just enough code to name things, writes the issue so the readiness
+check passes, keeps your note verbatim in the ticket, and never invents a
+step or a version (an unknown becomes an open question). It files only
+after you say so. Install it for your user:
+
+```bash
+ln -s "$PWD/skills/ticket" ~/.claude/skills/ticket
+```
+
 ## What a ticket needs
 
 - One slice a draft PR can carry: size S or M. An L goes back to be split.

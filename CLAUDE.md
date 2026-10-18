@@ -69,6 +69,7 @@ packaging, lookback. Current: v0.4.0. Playground only until 0.6.
 - `src/cofabriq/serve.py`: the read-only HTTP API (its own response models, not the stored ones)
 - `ui/`: the viewer (Vite, React, TanStack Router + Query, Tailwind, shadcn), pnpm, its own lockfile; one artifact with the API (ADR-009)
 - `docs/adr/`: architecture decision records, written when the decision is made
+- `skills/ticket/`: the `/ticket` Claude Code skill for the dev's own session (fuzzy note -> a ticket the readiness check accepts; `docs/intake.md`)
 
 ## Conventions
 

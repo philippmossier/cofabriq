@@ -2,7 +2,8 @@
 
 ## The core loop (0.2)
 
-`cofabriq run <n>` takes one issue to a draft PR:
+`cofabriq run <n>` takes one issue to a draft PR (the steps a bug takes;
+features in the next section):
 
 1. **Refine.** Claude Code, read-only (Read, Grep, Glob), reads a clone at
    a known commit and writes a typed spec: problem, files, tests, plan,
@@ -33,6 +34,60 @@ minutes per PR (median) and merged 2 of the 3. After a few green PRs the
 verdict line stopped registering, and telling "rounds instead of floors
 across DST" apart from a right fix needs running the code. A dev can check
 a red test that quotes the spec in a minute; a reviewer's prose, not.
+
+## Small features (0.3)
+
+`cofabriq run <n> --type feature` (the type comes from the triage card)
+takes the same loop with two changes:
+
+1. **Refine writes acceptance criteria**, each an observable behaviour a
+   single test can check, through the code's own names. A feature spec
+   without criteria is an error.
+2. **The acceptance test replaces the repro.** An agent writes it from the
+   approved criteria; it has to be red (a test that passes now checks
+   nothing) and pass the target's `acceptance_checks` (lint on the
+   playground: the test may call what the feature adds, so no type check
+   yet). The dev sees it at the **test gate**; from then on it is frozen,
+   the builder can't change it.
+
+**Readiness, in code** (`loop/intake.py`): a spec goes back to the dev when
+it has no testable criterion (features), names a source file that doesn't
+exist, or is size L. Open questions are shown at the plan gate, and
+approving the plan answers them (`--yes` with open questions stops).
+
+**Intake** (`cofabriq intake <n>...`): cofabriq doesn't split features; the
+dev plans in their own session and files tickets
+([intake](intake.md)). Intake reads each ticket's blockers (GitHub's native
+"blocked by", or a `Blocked by #N` line) and cofabriq's open draft PRs:
+done, blocked, waiting (one open PR at a time) or ready. `run` refuses a
+blocked ticket before paying for refine.
+
+**The review gate proves concerns too.** When the reviewer asks for
+changes, its concerns get a proof test like its blockers: severity is the
+model's label, not a verdict (a wrong fix once leaked as a "concern").
+
+**The viewer** (`cofabriq serve`, `ui/`): a read-only FastAPI app over the
+stored specs and runs, plus the React UI it serves. Its own response models
+are the contract; the UI's client is generated from its OpenAPI schema.
+
+## UI bugs and the kill switch (0.4)
+
+**Test kinds per target** (`[[loop.suites]]`): files ending in `.test.ts`
+run with vitest, `.spec.ts` with Playwright, each planted repro goes to its
+suite's folder, and the test writer is told which kind shows what. The
+playground's sandbox is Microsoft's Playwright image at the app's locked
+version: the app runs on its fake engine and Vite on localhost, so browser
+tests need no network either.
+
+**The answer key is checked** (`cofabriq eval bug-set`, free): every
+planted repro red on the planted code and green with only its own fix.
+
+**Kill switch:** no agent starts while `data/STOP` exists (`cofabriq stop`)
+or `COFABRIQ_STOP` is set; the engine checks before every call. A stop
+raises `Halted`, which is not an agent error, so no retry spends an attempt
+on it, and a run ends as `halted`. One run's agents share a budget
+(`RUN_BUDGET_USD`, each call's own cap clamped to what is left), and every
+agent run has a turn cap.
 
 ## Triage (0.1)
 
