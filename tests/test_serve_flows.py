@@ -15,7 +15,7 @@ class FakeRunner(FlowRunner):
 
     def __init__(self) -> None:
         super().__init__("", lambda repo, spent: None)  # pyright: ignore[reportArgumentType]
-        self.answers: list[tuple[str, bool]] = []
+        self.answers: list[tuple[str, bool, str]] = []
         self.waiting: bool = True
 
     def threads(self) -> list[str]:
@@ -29,10 +29,10 @@ class FakeRunner(FlowRunner):
             thread=thread, state=state, waiting="plan" if self.waiting else None
         )
 
-    def answer(self, thread: str, approve: bool) -> bool:
+    def answer(self, thread: str, approve: bool, reason: str = "") -> bool:
         if not self.waiting:
             return False
-        self.answers.append((thread, approve))
+        self.answers.append((thread, approve, reason))
         return True
 
 
@@ -64,7 +64,11 @@ def test_an_answer_needs_the_token_and_a_waiting_gate(tmp_path: Path) -> None:
     c = client(tmp_path, runner)
     assert answer(c, authorization="Bearer wrong") == 401
     assert answer(c, origin="https://evil.example") == 403
-    assert answer(c) == 200 and runner.answers == [(THREAD, True)]
+    assert answer(c) == 200 and runner.answers == [(THREAD, True, "")]
+    url = f"/api/flows/{REPO}/3/answer"
+    headers = {"origin": UI, "authorization": "Bearer t0k"}
+    c.post(url, json={"approve": False, "reason": "wrong file"}, headers=headers)
+    assert runner.answers[-1] == (THREAD, False, "wrong file")
     runner.waiting = False
     assert answer(c) == 409
 

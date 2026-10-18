@@ -25,6 +25,8 @@ import type {
 
 export interface Answer {
   approve: boolean;
+  /** @maxLength 500 */
+  reason?: string;
 }
 
 export interface Answered {

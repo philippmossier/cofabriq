@@ -125,6 +125,7 @@ class Deps:
     guard: Guard | None = None  # the run budget both agents count against
     targets_dir: Path | None = None  # risk tier and components for the PR body
     runs_dir: Path | None = None  # where a finished flow is recorded, as `run` does
+    lessons_dir: Path | None = None  # rejections with their reason (0.6 lessons)
 
     def worktree(self, issue: Issue) -> Path:
         return self.work_dir / f"flow-{issue.repo.replace('/', '-')}-{issue.number}"
@@ -145,10 +146,14 @@ def build_graph(deps: Deps) -> StateGraph[FlowState]:
 
     def plan_gate(s: FlowState) -> dict[str, object]:
         assert s.refined is not None
-        ok = interrupt({"gate": "plan", "spec": s.refined.spec.model_dump()})
+        ok, reason = _answer(
+            interrupt({"gate": "plan", "spec": s.refined.spec.model_dump()})
+        )
+        if not ok:
+            _log_rejection(deps, s, "plan", reason)
         return {
             "stage": "approved" if ok else "rejected",
-            "note": "" if ok else "plan rejected",
+            "note": "" if ok else f"plan rejected{f': {reason}' if reason else ''}",
         }
 
     def setup(s: FlowState) -> dict[str, object]:
@@ -181,8 +186,13 @@ def build_graph(deps: Deps) -> StateGraph[FlowState]:
         return {"progress": p, "stage": "failed" if failed else "tested"}
 
     def test_gate(s: FlowState) -> dict[str, object]:
-        ok = interrupt({"gate": "test", "diff": diff(deps.worktree(s.issue), [])})
-        return {} if ok else {"stage": "rejected", "note": "test rejected"}
+        test = diff(deps.worktree(s.issue), [])
+        ok, reason = _answer(interrupt({"gate": "test", "diff": test}))
+        if ok:
+            return {}
+        _log_rejection(deps, s, "test", reason)
+        note = f"test rejected{f': {reason}' if reason else ''}"
+        return {"stage": "rejected", "note": note}
 
     def build(s: FlowState) -> dict[str, object]:
         assert s.refined is not None and s.progress is not None
@@ -323,6 +333,33 @@ def compiled(deps: Deps, dsn: str) -> Generator[CompiledStateGraph[FlowState]]:
         yield build_graph(deps).compile(checkpointer=saver)
 
 
+def _answer(value: object) -> tuple[bool, str]:
+    """A gate's answer: `True`/`False`, or `{"approve": .., "reason": ..}`."""
+    if isinstance(value, dict):
+        answer: dict[str, object] = value  # pyright: ignore[reportUnknownVariableType]
+        return bool(answer.get("approve")), str(answer.get("reason", "")).strip()[:500]
+    return bool(value), ""
+
+
+def _log_rejection(deps: Deps, s: FlowState, gate: str, reason: str) -> None:
+    """A rejected gate, kept for `cofabriq lessons` (one JSON line each)."""
+    if deps.lessons_dir is None:
+        return
+    deps.lessons_dir.mkdir(parents=True, exist_ok=True)
+    line = {
+        "at": datetime.now(UTC).isoformat(timespec="seconds"),
+        "repo": s.issue.repo,
+        "number": s.issue.number,
+        "title": s.issue.title,
+        "route": s.route,
+        "gate": gate,
+        "reason": reason,
+    }
+    path = deps.lessons_dir / f"{s.issue.repo.replace('/', '-')}-rejections.jsonl"
+    with path.open("a", encoding="utf-8") as out:
+        out.write(json.dumps(line) + "\n")
+
+
 def thread_id(issue: Issue) -> str:
     return f"{issue.repo}#{issue.number}"
 
@@ -385,7 +422,7 @@ class FlowRunner:
             error=error,
         )
 
-    def answer(self, thread: str, approve: bool) -> bool:
+    def answer(self, thread: str, approve: bool, reason: str = "") -> bool:
         """Start working off the answer; False if the flow waits at no gate
         or an answer is already running."""
         current = self.status(thread)
@@ -397,13 +434,14 @@ class FlowRunner:
             self._running.add(thread)
             self._errors.pop(thread, None)
         spent = current.state.spent_usd
+        answer = {"approve": approve, "reason": reason}
         worker = threading.Thread(
-            target=self._resume, args=(thread, approve, spent), daemon=True
+            target=self._resume, args=(thread, answer, spent), daemon=True
         )
         worker.start()
         return True
 
-    def _resume(self, thread: str, approve: bool, spent: float) -> None:
+    def _resume(self, thread: str, approve: dict[str, object], spent: float) -> None:
         repo = thread.split("#", 1)[0]
         try:
             with compiled(self.deps_for(repo, spent), self.dsn) as graph:

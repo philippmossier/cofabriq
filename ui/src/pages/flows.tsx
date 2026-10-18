@@ -1,4 +1,5 @@
 import { Link, useParams } from "@tanstack/react-router";
+import { useState } from "react";
 import { useFlow, useFlowAnswer, useFlowList } from "@/api/generated";
 import { List, Loading, Missing, Pre, Section, Status } from "@/components/bits";
 import { Badge } from "@/components/ui/badge";
@@ -92,12 +93,18 @@ export function FlowPage() {
     },
   });
   const answer = useFlowAnswer({ fetch: writeAuth() });
+  const [reason, setReason] = useState("");
   if (q.isPending) return <Loading what="the flow" />;
   const f = q.data;
   if (!f) return <Missing what="flow" />;
   const canAnswer = f.waiting !== null && !f.running && writeToken() !== null;
   const send = (approve: boolean) =>
-    answer.mutate({ owner, name, number: Number(number), data: { approve } });
+    answer.mutate({
+      owner,
+      name,
+      number: Number(number),
+      data: { approve, reason: approve ? "" : reason },
+    });
 
   return (
     <div className="space-y-6">
@@ -146,6 +153,14 @@ export function FlowPage() {
               >
                 Reject
               </Button>
+              <input
+                className="min-w-0 flex-1 rounded-md border px-3 text-sm"
+                placeholder="Why, when rejecting (becomes a lesson)"
+                maxLength={500}
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                disabled={!canAnswer}
+              />
             </div>
           )}
           {answer.data && answer.data.status !== 200 && (

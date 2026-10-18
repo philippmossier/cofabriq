@@ -299,6 +299,12 @@
           "approve": {
             "type": "boolean",
             "title": "Approve"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 500,
+            "title": "Reason",
+            "default": ""
           }
         },
         "type": "object",

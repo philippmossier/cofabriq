@@ -68,6 +68,7 @@ from cofabriq.issues.model import Issue, IssueRef, check_repo
 from cofabriq.loop import gate as gate_mod
 from cofabriq.loop import graph as graph_mod
 from cofabriq.loop import intake as intake_mod
+from cofabriq.loop import lessons as lessons_mod
 from cofabriq.loop import pr as pr_mod
 from cofabriq.loop import publish as publish_mod
 from cofabriq.loop import refine as refine_mod
@@ -1130,6 +1131,7 @@ def _flow_deps(target: str, spent_usd: float = 0.0) -> tuple[graph_mod.Deps, str
         guard=guard,
         targets_dir=settings.targets_dir,
         runs_dir=settings.runs_dir,
+        lessons_dir=settings.lessons_dir,
     )
     return deps, settings.postgres_dsn
 
@@ -1198,8 +1200,10 @@ def flow_resume(
     repo: str = "philippmossier/local-ai-chat-playground",
     approve: bool = False,
     reject: bool = False,
+    reason: str = "",
 ) -> None:
-    """Answer the gate the flow waits at; it runs to the next gate or the end."""
+    """Answer the gate the flow waits at; it runs to the next gate or the end.
+    `--reason` (with --reject) is kept for `cofabriq lessons`."""
     if approve == reject:
         typer.echo("--approve or --reject", err=True)
         raise typer.Exit(code=1)
@@ -1215,7 +1219,7 @@ def flow_resume(
         if not graph.get_state(config).next:
             typer.echo(f"{thread} waits at no gate", err=True)
             raise typer.Exit(code=1)
-        graph.invoke(Command(resume=approve), config)
+        graph.invoke(Command(resume={"approve": approve, "reason": reason}), config)
         _flow_report(graph, thread)
 
 
@@ -1228,6 +1232,37 @@ def flow_show(
     deps, dsn = _flow_deps(target)
     with graph_mod.compiled(deps, dsn) as graph:
         _flow_report(graph, f"{target}#{number}")
+
+
+@app.command()
+def lessons(
+    repo: str = "philippmossier/local-ai-chat-playground", propose: bool = False
+) -> None:
+    """What went wrong (findings the review gate proved, plans and tests the
+    dev rejected) and, with --propose, rules for the target's CLAUDE.md that
+    would have prevented it, each citing its signals: a draft in
+    data/lessons/ for the dev to read, never written into the target (paid:
+    one read-only agent run)."""
+    settings = get_settings()
+    target = check_repo(repo)
+    signals = lessons_mod.collect(settings.runs_dir, settings.lessons_dir, target)
+    for s in signals:
+        typer.echo(f"  {s.id:<4} {s.kind:<15} {s.where[:40]:<40} {s.text[:90]}")
+    typer.echo(f"{len(signals)} signals for {target}")
+    if not propose or not signals:
+        return
+    clone = settings.clones_dir / target.replace("/", "-")
+    refine_mod.update_clone(target, clone)
+    draft = lessons_mod.propose(target, signals, clone, Guarded(_agent(), Guard(1.0)))
+    stamp = f"{datetime.now(UTC):%Y%m%dT%H%M%S}"
+    out = settings.lessons_dir / f"{target.replace('/', '-')}-{stamp}.md"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(lessons_mod.render(draft), "utf-8")
+    for n, r in enumerate(draft.rules, 1):
+        typer.echo(f"  {n}. {r.rule}  ({', '.join(r.signals)})")
+    if draft.dropped:
+        typer.echo(f"  dropped {len(draft.dropped)} rule(s) citing no known signal")
+    typer.echo(f"-> {out}  (${draft.run.cost_usd:.3f})")
 
 
 @app.command()

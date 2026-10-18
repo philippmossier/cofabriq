@@ -24,7 +24,7 @@ from typing import Literal
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, TypeAdapter, ValidationError
+from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
 from cofabriq.eval.loop import Judged
 from cofabriq.issues.model import check_repo
@@ -183,6 +183,7 @@ class FlowView(FlowSummary):
 
 class Answer(BaseModel):
     approve: bool
+    reason: str = Field(default="", max_length=500)  # why, when rejecting
 
 
 class Answered(BaseModel):
@@ -579,7 +580,9 @@ def _flow_routes(app: FastAPI, flows: FlowRunner) -> None:
 
     @app.post("/api/flows/{owner}/{name}/{number}/answer", response_model=Answered)
     def flow_answer(owner: str, name: str, number: int, answer: Answer) -> Answered:
-        started = flows.answer(thread(owner, name, number), answer.approve)
+        started = flows.answer(
+            thread(owner, name, number), answer.approve, answer.reason
+        )
         if not started:
             raise HTTPException(status_code=409, detail="not waiting at a gate")
         return Answered(started=True)

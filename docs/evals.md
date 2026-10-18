@@ -97,6 +97,15 @@ bigger codebase, a requirement that needs a judgement call, a fix that is a
 design decision. So the set stays as a regression check, not as a
 benchmark.
 
+**Lessons** (`cofabriq lessons --propose`): from 36 signals on the
+playground (all findings the review gate proved), one agent run proposed 5
+rules for its CLAUDE.md, each citing 3 to 18 signals, none dropped for
+citing unknown ones ($0.12). The strongest says what most proven findings
+had in common: make exactly the change the spec describes, no extra guards
+or heuristics, raise doubts as open questions. Not measured yet: whether a
+rule stops a repeat. The signals come from wrong-on-purpose fixes, and on
+these sets the loop makes no natural mistakes to repeat.
+
 ## 0.5: runs that wait, approved in the browser
 
 0.5 adds no new eval set; what it changes is checked by running it.

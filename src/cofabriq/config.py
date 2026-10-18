@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     refine_dir: Path = Path("data/refine")
     work_dir: Path = Path("data/work")  # worktrees of the core loop
     runs_dir: Path = Path("data/runs")  # one JSON per `cofabriq run`
+    lessons_dir: Path = Path("data/lessons")  # rejections, proposed rules (0.6)
     human_dir: Path = Path("data/human")  # `eval human`: the PR set, the timings
 
 
