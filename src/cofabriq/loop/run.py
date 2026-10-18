@@ -53,9 +53,22 @@ class Check(BaseModel):
     cmd: str  # a shell line, run in the sandbox
 
 
+class Suite(BaseModel):
+    """One kind of test in the target (`[[loop.suites]]`): files ending in
+    `suffix` run with `cmd` (their paths appended). `dir`: where a planted
+    repro of this kind goes; `about`: one line for the test writer."""
+
+    name: str
+    suffix: str
+    cmd: str
+    dir: str
+    about: str = ""
+
+
 class Rules(BaseModel):
     """`[loop]` in `targets/<owner>-<name>.toml`: how to set up a worktree
-    and what has to pass."""
+    and what has to pass. Without `suites`, every test runs with `repro`
+    and planted repros go to `repro_dir`."""
 
     image: str
     setup: str = ""
@@ -69,6 +82,15 @@ class Rules(BaseModel):
     # the same for a feature's acceptance test (None: repro_checks); it may
     # use what the feature adds, so a type check can't gate it
     acceptance_checks: list[str] | None = None
+    suites: list[Suite] = []  # 0.4: e.g. vitest for logic, Playwright for UI
+
+    def suite(self, path: str) -> Suite | None:
+        return next((s for s in self.suites if path.endswith(s.suffix)), None)
+
+    def planted_path(self, name: str) -> str:
+        """Where a planted repro file named `name` goes in the worktree."""
+        found = self.suite(name)
+        return f"{found.dir if found else self.repro_dir}/{name}"
 
     def gate(self, route: Route) -> list[str]:
         if route == "feature" and self.acceptance_checks is not None:
@@ -301,7 +323,8 @@ def reproduce_prompt(
         checks=", ".join(gate) or "no other checks",
     )
     spec_part = fenced("spec", render_spec(spec, tests=True))
-    return "\n\n".join([text, spec_part, *context, *_later(n, diff, failed)])
+    note = [suites_note(rules)] if rules.suites else []
+    return "\n\n".join([text, *note, spec_part, *context, *_later(n, diff, failed)])
 
 
 def git(cwd: Path, *args: str) -> str:
@@ -398,8 +421,29 @@ def is_test(path: str, globs: list[str]) -> bool:
 
 
 def repro_command(rules: Rules, paths: list[str]) -> str:
-    """The repro command line; paths quoted (the agent names its files)."""
-    return " ".join([rules.repro, *map(shlex.quote, paths)])
+    """The repro command line; paths quoted (the agent names its files).
+    With suites, one command per suite in use, joined with `&&` (red when
+    any is red); a path no suite claims runs with `repro`."""
+    groups: dict[str, list[str]] = {}
+    for p in paths:
+        found = rules.suite(p)
+        groups.setdefault(found.cmd if found else rules.repro, []).append(p)
+    if not groups:
+        return rules.repro
+    return " && ".join(
+        " ".join([cmd, *map(shlex.quote, ps)]) for cmd, ps in groups.items()
+    )
+
+
+def suites_note(rules: Rules) -> str:
+    """The test kinds, for a test writer's prompt; empty without suites."""
+    if not rules.suites:
+        return ""
+    kinds = "\n".join(f"- *{s.suffix} ({s.name}): {s.about}" for s in rules.suites)
+    return (
+        "Test kinds here; pick the one that can show the behaviour, and use "
+        f"the other only if it can't:\n{kinds}"
+    )
 
 
 def _result(name: str, ran: Ran) -> CheckResult:
@@ -512,7 +556,7 @@ def run_loop(
         instructions = FEATURE if route == "feature" else INSTRUCTIONS
     if repro_file is None and not rules.tests:
         raise ValueError("an agent-written repro needs `tests` globs in [loop]")
-    planted = [] if repro_file is None else [f"{rules.repro_dir}/{repro_file.name}"]
+    planted = [] if repro_file is None else [rules.planted_path(repro_file.name)]
     repro: list[str] = planted
     reproduced: list[Attempt] = []
 

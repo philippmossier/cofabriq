@@ -5,6 +5,7 @@ test reproduces it; the issue a user would file is the seed entry with the
 same key. See the header of bugs.toml for how the bugs were planted.
 """
 
+import subprocess
 import tomllib
 from pathlib import Path
 from typing import Literal
@@ -12,6 +13,9 @@ from typing import Literal
 from pydantic import BaseModel, TypeAdapter
 
 from cofabriq.eval.triage import load_seed
+from cofabriq.loop.refine import git_env
+from cofabriq.loop.run import Rules, git, repro_command
+from cofabriq.loop.sandbox import Sandbox
 
 
 class PlantedBug(BaseModel):
@@ -60,3 +64,56 @@ def repro_path(bugs_file: Path, bug: PlantedBug) -> Path:
 
 def fix_path(bugs_file: Path, bug: PlantedBug) -> Path:
     return bugs_file.parent / "bugs" / "fixes" / f"{bug.key}.patch"
+
+
+class BugProof(BaseModel):
+    """One planted bug checked: its repro red on the planted code, green
+    with only its own reference fix."""
+
+    key: str
+    applies: bool
+    red: bool
+    green: bool
+
+    @property
+    def valid(self) -> bool:
+        return self.applies and self.red and self.green
+
+
+def prove_bugs(
+    worktree: Path,
+    commit: str,
+    bugs: list[PlantedBug],
+    bugs_file: Path,
+    rules: Rules,
+    sandbox: Sandbox,
+) -> list[BugProof]:
+    """Each bug in turn on one installed worktree at `commit` (reset in
+    between; ignored files such as node_modules survive the reset)."""
+    proofs: list[BugProof] = []
+    for b in bugs:
+        git(worktree, "reset", "-q", "--hard", commit)
+        git(worktree, "clean", "-q", "-fd")
+        dest = rules.planted_path(b.repro)
+        (worktree / dest).parent.mkdir(parents=True, exist_ok=True)
+        (worktree / dest).write_bytes(repro_path(bugs_file, b).read_bytes())
+        cmd = repro_command(rules, [dest])
+        red = not sandbox(cmd, worktree, network=False).ok
+        applied = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(worktree),
+                "apply",
+                str(fix_path(bugs_file, b).resolve()),
+            ],
+            capture_output=True,
+            check=False,
+            env=git_env(),
+        )
+        applies = applied.returncode == 0
+        green = applies and sandbox(cmd, worktree, network=False).ok
+        proofs.append(BugProof(key=b.key, applies=applies, red=red, green=green))
+    git(worktree, "reset", "-q", "--hard", commit)
+    git(worktree, "clean", "-q", "-fd")
+    return proofs

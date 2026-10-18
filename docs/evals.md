@@ -75,6 +75,34 @@ right published 10/10; wrong fixed 8/8, **leaked 0**; 17 proof tests, all
 valid; $0.289 per case notional ($0.201 before: the extra proofs land on
 the wrong fixes only, every right fix is approved).
 
+## 0.4: UI bugs in the loop
+
+The 12 planted UI bugs (a button that never enables, a sidebar sorted the
+wrong way, a link that doesn't open a new tab) only show in a browser. The
+sandbox now runs Microsoft's Playwright image at the playground's locked
+version; the app runs on its fake engine (no model, no GPU) and Vite on
+localhost, so the tests need no network. A target declares its test kinds
+(`[[loop.suites]]`: vitest for `*.test.ts`, Playwright for `*.spec.ts`)
+and the test writer picks the one that can show the bug.
+
+| Stage (Claude, plan, CLAUDE.md loaded)      | Result                                                           | Per bug      |
+| ------------------------------------------- | ---------------------------------------------------------------- | ------------ |
+| answer key (`eval bug-set`, free)           | 22/22 repros red on the planted code, green with only their fix  | -            |
+| loop, 12 UI bugs: own failing test, fix     | reproduced 12/12, resolved 12/12, first try 11/12; test valid 9/12 | $0.21, 99 s |
+
+"Valid": the agent's test is green with the reference fix alone. The
+three misses have one cause: the test needed a neighbouring planted bug
+fixed, and the agent fixed it on the way (two sidebar tests open a second
+chat through the planted "New chat" bug; the stop test reads a footer
+another planted bug hides). On logic bugs this never happened; UI flows
+share screens, so planted UI bugs step on each other.
+
+`eval bug-set` was added after the first run marked a right test invalid:
+one reference patch had been made on top of another bug's fix and didn't
+apply to the planted code. Rebuilt, the key proves 22/22; that test,
+re-checked against the rebuilt patch, is valid (the stored run still says
+8/12).
+
 ## 0.3: the feature route
 
 Features take the same loop once the spec is the truth. The playground has

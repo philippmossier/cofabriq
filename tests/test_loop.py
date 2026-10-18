@@ -17,12 +17,14 @@ from cofabriq.loop.run import (
     LoopResult,
     Reproduced,
     Rules,
+    Suite,
     changed_paths,
     fenced,
     is_test,
     load_rules,
     remove_worktree,
     repro_command,
+    reproduce_prompt,
     run_loop,
 )
 from cofabriq.loop.sandbox import Podman, Ran, run_command, tail
@@ -517,3 +519,45 @@ def test_acceptance_checks_default_to_repro_checks() -> None:
     assert AGENT_RULES.gate("feature") == ["types"]
     assert FEATURE_RULES.gate("feature") == []
     assert FEATURE_RULES.gate("bug") == ["types"]
+
+
+SUITES = AGENT_RULES.model_copy(
+    update={
+        "suites": [
+            Suite(name="vitest", suffix=".test.ts", cmd="vt", dir="src/repro"),
+            Suite(
+                name="pw", suffix=".spec.ts", cmd="pw x", dir="e2e/repro", about="UI"
+            ),
+        ]
+    }
+)
+
+
+def test_repro_command_groups_paths_by_suite() -> None:
+    cmd = repro_command(SUITES, ["e2e/a.spec.ts", "src/b.test.ts", "e2e/c d.spec.ts"])
+    assert cmd == "pw x e2e/a.spec.ts 'e2e/c d.spec.ts' && vt src/b.test.ts"
+    assert repro_command(SUITES, ["x.sh"]) == f"{SUITES.repro} x.sh"  # no suite
+    assert repro_command(AGENT_RULES, ["a.sh"]) == "sh a.sh"  # no suites at all
+
+
+def test_planted_repro_goes_to_its_suites_folder() -> None:
+    assert SUITES.planted_path("bug.spec.ts") == "e2e/repro/bug.spec.ts"
+    assert SUITES.planted_path("bug.test.ts") == "src/repro/bug.test.ts"
+    assert AGENT_RULES.planted_path("bug.sh") == "src/repro/bug.sh"
+
+
+def test_test_writers_see_the_suites() -> None:
+    text = reproduce_prompt(spec("src/a.ts"), SUITES, [], 1, "")
+    assert "- *.spec.ts (pw): UI" in text
+    assert "Test kinds" not in reproduce_prompt(
+        spec("src/a.ts"), AGENT_RULES, [], 1, ""
+    )
+
+
+def test_playground_runs_logic_and_ui_suites() -> None:
+    rules = load_rules(Path("targets"), "philippmossier/local-ai-chat-playground")
+    assert rules is not None and [s.name for s in rules.suites] == [
+        "vitest",
+        "playwright",
+    ]
+    assert "--retries=0" in repro_command(rules, ["e2e/repro/x.spec.ts"])

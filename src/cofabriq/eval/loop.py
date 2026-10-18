@@ -61,7 +61,7 @@ class Judged(BaseModel):
 def judge(worktree: Path, rules: Rules, planted: Path, sandbox: Sandbox) -> CheckResult:
     """The hidden planted repro on the tree the loop left: does the fix fix
     the bug the issue is about, not only the agent's test?"""
-    dest = f"{rules.repro_dir}/{planted.name}"
+    dest = rules.planted_path(planted.name)
     (worktree / dest).parent.mkdir(parents=True, exist_ok=True)
     (worktree / dest).write_bytes(planted.read_bytes())
     ran = sandbox(repro_command(rules, [dest]), worktree, network=False)

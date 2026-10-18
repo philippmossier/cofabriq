@@ -27,13 +27,15 @@ build-deploy = ["vite.config.ts", "vitest.config.ts", "wrangler.jsonc", "scripts
 # run in the container below, never on the host; only `install` has
 # network, before the agent changes anything (see src/cofabriq/loop/sandbox.py).
 [loop]
-image = "docker.io/library/node:24-slim"
+# Node 24 + corepack + the browsers of the playground's locked Playwright
+# (1.64.1): logic and UI tests run in the same image (0.4)
+image = "mcr.microsoft.com/playwright:v1.64.1-noble"
 setup = "corepack enable"
 install = "pnpm install --frozen-lockfile"
 repro_dir = "src/repro"
 repro = "pnpm exec vitest run"
 # the reproducer writes only these; its test must pass types and lint
-tests = ["src/**/*.test.ts"]
+tests = ["src/**/*.test.ts", "e2e/**/*.spec.ts"]
 repro_checks = ["types", "lint"]
 # a feature's acceptance test may use what the feature adds: no type check yet
 acceptance_checks = ["lint"]
@@ -43,6 +45,24 @@ checks = [
   { name = "lint", cmd = "pnpm lint" },
   { name = "test", cmd = "pnpm test" },
 ]
+
+# Test kinds (0.4): a repro runs with the command of its suffix. Playwright
+# starts the app on the fake engine itself (playwright.config.ts webServer,
+# localhost only, so it works without network); no retries, so a flaky
+# repro shows as flaky.
+[[loop.suites]]
+name = "vitest"
+suffix = ".test.ts"
+cmd = "pnpm exec vitest run"
+dir = "src/repro"
+about = "logic in Node, no browser: functions, reducers, stores"
+
+[[loop.suites]]
+name = "playwright"
+suffix = ".spec.ts"
+cmd = "pnpm exec playwright test --retries=0 --reporter=line"
+dir = "e2e/repro"
+about = "the app in Chromium on the fake engine (no model, no GPU), for what only shows in the UI: clicks, keys, focus, layout, links; see e2e/smoke.spec.ts"
 
 # Risk tier of a change (0.2): the highest tier of the components its
 # non-test files are in (via [map]); test files count as low, a component

@@ -56,6 +56,7 @@ from cofabriq.loop.run import (
     repro_command,
     reset,
     restore,
+    suites_note,
 )
 from cofabriq.loop.sandbox import Sandbox
 
@@ -192,6 +193,7 @@ def _prove_prompt(
     )
     parts = [
         text,
+        *([suites_note(rules)] if rules.suites else []),
         fenced("spec", render_spec(spec)),
         fenced("finding", finding_text(finding)),
     ]

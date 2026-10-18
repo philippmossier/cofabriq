@@ -53,6 +53,7 @@ from cofabriq.eval.bugs import (
     fix_path,
     load_bugs,
     planted_for,
+    prove_bugs,
     repro_path,
 )
 from cofabriq.issues import triage as triage_mod
@@ -1146,10 +1147,10 @@ def run(
         typer.echo(f"#{number} {ticket.reason}: start it once that is merged", err=True)
         raise typer.Exit(code=1)
     bug = planted_for(issue.title, load_bugs(bugs, seed), seed)
-    if bug is not None and bug.kind != "logic":
-        bug = None  # a UI bug's repro is Playwright: not run by the loop yet
+    if bug is not None and bug.kind == "ui" and rules.suite(bug.repro) is None:
+        bug = None  # the target has no suite to run a Playwright repro
     if planted and bug is None:
-        typer.echo(f"#{number} is not a planted logic bug: no repro", err=True)
+        typer.echo(f"#{number} is not a planted bug the loop can run", err=True)
         raise typer.Exit(code=1)
     if bug is not None:
         role = "handed to the agent" if planted else "judges the result"
@@ -1591,6 +1592,55 @@ def _eval_refine_features(
     typer.echo(f"  -> {out}\n  -> {side}")
 
 
+@eval_app.command("bug-set")
+def eval_bug_set(
+    repo: str = "philippmossier/local-ai-chat-playground",
+    only: str | None = None,
+    bugs: Path = Path("playground/bugs.toml"),
+    seed: Path = Path("playground/seed.toml"),
+) -> None:
+    """Prove the planted-bug answer key: per bug, its repro red on the tip
+    of main (the planted code) and green with only its own reference fix
+    (which must apply). Free (no agent), needs podman."""
+    settings = get_settings()
+    target = check_repo(repo)
+    rules = run_mod.load_rules(settings.targets_dir, target)
+    if rules is None:
+        typer.echo(f"no [loop] in the target file of {target}", err=True)
+        raise typer.Exit(code=1)
+    planted = load_bugs(bugs, seed)
+    if only is not None:
+        planted = [b for b in planted if b.key in only.split(",")]
+    clone = settings.clones_dir / target.replace("/", "-")
+    commit = refine_mod.update_clone(target, clone)
+    typer.echo(f"{target} at {commit[:7]}: {len(planted)} planted bugs")
+    sandbox = Podman(image=rules.image, setup=rules.setup)
+    worktree = settings.work_dir / "bug-set"
+    run_mod.add_worktree(clone, worktree, commit)
+    try:
+        if not sandbox(rules.install, worktree, network=True).ok:
+            typer.echo("install failed", err=True)
+            raise typer.Exit(code=1)
+        proofs = prove_bugs(worktree, commit, planted, bugs, rules, sandbox)
+    finally:
+        run_mod.remove_worktree(clone, worktree)
+    for b, p in zip(planted, proofs, strict=True):
+        mark = "valid  " if p.valid else "INVALID"
+        fix = (
+            "green with its fix"
+            if p.green
+            else "fix doesn't apply"
+            if not p.applies
+            else "RED with its fix"
+        )
+        planted_state = "red" if p.red else "GREEN"
+        typer.echo(f"  {b.key:<30} {b.kind:<5} {mark}  {planted_state} planted, {fix}")
+    valid = sum(p.valid for p in proofs)
+    typer.echo(f"  {valid}/{len(proofs)} valid")
+    if valid < len(proofs):
+        raise typer.Exit(code=1)
+
+
 @eval_app.command("feature-set")
 def eval_feature_set(
     repo: str = "philippmossier/local-ai-chat-playground",
@@ -1643,11 +1693,14 @@ def eval_loop(
     planted: bool = False,
     wrong: bool = False,
     features: bool = False,
+    kind: str = "logic",
     bugs: Path = Path("playground/bugs.toml"),
     seed: Path = Path("playground/seed.toml"),
     feature_set: Path = Path("playground/features.toml"),
 ) -> None:
-    """The core loop on the planted logic bugs: the agent writes the repro
+    """The core loop on the planted bugs (`--kind logic|ui|all`, logic by
+    default; a UI bug needs a Playwright suite in `[[loop.suites]]`): the
+    agent writes the repro
     (red rate, valid against the reference fix), then fixes; resolved = the
     hidden planted repro and every check green. Also first try, fix in the
     reference's files, cost and time, per bug size. `--planted` hands the
@@ -1680,13 +1733,16 @@ def eval_loop(
         typer.echo(f"no [loop] in the target file of {target}", err=True)
         raise typer.Exit(code=1)
     agent = _agent().editing(budget_usd=1.0)
-    logic = [b for b in load_bugs(bugs, seed) if b.kind == "logic"]
+    if kind not in ("logic", "ui", "all"):
+        typer.echo("--kind must be logic, ui or all", err=True)
+        raise typer.Exit(code=1)
+    logic = [b for b in load_bugs(bugs, seed) if kind in ("all", b.kind)]
     if only is not None:
         keys = only.split(",")
         unknown = set(keys) - {b.key for b in logic}
         if unknown:
             names = ", ".join(sorted(unknown))
-            typer.echo(f"unknown logic bug keys: {names}", err=True)
+            typer.echo(f"unknown {kind} bug keys: {names}", err=True)
             raise typer.Exit(code=1)
         logic = [b for b in logic if b.key in keys]
     clone = settings.clones_dir / target.replace("/", "-")
@@ -1696,7 +1752,7 @@ def eval_loop(
     for b in logic:
         if b not in ready:
             typer.echo(f"  {b.key:<30} skipped: no stored spec at {commit[:7]}")
-    typer.echo(f"{target} at {commit[:7]}: {len(ready)} logic bugs, {agent.model}")
+    typer.echo(f"{target} at {commit[:7]}: {len(ready)} {kind} bugs, {agent.model}")
     sandbox = Podman(image=rules.image, setup=rules.setup)
     prefix = "wrong" if wrong else "eval"
 
