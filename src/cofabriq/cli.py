@@ -19,6 +19,9 @@ import psycopg
 import typer
 import uvicorn
 from fastapi import FastAPI
+from langchain_core.runnables import RunnableConfig
+from langgraph.graph.state import CompiledStateGraph
+from langgraph.types import Command
 from neo4j import Driver, GraphDatabase
 from pydantic import TypeAdapter
 from rich.console import Console
@@ -63,6 +66,7 @@ from cofabriq.issues.fetch import fetch_created, fetch_issues, load_issue, load_
 from cofabriq.issues.github import GitHubIssueSource
 from cofabriq.issues.model import Issue, IssueRef, check_repo
 from cofabriq.loop import gate as gate_mod
+from cofabriq.loop import graph as graph_mod
 from cofabriq.loop import intake as intake_mod
 from cofabriq.loop import pr as pr_mod
 from cofabriq.loop import publish as publish_mod
@@ -1067,6 +1071,130 @@ def openapi(out: Path = Path("ui/openapi.json")) -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json_mod.dumps(_api(None).openapi(), indent=2) + "\n", "utf-8")
     typer.echo(f"-> {out}")
+
+
+flow_app = typer.Typer(
+    no_args_is_help=True,
+    help="SPIKE (0.5 step 0): `run` as a LangGraph graph that pauses at its gates.",
+)
+app.add_typer(flow_app, name="flow")
+
+
+def _flow_deps(target: str, spent_usd: float = 0.0) -> tuple[graph_mod.Deps, str]:
+    settings = get_settings()
+    rules = run_mod.load_rules(settings.targets_dir, target)
+    if rules is None:
+        typer.echo(f"no [loop] in the target file of {target}", err=True)
+        raise typer.Exit(code=1)
+    clone = settings.clones_dir / target.replace("/", "-")
+    guard = Guard(settings.run_budget_usd, spent_usd)
+    reader = Guarded(_agent(), guard)
+    deps = graph_mod.Deps(
+        clone=clone,
+        work_dir=settings.work_dir,
+        rules=rules,
+        reader=reader,
+        editor=reader.editing(budget_usd=1.0),
+        sandbox=Podman(image=rules.image, setup=rules.setup),
+        guard=guard,
+    )
+    return deps, settings.postgres_dsn
+
+
+def _flow_report(graph: "CompiledStateGraph[graph_mod.FlowState]", thread: str) -> None:
+    """Where the run stands: the gate it waits at, or how it ended."""
+    snap = graph.get_state({"configurable": {"thread_id": thread}})
+    if not snap.values:
+        typer.echo(f"no flow for {thread}")
+        return
+    state = graph_mod.FlowState.model_validate(snap.values)
+    waiting = [i.value for t in snap.tasks for i in t.interrupts]
+    if waiting:
+        payload = waiting[0]
+        typer.echo(f"{thread}: waiting at the {payload['gate']} gate")
+        if payload["gate"] == "plan" and state.refined is not None:
+            _show_spec(state.refined)
+        if payload["gate"] == "test":
+            typer.echo(payload["diff"])
+        typer.echo(f"-> cofabriq flow resume {state.issue.number} --approve | --reject")
+        return
+    status = (
+        state.gated.status
+        if state.gated
+        else state.result.status
+        if state.result
+        else state.stage
+    )
+    typer.echo(f"{thread}: done, {status}{f' ({state.note})' if state.note else ''}")
+
+
+@flow_app.command("start")
+def flow_start(
+    number: int,
+    repo: str = "philippmossier/local-ai-chat-playground",
+    issue_type: str = typer.Option("bug", "--type"),
+    restart: bool = False,
+) -> None:
+    """Refine, then pause at the plan gate (the process exits)."""
+    route = _route(issue_type)
+    target = check_repo(repo)
+    steps = Steps(Console(stderr=True, soft_wrap=True))
+    issue = _refresh_issue(target, number, steps)
+    if issue is None:
+        typer.echo(f"#{number} is not in the issue store", err=True)
+        raise typer.Exit(code=1)
+    refine_mod.update_clone(
+        target, get_settings().clones_dir / target.replace("/", "-")
+    )
+    deps, dsn = _flow_deps(target)
+    thread = graph_mod.thread_id(issue)
+    with graph_mod.compiled(deps, dsn) as graph:
+        if graph.get_state({"configurable": {"thread_id": thread}}).values:
+            if not restart:
+                typer.echo(f"{thread} has a flow: `flow show`, or --restart", err=True)
+                raise typer.Exit(code=1)
+            graph.checkpointer.delete_thread(thread)  # pyright: ignore[reportOptionalMemberAccess,reportAttributeAccessIssue]
+        state = graph_mod.FlowState(issue=issue, route=route)
+        graph.invoke(state, {"configurable": {"thread_id": thread}})
+        _flow_report(graph, thread)
+
+
+@flow_app.command("resume")
+def flow_resume(
+    number: int,
+    repo: str = "philippmossier/local-ai-chat-playground",
+    approve: bool = False,
+    reject: bool = False,
+) -> None:
+    """Answer the gate the flow waits at; it runs to the next gate or the end."""
+    if approve == reject:
+        typer.echo("--approve or --reject", err=True)
+        raise typer.Exit(code=1)
+    target = check_repo(repo)
+    thread = f"{target}#{number}"
+    config: RunnableConfig = {"configurable": {"thread_id": thread}}
+    deps, dsn = _flow_deps(target)
+    with graph_mod.compiled(deps, dsn) as graph:  # read what was spent so far
+        values = graph.get_state(config).values
+    spent = graph_mod.FlowState.model_validate(values).spent_usd if values else 0.0
+    deps, dsn = _flow_deps(target, spent)
+    with graph_mod.compiled(deps, dsn) as graph:
+        if not graph.get_state(config).next:
+            typer.echo(f"{thread} waits at no gate", err=True)
+            raise typer.Exit(code=1)
+        graph.invoke(Command(resume=approve), config)
+        _flow_report(graph, thread)
+
+
+@flow_app.command("show")
+def flow_show(
+    number: int, repo: str = "philippmossier/local-ai-chat-playground"
+) -> None:
+    """Where a flow stands, read from its checkpoints."""
+    target = check_repo(repo)
+    deps, dsn = _flow_deps(target)
+    with graph_mod.compiled(deps, dsn) as graph:
+        _flow_report(graph, f"{target}#{number}")
 
 
 @app.command()

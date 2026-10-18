@@ -531,6 +531,141 @@ def reproduce(
     return attempts, [], None
 
 
+class Progress(BaseModel):
+    """A run between its stages: everything a pause has to keep, all
+    JSON. `status` is set once the run ended early (setup failed, no repro,
+    not red, rejected, halted)."""
+
+    repo: str
+    number: int
+    commit: str
+    planted: list[str] = []  # a planted repro's path in the worktree
+    setup_s: float = 0.0
+    repro: list[str] = []
+    reproduced: list[Attempt] = []
+    red: CheckResult | None = None
+    status: Status | None = None
+
+
+def start_stage(
+    *,
+    repo: str,
+    number: int,
+    commit: str,
+    clone: Path,
+    worktree: Path,
+    repro_file: Path | None,
+    rules: Rules,
+    sandbox: Sandbox,
+    prepare: Callable[[Path], None] | None = None,
+) -> Progress:
+    """1. setup: fresh worktree, a planted repro copied in, install (the
+    only network). Failed: status setup_failed, the reason in `red`."""
+    if repro_file is None and not rules.tests:
+        raise ValueError("an agent-written repro needs `tests` globs in [loop]")
+    planted = [] if repro_file is None else [rules.planted_path(repro_file.name)]
+    p = Progress(
+        repo=repo, number=number, commit=commit, planted=planted, repro=planted
+    )
+    start = time.perf_counter()
+    add_worktree(clone, worktree, commit)
+    if prepare is not None:
+        prepare(worktree)
+    if repro_file is not None:
+        (worktree / planted[0]).parent.mkdir(parents=True, exist_ok=True)
+        (worktree / planted[0]).write_bytes(repro_file.read_bytes())
+    installed = sandbox(rules.install, worktree, network=True)
+    p.setup_s = round(time.perf_counter() - start, 1)
+    if not installed.ok:
+        p.status, p.red = "setup_failed", _result("install", installed)
+        return p
+    stray = [path for path in changed_paths(worktree) if path not in planted]
+    if stray:  # caches belong in the sandbox's volumes, not in the diff
+        ran = Ran(ok=False, seconds=installed.seconds, output="\n".join(stray[:20]))
+        p.status, p.red = "setup_failed", _result("install wrote", ran)
+    return p
+
+
+def test_stage(
+    p: Progress,
+    *,
+    spec: Spec,
+    rules: Rules,
+    worktree: Path,
+    agent: Agent,
+    sandbox: Sandbox,
+    route: Route = "bug",
+) -> Progress:
+    """2. the test before any code: the agent writes it (a repro, or a
+    feature's acceptance test), or the planted repro runs. It must fail on
+    the unchanged code: else status no_repro / not_red."""
+    if not p.planted:
+        p.reproduced, p.repro, p.red = reproduce(
+            spec=spec,
+            rules=rules,
+            worktree=worktree,
+            agent=agent,
+            sandbox=sandbox,
+            instructions=ACCEPTANCE if route == "feature" else REPRODUCE,
+            route=route,
+        )
+        if p.red is None:
+            p.status = "no_repro"
+        return p
+    ran = sandbox(repro_command(rules, p.repro), worktree, network=False)
+    p.red = _result("repro", ran)
+    if p.red.ok:
+        p.status = "not_red"
+    return p
+
+
+def build_stage(
+    p: Progress,
+    *,
+    spec: Spec,
+    rules: Rules,
+    worktree: Path,
+    agent: Agent,
+    sandbox: Sandbox,
+    instructions: str,
+) -> list[Attempt]:
+    """3. the fix attempts against the red test, max MAX_ATTEMPTS."""
+    assert p.red is not None
+    return fix(
+        spec=spec,
+        rules=rules,
+        worktree=worktree,
+        agent=agent,
+        sandbox=sandbox,
+        repro=p.repro,
+        planted=p.planted,
+        failed=[p.red],
+        instructions=instructions,
+    )
+
+
+def pack(
+    p: Progress, worktree: Path, status: Status, attempts: list[Attempt]
+) -> LoopResult:
+    """The run's result: its final file list and diff (a planted repro
+    left out)."""
+    changed = [path for path in changed_paths(worktree) if path not in p.planted]
+    return LoopResult(
+        repo=p.repo,
+        number=p.number,
+        commit=p.commit,
+        status=status,
+        setup_s=p.setup_s,
+        repro=p.repro,
+        planted=bool(p.planted),
+        reproduce=p.reproduced,
+        red=p.red,
+        attempts=attempts,
+        changed=changed,
+        diff=diff(worktree, p.planted) if changed else "",
+    )
+
+
 def run_loop(
     *,
     repo: str,
@@ -548,7 +683,7 @@ def run_loop(
     prepare: Callable[[Path], None] | None = None,
     approve_test: Callable[[str], bool] | None = None,
 ) -> LoopResult:
-    """One issue through reproduce -> implement -> checks, at most
+    """One issue through the stages: start -> test -> build, at most
     MAX_ATTEMPTS agent runs per step. `repro_file`: a planted repro, or
     None for the agent to write one. `instructions`: the implementer's
     (default by route; the reviewer eval swaps in a wrong-on-purpose one).
@@ -557,90 +692,51 @@ def run_loop(
     repro). `prepare`: runs on the fresh worktree before install (the
     feature eval's removal). `approve_test`: the dev's look at the test
     diff before any code is written; False stops the run. Leaves the
-    worktree in place (the caller removes it)."""
+    worktree in place (the caller removes it). A caller that pauses between
+    stages (a run waiting for the dev) calls them itself."""
     if instructions is None:
         instructions = FEATURE if route == "feature" else INSTRUCTIONS
-    if repro_file is None and not rules.tests:
-        raise ValueError("an agent-written repro needs `tests` globs in [loop]")
-    planted = [] if repro_file is None else [rules.planted_path(repro_file.name)]
-    repro: list[str] = planted
-    reproduced: list[Attempt] = []
-
-    # every exit below goes through here: final file list + diff, packed
-    def result(
-        status: Status, setup_s: float, red: CheckResult | None, attempts: list[Attempt]
-    ) -> LoopResult:
-        changed = [p for p in changed_paths(worktree) if p not in planted]
-        return LoopResult(
-            repo=repo,
-            number=number,
-            commit=commit,
-            status=status,
-            setup_s=setup_s,
-            repro=repro,
-            planted=repro_file is not None,
-            reproduce=reproduced,
-            red=red,
-            attempts=attempts,
-            changed=changed,
-            diff=diff(worktree, planted) if changed else "",
-        )
-
-    # 1. setup: fresh worktree, a planted repro copied in, install (the only
-    # network)
-    start = time.perf_counter()
-    add_worktree(clone, worktree, commit)
-    if prepare is not None:
-        prepare(worktree)
-    if repro_file is not None:
-        (worktree / planted[0]).parent.mkdir(parents=True, exist_ok=True)
-        (worktree / planted[0]).write_bytes(repro_file.read_bytes())
-    installed = sandbox(rules.install, worktree, network=True)
-    setup_s = round(time.perf_counter() - start, 1)
-    if not installed.ok:
-        return result("setup_failed", setup_s, _result("install", installed), [])
-    stray = [p for p in changed_paths(worktree) if p not in planted]
-    if stray:  # caches belong in the sandbox's volumes, not in the diff
-        ran = Ran(ok=False, seconds=installed.seconds, output="\n".join(stray[:20]))
-        return result("setup_failed", setup_s, _result("install wrote", ran), [])
-
+    p = start_stage(
+        repo=repo,
+        number=number,
+        commit=commit,
+        clone=clone,
+        worktree=worktree,
+        repro_file=repro_file,
+        rules=rules,
+        sandbox=sandbox,
+        prepare=prepare,
+    )
+    if p.status is not None:
+        return pack(p, worktree, p.status, [])
     try:
-        # 2. reproduce: the repro must fail on the unchanged code, else stop
-        if repro_file is None:
-            reproduced, repro, red = reproduce(
-                spec=spec,
-                rules=rules,
-                worktree=worktree,
-                agent=agent,
-                sandbox=sandbox,
-                instructions=ACCEPTANCE if route == "feature" else REPRODUCE,
-                route=route,
-            )
-            if red is None:
-                return result("no_repro", setup_s, None, [])
-            if approve_test is not None and not approve_test(diff(worktree, [])):
-                return result("test_rejected", setup_s, red, [])
-        else:
-            ran = sandbox(repro_command(rules, repro), worktree, network=False)
-            red = _result("repro", ran)
-            if red.ok:
-                return result("not_red", setup_s, red, [])
-        # 3. fix loop, then 4. three tries used up: a human takes over
-        attempts = fix(
+        p = test_stage(
+            p,
             spec=spec,
             rules=rules,
             worktree=worktree,
             agent=agent,
             sandbox=sandbox,
-            repro=repro,
-            planted=planted,
-            failed=[red],
+            route=route,
+        )
+        if p.status is not None:
+            return pack(p, worktree, p.status, [])
+        if approve_test is not None and not approve_test(diff(worktree, [])):
+            return pack(p, worktree, "test_rejected", [])
+        attempts = build_stage(
+            p,
+            spec=spec,
+            rules=rules,
+            worktree=worktree,
+            agent=agent,
+            sandbox=sandbox,
             instructions=instructions,
         )
     except Halted:  # the kill switch: what was done so far, no more agents
-        return result("halted", setup_s, None, [])
+        p.red = None
+        return pack(p, worktree, "halted", [])
     status: Status = "green" if attempts[-1].green else "escalated"
-    return result(status, setup_s, red, attempts)
+    return pack(p, worktree, status, attempts)
 
 
 def fix(

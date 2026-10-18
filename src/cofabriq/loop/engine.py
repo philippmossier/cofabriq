@@ -231,9 +231,9 @@ class Guard:
     builder, reviewer, proofs). Thread-safe: an eval runs several bugs at
     once, each with its own guard."""
 
-    def __init__(self, budget_usd: float) -> None:
+    def __init__(self, budget_usd: float, spent_usd: float = 0.0) -> None:
         self.budget_usd = budget_usd
-        self.spent_usd = 0.0
+        self.spent_usd = spent_usd  # a resumed run starts where it stopped
         self._lock = threading.Lock()
 
     def remaining(self) -> float:
