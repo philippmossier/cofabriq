@@ -40,6 +40,8 @@ def deps(tmp_path: Path, editor: EditingAgent, criteria: list[str]) -> Deps:
         reader=Reader(s),
         editor=editor,
         sandbox=HostSandbox(),
+        targets_dir=tmp_path / "targets",
+        runs_dir=tmp_path / "runs",
     )
 
 
@@ -65,6 +67,10 @@ def test_feature_flow_pauses_twice_and_resumes_in_a_new_graph(tmp_path: Path) ->
     state = FlowState.model_validate(third.get_state(config).values)
     assert state.result is not None and state.result.status == "green"
     assert state.gated is not None and state.gated.status == "approved"
+    # recorded like `cofabriq run`: the viewer's Runs shows it, with the PR body
+    runs = tmp_path / "runs"
+    assert (runs / f"{state.record}.json").is_file()
+    assert "a.ts" in (runs / f"{state.record}.pr.md").read_text()
     assert editor.roles == ["reproduce", "implement"]
     assert not (tmp_path / "work").exists() or not any((tmp_path / "work").iterdir())
 

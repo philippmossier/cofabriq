@@ -4,6 +4,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from cofabriq.eval.loop import Judged
+from cofabriq.loop.graph import FlowRunner
 from cofabriq.loop.run import CheckResult
 from cofabriq.serve import build
 from tests.test_intake import refined
@@ -82,11 +83,28 @@ def test_no_route_changes_anything(tmp_path: Path) -> None:
     app = build(tmp_path, tmp_path, tmp_path, None)
     paths: dict[str, dict[str, object]] = app.openapi()["paths"]
     assert {m for ops in paths.values() for m in ops} == {"get"}
+    # with the browser gate, its answer is the only route that changes anything
+    flows = FlowRunner("", lambda repo, spent: None)  # pyright: ignore[reportArgumentType]
+    gated: dict[str, dict[str, object]] = build(
+        tmp_path, tmp_path, tmp_path, None, flows=flows
+    ).openapi()["paths"]
+    writes = [p for p, ops in gated.items() if set(ops) - {"get"}]
+    assert writes == ["/api/flows/{owner}/{name}/{number}/answer"]
 
 
 def test_the_committed_schema_is_current(tmp_path: Path) -> None:
     """ui/openapi.json is what the UI's client is generated from: refresh it
     with `cofabriq openapi` when a response model changes."""
     committed = Path(__file__).parent.parent / "ui" / "openapi.json"
-    schema = build(tmp_path, tmp_path, tmp_path, None).openapi()
+    flows = FlowRunner("", lambda repo, spent: None)  # pyright: ignore[reportArgumentType]
+    schema = build(tmp_path, tmp_path, tmp_path, None, flows=flows).openapi()
     assert json.loads(committed.read_text("utf-8")) == schema
+
+
+def test_served_on_a_port_it_is_read_only_and_checks_the_host(tmp_path: Path) -> None:
+    app = build(tmp_path, tmp_path, tmp_path, None, port=8765)
+    c = TestClient(app, base_url="http://127.0.0.1:8765")
+    assert c.get("/api/runs").status_code == 200
+    assert c.post("/api/runs", json={}).status_code == 405
+    other = TestClient(app, base_url="http://evil.example:8765")
+    assert other.get("/api/runs").status_code == 403

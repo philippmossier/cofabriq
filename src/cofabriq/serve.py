@@ -27,10 +27,13 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from cofabriq.eval.loop import Judged
+from cofabriq.issues.model import check_repo
 from cofabriq.loop.gate import Gated
+from cofabriq.loop.graph import FlowRunner, FlowStatus
 from cofabriq.loop.intake import not_ready
 from cofabriq.loop.refine import Refined, tracked
 from cofabriq.loop.run import Attempt, CheckResult, LoopResult
+from cofabriq.serve_guard import guard
 
 _NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 _STAMP = re.compile(r"(\d{8}T\d{6})")
@@ -151,6 +154,39 @@ class RunTrace(RunSummary):
     gate: str | None  # approved | unproven | blocked; None: no gate ran
     rounds: list[ReviewRound]
     pr_body: str | None
+
+
+class FlowSummary(BaseModel):
+    """A run in the browser gate: where it waits, or how it ended."""
+
+    thread: str
+    repo: str
+    number: int
+    title: str
+    route: Literal["bug", "feature"]
+    waiting: Literal["plan", "test"] | None
+    running: bool
+    outcome: str  # e.g. "approved", "escalated", "rejected: plan rejected"
+    error: str
+
+
+class FlowView(FlowSummary):
+    size: str | None
+    problem: str
+    criteria: list[str]
+    files: list[FileNote]
+    plan: list[str]
+    assumptions: list[str]
+    open_questions: list[str]
+    diff: str  # the frozen test, at the test gate
+
+
+class Answer(BaseModel):
+    approve: bool
+
+
+class Answered(BaseModel):
+    started: bool
 
 
 # ---- reading the files ------------------------------------------------------
@@ -365,10 +401,18 @@ def _trace(s: _Stored) -> RunTrace:
 
 
 def build(
-    refine_dir: Path, runs_dir: Path, clones_dir: Path, ui_dir: Path | None
+    refine_dir: Path,
+    runs_dir: Path,
+    clones_dir: Path,
+    ui_dir: Path | None,
+    port: int | None = None,
+    write_token: str | None = None,
+    flows: FlowRunner | None = None,
 ) -> FastAPI:
     """The app over these folders. `ui_dir`: the built UI (`ui/dist`), served
-    at `/` when it exists."""
+    at `/` when it exists. `port`: the port it serves on; with it, the
+    trust boundary (`serve_guard`: Host on every request, Origin + JSON +
+    `write_token` on anything that isn't a read) is installed."""
     app = FastAPI(
         title="cofabriq",
         version="0.3",
@@ -454,6 +498,12 @@ def build(
                 return _trace(s)
         raise HTTPException(status_code=404, detail="no such run")
 
+    if flows is not None:
+        _flow_routes(app, flows)
+
+    if port is not None:
+        guard(app, port, write_token, dev_origins=("http://127.0.0.1:5173",))
+
     if ui_dir is not None and (ui_dir / "index.html").is_file():
         index = ui_dir / "index.html"
         app.mount("/assets", StaticFiles(directory=ui_dir / "assets"), name="assets")
@@ -469,3 +519,67 @@ def build(
             return FileResponse(index)
 
     return app
+
+
+def _flow_summary(f: FlowStatus) -> FlowSummary:
+    st = f.state
+    outcome = (
+        st.gated.status if st.gated else st.result.status if st.result else st.stage
+    )
+    if st.note:
+        outcome = f"{outcome}: {st.note}"
+    return FlowSummary(
+        thread=f.thread,
+        repo=st.issue.repo,
+        number=st.issue.number,
+        title=st.issue.title,
+        route=st.route,
+        waiting=f.waiting,
+        running=f.running,
+        outcome="waiting" if f.waiting and not f.running else outcome,
+        error=f.error,
+    )
+
+
+def _flow_routes(app: FastAPI, flows: FlowRunner) -> None:
+    """The browser gate: list flows, show one, answer its gate. The answer
+    is the only route that changes anything; `serve_guard` decides who may
+    call it."""
+
+    def thread(owner: str, name: str, number: int) -> str:
+        try:
+            return f"{check_repo(f'{owner}/{name}')}#{number}"
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail="no such flow") from exc
+
+    @app.get("/api/flows", response_model=list[FlowSummary])
+    def flow_list() -> list[FlowSummary]:
+        found = [flows.status(t) for t in flows.threads()]
+        return [_flow_summary(f) for f in found if f is not None]
+
+    @app.get("/api/flows/{owner}/{name}/{number}", response_model=FlowView)
+    def flow(owner: str, name: str, number: int) -> FlowView:
+        f = flows.status(thread(owner, name, number))
+        if f is None:
+            raise HTTPException(status_code=404, detail="no such flow")
+        spec = f.state.refined.spec if f.state.refined else None
+        return FlowView(
+            **_flow_summary(f).model_dump(),
+            size=spec.size if spec else None,
+            problem=spec.problem if spec else "",
+            criteria=spec.criteria if spec else [],
+            files=[FileNote(path=x.path, why=x.why) for x in spec.files]
+            if spec
+            else [],
+            plan=spec.plan if spec else [],
+            assumptions=spec.assumptions if spec else [],
+            open_questions=spec.open_questions if spec else [],
+            diff=f.diff,
+        )
+
+    @app.post("/api/flows/{owner}/{name}/{number}/answer", response_model=Answered)
+    def flow_answer(owner: str, name: str, number: int, answer: Answer) -> Answered:
+        started = flows.answer(thread(owner, name, number), answer.approve)
+        if not started:
+            raise HTTPException(status_code=409, detail="not waiting at a gate")
+        return Answered(started=True)

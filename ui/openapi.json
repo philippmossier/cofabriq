@@ -144,10 +144,182 @@
           }
         }
       }
+    },
+    "/api/flows": {
+      "get": {
+        "summary": "Flow List",
+        "operationId": "flow_list",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FlowSummary"
+                  },
+                  "type": "array",
+                  "title": "Response Flow List"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/flows/{owner}/{name}/{number}": {
+      "get": {
+        "summary": "Flow",
+        "operationId": "flow",
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Owner"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlowView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/flows/{owner}/{name}/{number}/answer": {
+      "post": {
+        "summary": "Flow Answer",
+        "operationId": "flow_answer",
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Owner"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Answer"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Answered"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "Answer": {
+        "properties": {
+          "approve": {
+            "type": "boolean",
+            "title": "Approve"
+          }
+        },
+        "type": "object",
+        "required": [
+          "approve"
+        ],
+        "title": "Answer"
+      },
+      "Answered": {
+        "properties": {
+          "started": {
+            "type": "boolean",
+            "title": "Started"
+          }
+        },
+        "type": "object",
+        "required": [
+          "started"
+        ],
+        "title": "Answered"
+      },
       "Check": {
         "properties": {
           "name": {
@@ -228,6 +400,205 @@
           "text"
         ],
         "title": "FindingView"
+      },
+      "FlowSummary": {
+        "properties": {
+          "thread": {
+            "type": "string",
+            "title": "Thread"
+          },
+          "repo": {
+            "type": "string",
+            "title": "Repo"
+          },
+          "number": {
+            "type": "integer",
+            "title": "Number"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "route": {
+            "type": "string",
+            "enum": [
+              "bug",
+              "feature"
+            ],
+            "title": "Route"
+          },
+          "waiting": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "plan",
+                  "test"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Waiting"
+          },
+          "running": {
+            "type": "boolean",
+            "title": "Running"
+          },
+          "outcome": {
+            "type": "string",
+            "title": "Outcome"
+          },
+          "error": {
+            "type": "string",
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "thread",
+          "repo",
+          "number",
+          "title",
+          "route",
+          "waiting",
+          "running",
+          "outcome",
+          "error"
+        ],
+        "title": "FlowSummary",
+        "description": "A run in the browser gate: where it waits, or how it ended."
+      },
+      "FlowView": {
+        "properties": {
+          "thread": {
+            "type": "string",
+            "title": "Thread"
+          },
+          "repo": {
+            "type": "string",
+            "title": "Repo"
+          },
+          "number": {
+            "type": "integer",
+            "title": "Number"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "route": {
+            "type": "string",
+            "enum": [
+              "bug",
+              "feature"
+            ],
+            "title": "Route"
+          },
+          "waiting": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "plan",
+                  "test"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Waiting"
+          },
+          "running": {
+            "type": "boolean",
+            "title": "Running"
+          },
+          "outcome": {
+            "type": "string",
+            "title": "Outcome"
+          },
+          "error": {
+            "type": "string",
+            "title": "Error"
+          },
+          "size": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size"
+          },
+          "problem": {
+            "type": "string",
+            "title": "Problem"
+          },
+          "criteria": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Criteria"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/FileNote"
+            },
+            "type": "array",
+            "title": "Files"
+          },
+          "plan": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Plan"
+          },
+          "assumptions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Assumptions"
+          },
+          "open_questions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Open Questions"
+          },
+          "diff": {
+            "type": "string",
+            "title": "Diff"
+          }
+        },
+        "type": "object",
+        "required": [
+          "thread",
+          "repo",
+          "number",
+          "title",
+          "route",
+          "waiting",
+          "running",
+          "outcome",
+          "error",
+          "size",
+          "problem",
+          "criteria",
+          "files",
+          "plan",
+          "assumptions",
+          "open_questions",
+          "diff"
+        ],
+        "title": "FlowView"
       },
       "HTTPValidationError": {
         "properties": {

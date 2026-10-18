@@ -5,19 +5,31 @@
  * OpenAPI spec version: 0.3
  */
 import {
+  useMutation,
   useQuery
 } from '@tanstack/react-query';
 import type {
   DataTag,
   DefinedInitialDataOptions,
   DefinedUseQueryResult,
+  MutationFunction,
   QueryClient,
   QueryFunction,
   QueryKey,
   UndefinedInitialDataOptions,
+  UseMutationOptions,
+  UseMutationResult,
   UseQueryOptions,
   UseQueryResult
 } from '@tanstack/react-query';
+
+export interface Answer {
+  approve: boolean;
+}
+
+export interface Answered {
+  started: boolean;
+}
 
 export interface Check {
   name: string;
@@ -36,6 +48,73 @@ export interface FindingView {
   line: number | null;
   severity: string;
   text: string;
+}
+
+export type FlowSummaryRoute = typeof FlowSummaryRoute[keyof typeof FlowSummaryRoute];
+
+
+export const FlowSummaryRoute = {
+  bug: 'bug',
+  feature: 'feature',
+} as const;
+
+export type FlowSummaryWaiting = typeof FlowSummaryWaiting[keyof typeof FlowSummaryWaiting] | null;
+
+
+export const FlowSummaryWaiting = {
+  plan: 'plan',
+  test: 'test',
+} as const;
+
+/**
+ * A run in the browser gate: where it waits, or how it ended.
+ */
+export interface FlowSummary {
+  thread: string;
+  repo: string;
+  number: number;
+  title: string;
+  route: FlowSummaryRoute;
+  waiting: FlowSummaryWaiting;
+  running: boolean;
+  outcome: string;
+  error: string;
+}
+
+export type FlowViewRoute = typeof FlowViewRoute[keyof typeof FlowViewRoute];
+
+
+export const FlowViewRoute = {
+  bug: 'bug',
+  feature: 'feature',
+} as const;
+
+export type FlowViewWaiting = typeof FlowViewWaiting[keyof typeof FlowViewWaiting] | null;
+
+
+export const FlowViewWaiting = {
+  plan: 'plan',
+  test: 'test',
+} as const;
+
+export interface FlowView {
+  thread: string;
+  repo: string;
+  number: number;
+  title: string;
+  route: FlowViewRoute;
+  waiting: FlowViewWaiting;
+  running: boolean;
+  outcome: string;
+  error: string;
+  size: string | null;
+  problem: string;
+  criteria: string[];
+  files: FileNote[];
+  plan: string[];
+  assumptions: string[];
+  open_questions: string[];
+  diff: string;
 }
 
 export type ValidationErrorCtx = { [key: string]: unknown };
@@ -711,3 +790,391 @@ export function useRun<TData = Awaited<ReturnType<typeof run>>, TError = HTTPVal
 
   return withQueryKey(query, queryOptions.queryKey);
 }
+
+
+
+
+
+
+
+export type flowListResponse200 = {
+  data: FlowSummary[]
+  status: 200
+}
+
+export type flowListResponseSuccess = (flowListResponse200) & {
+  headers: Headers;
+};
+;
+
+export type flowListResponse = (flowListResponseSuccess)
+
+export const getFlowListUrl = () => {
+
+
+
+
+  return `/api/flows`
+}
+
+/**
+ * @summary Flow List
+ */
+export const flowList = async ( options?: RequestInit): Promise<flowListResponse> => {
+
+  const res = await fetch(getFlowListUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: flowListResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as flowListResponse
+}
+
+
+
+
+
+export const getFlowListQueryKey = () => {
+    return [
+    `/api/flows`
+    ] as const;
+    }
+
+
+export const getFlowListQueryOptions = <TData = Awaited<ReturnType<typeof flowList>>, TError = unknown>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof flowList>>, TError, TData>>, fetch?: RequestInit}
+) => {
+
+const {query: queryOptions, fetch: fetchOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getFlowListQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof flowList>>> = ({ signal }) => flowList({ signal, ...fetchOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof flowList>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type FlowListQueryResult = NonNullable<Awaited<ReturnType<typeof flowList>>>
+export type FlowListQueryError = unknown
+
+
+export function useFlowList<TData = Awaited<ReturnType<typeof flowList>>, TError = unknown>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof flowList>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof flowList>>,
+          TError,
+          Awaited<ReturnType<typeof flowList>>
+        > , 'initialData'
+      >, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useFlowList<TData = Awaited<ReturnType<typeof flowList>>, TError = unknown>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof flowList>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof flowList>>,
+          TError,
+          Awaited<ReturnType<typeof flowList>>
+        > , 'initialData'
+      >, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useFlowList<TData = Awaited<ReturnType<typeof flowList>>, TError = unknown>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof flowList>>, TError, TData>>, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Flow List
+ */
+
+export function useFlowList<TData = Awaited<ReturnType<typeof flowList>>, TError = unknown>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof flowList>>, TError, TData>>, fetch?: RequestInit}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getFlowListQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export type flowResponse200 = {
+  data: FlowView
+  status: 200
+}
+
+export type flowResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type flowResponseSuccess = (flowResponse200) & {
+  headers: Headers;
+};
+export type flowResponseError = (flowResponse422) & {
+  headers: Headers;
+};
+
+export type flowResponse = (flowResponseSuccess | flowResponseError)
+
+export const getFlowUrl = (owner: string,
+    name: string,
+    number: number,) => {
+
+
+
+
+  return `/api/flows/${owner}/${name}/${number}`
+}
+
+/**
+ * @summary Flow
+ */
+export const flow = async (owner: string,
+    name: string,
+    number: number, options?: RequestInit): Promise<flowResponse> => {
+
+  const res = await fetch(getFlowUrl(owner,name,number),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: flowResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as flowResponse
+}
+
+
+
+
+
+export const getFlowQueryKey = (owner: string,
+    name: string,
+    number: number,) => {
+    return [
+    `/api/flows/${owner}/${name}/${number}`
+    ] as const;
+    }
+
+
+export const getFlowQueryOptions = <TData = Awaited<ReturnType<typeof flow>>, TError = HTTPValidationError>(owner: string,
+    name: string,
+    number: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof flow>>, TError, TData>>, fetch?: RequestInit}
+) => {
+
+const {query: queryOptions, fetch: fetchOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getFlowQueryKey(owner,name,number);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof flow>>> = ({ signal }) => flow(owner,name,number, { signal, ...fetchOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: owner !== null && owner !== undefined && name !== null && name !== undefined && number !== null && number !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof flow>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type FlowQueryResult = NonNullable<Awaited<ReturnType<typeof flow>>>
+export type FlowQueryError = HTTPValidationError
+
+
+export function useFlow<TData = Awaited<ReturnType<typeof flow>>, TError = HTTPValidationError>(
+ owner: string,
+    name: string,
+    number: number, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof flow>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof flow>>,
+          TError,
+          Awaited<ReturnType<typeof flow>>
+        > , 'initialData'
+      >, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useFlow<TData = Awaited<ReturnType<typeof flow>>, TError = HTTPValidationError>(
+ owner: string,
+    name: string,
+    number: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof flow>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof flow>>,
+          TError,
+          Awaited<ReturnType<typeof flow>>
+        > , 'initialData'
+      >, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useFlow<TData = Awaited<ReturnType<typeof flow>>, TError = HTTPValidationError>(
+ owner: string,
+    name: string,
+    number: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof flow>>, TError, TData>>, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Flow
+ */
+
+export function useFlow<TData = Awaited<ReturnType<typeof flow>>, TError = HTTPValidationError>(
+ owner: string,
+    name: string,
+    number: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof flow>>, TError, TData>>, fetch?: RequestInit}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getFlowQueryOptions(owner,name,number,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export type flowAnswerResponse200 = {
+  data: Answered
+  status: 200
+}
+
+export type flowAnswerResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type flowAnswerResponseSuccess = (flowAnswerResponse200) & {
+  headers: Headers;
+};
+export type flowAnswerResponseError = (flowAnswerResponse422) & {
+  headers: Headers;
+};
+
+export type flowAnswerResponse = (flowAnswerResponseSuccess | flowAnswerResponseError)
+
+export const getFlowAnswerUrl = (owner: string,
+    name: string,
+    number: number,) => {
+
+
+
+
+  return `/api/flows/${owner}/${name}/${number}/answer`
+}
+
+/**
+ * @summary Flow Answer
+ */
+export const flowAnswer = async (owner: string,
+    name: string,
+    number: number,
+    answer: Answer, options?: RequestInit): Promise<flowAnswerResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+const res = await fetch(getFlowAnswerUrl(owner,name,number),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(answer)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: flowAnswerResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as flowAnswerResponse
+}
+
+
+
+
+
+export const getFlowAnswerMutationKey = () => ['flowAnswer'] as const;
+
+export const getFlowAnswerMutationOptions = <TError = HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof flowAnswer>>, TError,FlowAnswerMutationVariables, TContext>, fetch?: RequestInit}
+): UseMutationOptions<Awaited<ReturnType<typeof flowAnswer>>, TError,FlowAnswerMutationVariables, TContext> => {
+
+const mutationKey = getFlowAnswerMutationKey();
+const {mutation: mutationOptions, fetch: fetchOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, fetch: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof flowAnswer>>, FlowAnswerMutationVariables> = (props) => {
+          const {owner,name,number,data} = props ?? {};
+
+          return  flowAnswer(owner,name,number,data,fetchOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type FlowAnswerMutationResult = NonNullable<Awaited<ReturnType<typeof flowAnswer>>>
+    export type FlowAnswerMutationBody = Answer
+    export type FlowAnswerMutationError = HTTPValidationError
+    export type FlowAnswerMutationVariables = {owner: string;name: string;number: number;data: Answer}
+
+    /**
+ * @summary Flow Answer
+ */
+export const useFlowAnswer = <TError = HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof flowAnswer>>, TError,FlowAnswerMutationVariables, TContext>, fetch?: RequestInit}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof flowAnswer>>,
+        TError,
+        FlowAnswerMutationVariables,
+        TContext
+      > => {
+      return useMutation(getFlowAnswerMutationOptions(options), queryClient);
+    }

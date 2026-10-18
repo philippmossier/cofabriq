@@ -1,5 +1,6 @@
 import { createRootRoute, createRoute, createRouter, redirect } from "@tanstack/react-router";
 import { Layout } from "./components/layout";
+import { FlowPage, FlowsPage } from "./pages/flows";
 import { RunPage, RunsPage } from "./pages/runs";
 import { SpecPage, SpecsPage } from "./pages/specs";
 
@@ -28,8 +29,15 @@ export const run = createRoute({
   component: RunPage,
 });
 
+const flows = createRoute({ getParentRoute: () => root, path: "/flows", component: FlowsPage });
+const flow = createRoute({
+  getParentRoute: () => root,
+  path: "/flows/$owner/$name/$number",
+  component: FlowPage,
+});
+
 export const router = createRouter({
-  routeTree: root.addChildren([index, specs, spec, runs, run]),
+  routeTree: root.addChildren([index, specs, spec, runs, run, flows, flow]),
 });
 
 declare module "@tanstack/react-router" {

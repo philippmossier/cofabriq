@@ -94,6 +94,7 @@ from cofabriq.map import impact as impact_mod
 from cofabriq.map import store as map_store
 from cofabriq.mcp_server import build as build_mcp
 from cofabriq.serve import build as build_api
+from cofabriq.serve_guard import new_token
 from cofabriq.steps import Steps
 
 app = typer.Typer(no_args_is_help=True)
@@ -1050,18 +1051,46 @@ def _open_prs(repo: str) -> list[int] | None:
     return source.open_pulls(publish_mod.BRANCH_PREFIX)
 
 
-def _api(ui: Path | None) -> FastAPI:
+def _api(
+    ui: Path | None,
+    port: int | None = None,
+    write_token: str | None = None,
+    flows: graph_mod.FlowRunner | None = None,
+) -> FastAPI:
     settings = get_settings()
-    return build_api(settings.refine_dir, settings.runs_dir, settings.clones_dir, ui)
+    return build_api(
+        settings.refine_dir,
+        settings.runs_dir,
+        settings.clones_dir,
+        ui,
+        port=port,
+        write_token=write_token,
+        flows=flows,
+    )
+
+
+def _no_deps(repo: str, spent: float) -> graph_mod.Deps:
+    raise RuntimeError("the schema export runs no flow")
 
 
 @app.command()
-def serve(port: int = 8765, ui: Path = Path("ui/dist")) -> None:
+def serve(port: int = 8765, ui: Path = Path("ui/dist"), write: bool = False) -> None:
     """The read-only API over data/refine and data/runs, plus the built UI
     (`ui/dist`, when built), on 127.0.0.1 only. API docs at /api/docs."""
 
     typer.echo(f"http://127.0.0.1:{port}  (API docs: /api/docs; Ctrl+C stops)")
-    uvicorn.run(_api(ui), host="127.0.0.1", port=port, log_level="warning")
+    if not write:  # no token: the guard refuses every non-GET
+        uvicorn.run(_api(ui, port), host="127.0.0.1", port=port, log_level="warning")
+        return
+    # --write: the browser gate. The token is shown once, in the URL's
+    # fragment (never sent to the server, so in no log)
+    token = new_token()
+    runner = graph_mod.FlowRunner(
+        get_settings().postgres_dsn, lambda repo, spent: _flow_deps(repo, spent)[0]
+    )
+    typer.echo(f"gate: http://127.0.0.1:{port}/#token={token}  (open this one)")
+    app = _api(ui, port, write_token=token, flows=runner)
+    uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
 
 
 @app.command()
@@ -1069,7 +1098,9 @@ def openapi(out: Path = Path("ui/openapi.json")) -> None:
     """Write the API's OpenAPI schema (the UI's generated client reads it).
     `make check` fails when the committed one is stale."""
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json_mod.dumps(_api(None).openapi(), indent=2) + "\n", "utf-8")
+    flows = graph_mod.FlowRunner("", _no_deps)  # for its routes in the schema
+    schema = _api(None, flows=flows).openapi()
+    out.write_text(json_mod.dumps(schema, indent=2) + "\n", "utf-8")
     typer.echo(f"-> {out}")
 
 
@@ -1097,6 +1128,8 @@ def _flow_deps(target: str, spent_usd: float = 0.0) -> tuple[graph_mod.Deps, str
         editor=reader.editing(budget_usd=1.0),
         sandbox=Podman(image=rules.image, setup=rules.setup),
         guard=guard,
+        targets_dir=settings.targets_dir,
+        runs_dir=settings.runs_dir,
     )
     return deps, settings.postgres_dsn
 
