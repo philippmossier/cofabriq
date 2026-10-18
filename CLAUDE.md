@@ -9,9 +9,10 @@ carries over. Why: `docs/adr/006-re-scope-to-a-software-factory.md`.
 
 Roadmap: 0.1 triage (read-only) -> 0.2 the core loop on the playground
 (refine, plan gate, reproduce, implement, checks, reviewer, risk tiers, draft
-PR) -> later: lookback, more targets. Current: v0.2.1 (the core loop on
-the playground's planted bugs); next: harder truth (UI bugs, real issues),
-a different reviewer model.
+PR) -> 0.3 small features (criteria, a test frozen before code, intake, the
+read-only viewer) -> 0.4 UI bugs in the loop + kill switch -> 0.5 browser
+gate + guided planning -> 0.6 a real repo with tests -> later: self-host
+packaging, lookback. Current: v0.3.0. Playground only until 0.6.
 
 ## Commands
 
