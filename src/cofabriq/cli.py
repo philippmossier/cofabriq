@@ -17,6 +17,8 @@ import click
 import httpx
 import psycopg
 import typer
+import uvicorn
+from fastapi import FastAPI
 from neo4j import Driver, GraphDatabase
 from pydantic import TypeAdapter
 from rich.console import Console
@@ -81,6 +83,7 @@ from cofabriq.map import history
 from cofabriq.map import impact as impact_mod
 from cofabriq.map import store as map_store
 from cofabriq.mcp_server import build as build_mcp
+from cofabriq.serve import build as build_api
 from cofabriq.steps import Steps
 
 app = typer.Typer(no_args_is_help=True)
@@ -1034,6 +1037,29 @@ def _open_prs(repo: str) -> list[int] | None:
         return None
     source = GitHubIssueSource(repo, token.get_secret_value())
     return source.open_pulls(publish_mod.BRANCH_PREFIX)
+
+
+def _api(ui: Path | None) -> FastAPI:
+    settings = get_settings()
+    return build_api(settings.refine_dir, settings.runs_dir, settings.clones_dir, ui)
+
+
+@app.command()
+def serve(port: int = 8765, ui: Path = Path("ui/dist")) -> None:
+    """The read-only API over data/refine and data/runs, plus the built UI
+    (`ui/dist`, when built), on 127.0.0.1 only. API docs at /api/docs."""
+
+    typer.echo(f"http://127.0.0.1:{port}  (API docs: /api/docs; Ctrl+C stops)")
+    uvicorn.run(_api(ui), host="127.0.0.1", port=port, log_level="warning")
+
+
+@app.command()
+def openapi(out: Path = Path("ui/openapi.json")) -> None:
+    """Write the API's OpenAPI schema (the UI's generated client reads it).
+    `make check` fails when the committed one is stale."""
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json_mod.dumps(_api(None).openapi(), indent=2) + "\n", "utf-8")
+    typer.echo(f"-> {out}")
 
 
 @app.command()

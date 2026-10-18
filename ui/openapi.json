@@ -1,0 +1,915 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "cofabriq",
+    "version": "0.3"
+  },
+  "paths": {
+    "/api/specs": {
+      "get": {
+        "summary": "Specs",
+        "operationId": "specs",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SpecSummary"
+                  },
+                  "type": "array",
+                  "title": "Response Specs"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/specs/{file}/{key}": {
+      "get": {
+        "summary": "Spec",
+        "operationId": "spec",
+        "parameters": [
+          {
+            "name": "file",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "File"
+            }
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpecView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/runs": {
+      "get": {
+        "summary": "Runs",
+        "operationId": "runs",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RunSummary"
+                  },
+                  "type": "array",
+                  "title": "Response Runs"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/runs/{file}/{key}": {
+      "get": {
+        "summary": "Run",
+        "operationId": "run",
+        "parameters": [
+          {
+            "name": "file",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "File"
+            }
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunTrace"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Check": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "seconds": {
+            "type": "number",
+            "title": "Seconds"
+          },
+          "output": {
+            "type": "string",
+            "title": "Output"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "ok",
+          "seconds",
+          "output"
+        ],
+        "title": "Check"
+      },
+      "FileNote": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "why": {
+            "type": "string",
+            "title": "Why"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "why"
+        ],
+        "title": "FileNote"
+      },
+      "FindingView": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "line": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line"
+          },
+          "severity": {
+            "type": "string",
+            "title": "Severity"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "line",
+          "severity",
+          "text"
+        ],
+        "title": "FindingView"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "ProofView": {
+        "properties": {
+          "finding": {
+            "$ref": "#/components/schemas/FindingView"
+          },
+          "proven": {
+            "type": "boolean",
+            "title": "Proven"
+          },
+          "quote": {
+            "type": "string",
+            "title": "Quote"
+          },
+          "tests": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tests"
+          },
+          "red": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Check"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "finding",
+          "proven",
+          "quote",
+          "tests",
+          "red"
+        ],
+        "title": "ProofView"
+      },
+      "ReviewRound": {
+        "properties": {
+          "verdict": {
+            "type": "string",
+            "title": "Verdict"
+          },
+          "approved": {
+            "type": "boolean",
+            "title": "Approved"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "test_note": {
+            "type": "string",
+            "title": "Test Note"
+          },
+          "cause_note": {
+            "type": "string",
+            "title": "Cause Note"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/FindingView"
+            },
+            "type": "array",
+            "title": "Findings"
+          },
+          "proofs": {
+            "items": {
+              "$ref": "#/components/schemas/ProofView"
+            },
+            "type": "array",
+            "title": "Proofs"
+          },
+          "fix": {
+            "items": {
+              "$ref": "#/components/schemas/Step"
+            },
+            "type": "array",
+            "title": "Fix"
+          }
+        },
+        "type": "object",
+        "required": [
+          "verdict",
+          "approved",
+          "summary",
+          "test_note",
+          "cause_note",
+          "findings",
+          "proofs",
+          "fix"
+        ],
+        "title": "ReviewRound"
+      },
+      "RunKind": {
+        "type": "string",
+        "enum": [
+          "eval",
+          "features",
+          "wrong",
+          "gate",
+          "run"
+        ]
+      },
+      "RunSummary": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "title": "File"
+          },
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/RunKind"
+          },
+          "repo": {
+            "type": "string",
+            "title": "Repo"
+          },
+          "number": {
+            "type": "integer",
+            "title": "Number"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "judge": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Judge"
+          },
+          "valid": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid"
+          },
+          "tries": {
+            "type": "integer",
+            "title": "Tries"
+          },
+          "cost_usd": {
+            "type": "number",
+            "title": "Cost Usd"
+          },
+          "made_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Made At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file",
+          "key",
+          "kind",
+          "repo",
+          "number",
+          "status",
+          "judge",
+          "valid",
+          "tries",
+          "cost_usd",
+          "made_at"
+        ],
+        "title": "RunSummary"
+      },
+      "RunTrace": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "title": "File"
+          },
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/RunKind"
+          },
+          "repo": {
+            "type": "string",
+            "title": "Repo"
+          },
+          "number": {
+            "type": "integer",
+            "title": "Number"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "judge": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Judge"
+          },
+          "valid": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid"
+          },
+          "tries": {
+            "type": "integer",
+            "title": "Tries"
+          },
+          "cost_usd": {
+            "type": "number",
+            "title": "Cost Usd"
+          },
+          "made_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Made At"
+          },
+          "commit": {
+            "type": "string",
+            "title": "Commit"
+          },
+          "red": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Check"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/Step"
+            },
+            "type": "array",
+            "title": "Steps"
+          },
+          "changed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Changed"
+          },
+          "diff": {
+            "type": "string",
+            "title": "Diff"
+          },
+          "gate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gate"
+          },
+          "rounds": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewRound"
+            },
+            "type": "array",
+            "title": "Rounds"
+          },
+          "pr_body": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pr Body"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file",
+          "key",
+          "kind",
+          "repo",
+          "number",
+          "status",
+          "judge",
+          "valid",
+          "tries",
+          "cost_usd",
+          "made_at",
+          "commit",
+          "red",
+          "steps",
+          "changed",
+          "diff",
+          "gate",
+          "rounds",
+          "pr_body"
+        ],
+        "title": "RunTrace"
+      },
+      "SpecSummary": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "title": "File"
+          },
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "repo": {
+            "type": "string",
+            "title": "Repo"
+          },
+          "number": {
+            "type": "integer",
+            "title": "Number"
+          },
+          "route": {
+            "type": "string",
+            "enum": [
+              "bug",
+              "feature"
+            ],
+            "title": "Route"
+          },
+          "size": {
+            "type": "string",
+            "title": "Size"
+          },
+          "files": {
+            "type": "integer",
+            "title": "Files"
+          },
+          "criteria": {
+            "type": "integer",
+            "title": "Criteria"
+          },
+          "open_questions": {
+            "type": "integer",
+            "title": "Open Questions"
+          },
+          "not_ready": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Not Ready"
+          },
+          "made_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Made At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file",
+          "key",
+          "repo",
+          "number",
+          "route",
+          "size",
+          "files",
+          "criteria",
+          "open_questions",
+          "not_ready",
+          "made_at"
+        ],
+        "title": "SpecSummary"
+      },
+      "SpecView": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "title": "File"
+          },
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "repo": {
+            "type": "string",
+            "title": "Repo"
+          },
+          "number": {
+            "type": "integer",
+            "title": "Number"
+          },
+          "commit": {
+            "type": "string",
+            "title": "Commit"
+          },
+          "route": {
+            "type": "string",
+            "enum": [
+              "bug",
+              "feature"
+            ],
+            "title": "Route"
+          },
+          "size": {
+            "type": "string",
+            "title": "Size"
+          },
+          "problem": {
+            "type": "string",
+            "title": "Problem"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/FileNote"
+            },
+            "type": "array",
+            "title": "Files"
+          },
+          "tests": {
+            "items": {
+              "$ref": "#/components/schemas/FileNote"
+            },
+            "type": "array",
+            "title": "Tests"
+          },
+          "criteria": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Criteria"
+          },
+          "plan": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Plan"
+          },
+          "assumptions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Assumptions"
+          },
+          "open_questions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Open Questions"
+          },
+          "unknown_paths": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unknown Paths"
+          },
+          "not_ready": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Not Ready"
+          },
+          "cost_usd": {
+            "type": "number",
+            "title": "Cost Usd"
+          },
+          "turns": {
+            "type": "integer",
+            "title": "Turns"
+          },
+          "seconds": {
+            "type": "number",
+            "title": "Seconds"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file",
+          "key",
+          "repo",
+          "number",
+          "commit",
+          "route",
+          "size",
+          "problem",
+          "files",
+          "tests",
+          "criteria",
+          "plan",
+          "assumptions",
+          "open_questions",
+          "unknown_paths",
+          "not_ready",
+          "cost_usd",
+          "turns",
+          "seconds"
+        ],
+        "title": "SpecView"
+      },
+      "Step": {
+        "properties": {
+          "phase": {
+            "type": "string",
+            "enum": [
+              "test",
+              "build",
+              "fix"
+            ],
+            "title": "Phase"
+          },
+          "n": {
+            "type": "integer",
+            "title": "N"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "error": {
+            "type": "string",
+            "title": "Error"
+          },
+          "reverted": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reverted"
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/Check"
+            },
+            "type": "array",
+            "title": "Checks"
+          },
+          "cost_usd": {
+            "type": "number",
+            "title": "Cost Usd"
+          },
+          "seconds": {
+            "type": "number",
+            "title": "Seconds"
+          }
+        },
+        "type": "object",
+        "required": [
+          "phase",
+          "n",
+          "summary",
+          "error",
+          "reverted",
+          "checks",
+          "cost_usd",
+          "seconds"
+        ],
+        "title": "Step",
+        "description": "One agent attempt: the reproducer's or the implementer's."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

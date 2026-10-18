@@ -41,6 +41,8 @@ a different reviewer model.
 - `uv run cofabriq eval gate [--only key,key]`: the whole review gate on the same right and wrong fixes, each replayed with an install: right published vs falsely blocked, wrong blocked / fixed / leaked (published and still wrong by the planted repro or the witness test), proofs valid against the reference fix; paid
 - `uv run cofabriq eval human --publish` / `eval human`: one draft PR per planted logic bug on the playground (3 of them proven wrong, shuffled, set in `data/human/set.json`), then the dev's timed review in their own terminal (decision recorded, nothing merged): minutes per merged PR, wrong caught, agreement with the reviewer
 - `uv run cofabriq intake <n>... [--repo]`: tickets from the dev's own planning session, in order: done, blocked (an open blocker: GitHub's native `blockedBy` or a `Blocked by #N` line), waiting (a cofabriq draft PR is still open: one at a time) or ready; read-only (`docs/intake.md`). `run` refuses a blocked ticket before refine and a spec that isn't ready after it (criteria, paths, size L; open questions go to the plan gate, and stop a `--yes` run)
+- `uv run cofabriq serve [--port 8765]`: read-only API over `data/refine/` and `data/runs/` (FastAPI, GET only, 127.0.0.1 only, API docs at `/api/docs`) plus the built UI from `ui/dist`; `make ui` builds it, `cd ui && pnpm dev` runs Vite with `/api` proxied (`ui/README.md`)
+- `uv run cofabriq openapi`: write the API schema to `ui/openapi.json`; the UI's client (`ui/src/api/generated.ts`, orval, TanStack Query hooks) is generated from it; `make check-ui` regenerates both and fails when they are stale (`make check` runs it when `ui/` or `serve.py` changed)
 - `uv run cofabriq mcp`: serve `search`, `decisions`, `affected` and `triage` (optional `repo`, default `TARGET_REPO`) as MCP tools over stdio (registered for Claude Code in `.mcp.json`)
 
 ## Layout
@@ -59,6 +61,8 @@ a different reviewer model.
 - `src/cofabriq/map/`: 0.2 repo map: `components.py` (path -> component rules), `history.py` (commits and files of a clone as of a date), `build.py` (co-change counts), `store.py` (Neo4j, `Component`/`File` keyed by repo), `fixes.py` (issue -> fix commits from commit messages)
 - `src/cofabriq/loop/`: 0.2 core loop: `engine.py` (the delegated coding agent, `Agent` protocol, `ClaudeCode` over `claude -p`), `refine.py` (issue -> typed spec, path checks, the clone), `sandbox.py` (the target's commands in podman, network only for install), `run.py` (worktree, the reproducer, fix attempts, write boundaries), `review.py` (the reviewer, code-owned verdict), `gate.py` (review gate: only a red test blocks), `intake.py` (blockers, slice states, the spec readiness check), `publish.py` (branch + draft PR, playground only), `pr.py` (risk tier, the PR body, untrusted text neutralised for GitHub markdown)
 - `src/cofabriq/mcp_server.py`: MCP tools
+- `src/cofabriq/serve.py`: the read-only HTTP API (its own response models, not the stored ones)
+- `ui/`: the viewer (Vite, React, TanStack Router + Query, Tailwind, shadcn), pnpm, its own lockfile; one artifact with the API (ADR-009)
 - `docs/adr/`: architecture decision records, written when the decision is made
 
 ## Conventions
@@ -77,5 +81,6 @@ a different reviewer model.
 - The target's CLAUDE.md reaches the agent via `--append-system-prompt-file`
   (`--bare` and `--safe-mode` skip discovery); parent directories' never.
 - Install only what the current step needs.
+- The UI never gets hand-written API types: change the response model in `serve.py`, run `make check-ui`. shadcn's `cn` is its own package (`shadcn-ui/cn`), keep it.
 - Postgres runs on host port 5433. Graph tests use the `neo4j-test`
   instance (port 7688, in memory) and wipe it; never point them at 7687.

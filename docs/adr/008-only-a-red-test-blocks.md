@@ -69,3 +69,12 @@ may block instead.
   named in the spec; that doesn't carry to real issues.
 - **An LLM judge over reviewer and diff.** A second opinion is still
   prose; it moves the trust problem, it doesn't remove it.
+
+## Addendum, 2026-10-18
+
+The severity is the reviewer's label, not a verdict. On the 0.3 baseline
+a wrong fix leaked: the reviewer named the defect but filed it as a
+concern, 3 runs of 3, and only blockers got a proof. Since 0.3 step 5,
+when the reviewer requests changes, its concerns get a proof test like
+blockers (nits never; an approving review's concerns stay notes). Same
+gate eval: leaked 0 of 8, 17 proof tests all valid.
