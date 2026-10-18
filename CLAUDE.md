@@ -12,7 +12,7 @@ Roadmap: 0.1 triage (read-only) -> 0.2 the core loop on the playground
 PR) -> 0.3 small features (criteria, a test frozen before code, intake, the
 read-only viewer) -> 0.4 UI bugs in the loop + kill switch -> 0.5 browser
 gate + guided planning -> 0.6 a real repo with tests -> later: self-host
-packaging, lookback. Current: v0.3.0. Playground only until 0.6.
+packaging, lookback. Current: v0.4.0. Playground only until 0.6.
 
 ## Commands
 

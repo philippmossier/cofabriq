@@ -6,9 +6,10 @@ Small, low-risk issues go through **autopilot**: triaged, implemented, gated
 by the repository's own CI, reviewed and handed to the dev as a draft PR.
 Features go the same way once their acceptance criteria are approved: the
 agent writes the acceptance test first, and it is frozen before any code.
-Today, in 0.3: bug reports and small feature requests to a draft PR, tried
-on a demo app with bugs planted and features removed on purpose, and a
-viewer that shows every step.
+Today, in 0.4: bug reports and small feature requests to a draft PR,
+including bugs that only show in a browser, tried on a demo app with bugs
+planted and features removed on purpose, and a viewer that shows every
+step.
 
 What happens to one real bug report. A user filed
 [#54](https://github.com/philippmossier/local-ai-chat-playground/issues/54):
@@ -147,6 +148,35 @@ criteria and readiness, every run from the failing test to the review
 gate's proofs and the PR body. Self-hosted by design: it runs where the
 code is, with your keys ([ADR-009](docs/adr/009-self-hosted-not-saas-ui-in-the-repo.md)).
 
+## UI bugs (0.4)
+
+Some bugs only show in a browser. A user filed this one:
+
+> The placeholder says Shift+Enter for a new line, but Shift+Enter sends
+> the message immediately. I wanted to paste a list with line breaks.
+
+The agent writes its failing test as a browser test this time, run by
+Playwright in the same isolated container, against the app on a fake
+model:
+
+```ts
+test("Shift+Enter breaks the line instead of sending", async ({ page }) => {
+  // ...
+  await box.fill("first line");
+  await box.press("Shift+Enter");
+  await box.pressSequentially("second line");
+  await expect(box).toHaveValue("first line\nsecond line");
+  await expect(page.getByText(/Fake answer to:/)).toHaveCount(0);
+  // ...
+});
+```
+
+It fails on the current code, the fix is one condition (`!e.shiftKey`),
+and the bug's own hidden test passes on it. About 2 minutes and $0.17
+(API list price). A target names its test kinds (unit tests for logic,
+browser tests for the UI) and the agent picks the one that can show the
+bug.
+
 ## Why it is built this way
 
 - **The dev stays in charge.** Autopilot only takes small, low-risk issues;
@@ -163,27 +193,31 @@ code is, with your keys ([ADR-009](docs/adr/009-self-hosted-not-saas-ui-in-the-r
   writes runs only in a container without network
   ([ADR-007](docs/adr/007-agent-written-code-runs-only-in-a-sandbox.md)).
   The only write to GitHub is one branch and a draft PR, on an explicit
-  `--apply`, with a scoped token.
+  `--apply`, with a scoped token. `cofabriq stop` halts every agent before
+  its next step; a run has a budget and every agent a turn cap.
 - **A number per stage.** Every agent or retrieval change is measured
   ([evals](docs/evals.md)).
 
 ## Numbers
 
-On the demo app: 10 planted logic bugs, 9 features removed on purpose.
+On the demo app: 10 planted logic bugs, 12 planted UI bugs, 9 features
+removed on purpose.
 
 | | |
 | --- | --- |
-| bugs fixed, with the agent's own failing test first | 10/10, all on the first try |
+| logic bugs fixed, with the agent's own failing test first | 10/10, all on the first try |
+| UI bugs fixed, with the agent's own browser test first | 12/12, 11 on the first try |
 | features built against a frozen acceptance test | 9/9, all on the first try |
 | features whose original (hidden) tests pass on the result | 9/9 |
 | right fixes let through by the review gate | 10/10 |
 | wrong fixes caught by the review gate and repaired before the PR | 8/8 |
-| cost per bug or feature, end to end | about $0.25-0.35 |
+| cost per bug or feature, end to end | about $0.20-0.35 |
 
 The wrong fixes were written wrong on purpose (an agent told to make a
 plausible but wrong fix), since the loop itself made none. Early and easy:
-small changes in a small repo, one model in every role. Next: UI bugs.
-Details and caveats: [docs/evals.md](docs/evals.md).
+small changes in a small repo, one model in every role. Of the 12 browser
+tests, 3 also needed a neighbouring planted bug fixed, and the agent fixed
+it on the way. Details and caveats: [docs/evals.md](docs/evals.md).
 
 ## Triage (0.1)
 
@@ -254,7 +288,7 @@ UI's checks when `ui/` changed.
 - [x] **0.2** the core loop: plan, failing test, fix, review gate, draft PR
 - [x] **0.3** small features: acceptance criteria, a test frozen before
       code, intake of tickets, the read-only viewer
-- [ ] **0.4** UI bugs in the loop (a browser in the sandbox), a kill switch
+- [x] **0.4** UI bugs in the loop (a browser in the sandbox), a kill switch
 - [ ] **0.5** approve plans and tests in the browser; from a fuzzy idea to
       a ticket
 - [ ] **0.6** a real repository with tests
