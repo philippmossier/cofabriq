@@ -81,6 +81,7 @@ removal: every check green without the feature, the hidden tests red.
 | --------------------------------------------- | ------------------------------------------------------------- | ----------- |
 | refine, 9 features: spec names the files      | hit@1 1.00, precision 0.85; size right 9/9; 7 criteria median | 35 s        |
 | loop, 9 features: acceptance test, then build | test red 9/9; built 9/9, all first try; hidden tests green 9/9; agent's test green on main 7/9 | 94 s |
+| readiness (intake, in code): the 9 specs       | ready 5/9; 4 back to the dev with open questions               | free        |
 
 Docs the spec lists are left out of precision, as they are left out of the
 truth (a feature's spec rightly names the doc it updates; with them, 0.65).
@@ -94,6 +95,14 @@ too-slow advice to the lighter model, which is planted bug
 `too-slow-suggests-lighter`: main is wrong, and the build fixed it on the
 way. In amd-strong-gpu the test uses AMD fixtures the build added to a
 helper file, which main doesn't have.
+
+The readiness check sends a spec back when it has open questions. The four
+it sent back ask things a dev should answer, and three of them point at a
+planted bug next to the feature: should the too-slow advice be fixed in the
+same PR, which chat is "first" when the sidebar sorts the other way, and
+whether weekday names near the 7-day edge are ambiguous. The fourth quotes
+the playground's CLAUDE.md ("do not hard-code behaviour on a GPU vendor
+name") against the AMD rule. The loop numbers above ran all nine anyway.
 
 Same caveat as the bugs: small features in a small repo, one model writing
 criteria, test and code, so a misread feature would go green on all three;

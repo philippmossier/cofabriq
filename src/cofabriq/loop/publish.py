@@ -52,11 +52,14 @@ def check_writable(repo: str) -> None:
         raise PublishError(f"{repo} is not writable (only {', '.join(WRITABLE)})")
 
 
+BRANCH_PREFIX = "cofabriq/"  # every branch cofabriq pushes (intake reads it)
+
+
 def branch_name(number: int, title: str, sha: str) -> str:
     """`cofabriq/51-title-cut-too-early-1a2b3c4`: the issue title (untrusted)
     reduced to [a-z0-9-]."""
     slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")[:40].rstrip("-")
-    return f"cofabriq/{number}-{slug or 'fix'}-{sha[:7]}"
+    return f"{BRANCH_PREFIX}{number}-{slug or 'fix'}-{sha[:7]}"
 
 
 def _git(clone: Path, *args: str, env: dict[str, str], stdin: str = "") -> str:

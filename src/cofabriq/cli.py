@@ -58,8 +58,9 @@ from cofabriq.issues import vectors
 from cofabriq.issues import verdict as verdict_mod
 from cofabriq.issues.fetch import fetch_created, fetch_issues, load_issue, load_issues
 from cofabriq.issues.github import GitHubIssueSource
-from cofabriq.issues.model import Issue, check_repo
+from cofabriq.issues.model import Issue, IssueRef, check_repo
 from cofabriq.loop import gate as gate_mod
+from cofabriq.loop import intake as intake_mod
 from cofabriq.loop import pr as pr_mod
 from cofabriq.loop import publish as publish_mod
 from cofabriq.loop import refine as refine_mod
@@ -1006,6 +1007,60 @@ def _approve_test(test_diff: str) -> bool:
     return typer.confirm("Approve the test and let the agent build against it?")
 
 
+def _blocker_issues(tickets: list[Issue]) -> dict[IssueRef, Issue]:
+    """The tickets' blockers as GitHub has them now (read-only; the local
+    store without a token). A blocker that can't be read stays out: it then
+    counts as open."""
+    settings = get_settings()
+    token = settings.github_token
+    known: dict[IssueRef, Issue] = {}
+    for ref in dict.fromkeys(b for t in tickets for b in intake_mod.blockers(t)):
+        if token is None:
+            got = load_issue(settings.issues_dir, ref.repo, ref.number)
+        else:
+            source = GitHubIssueSource(
+                ref.repo, token.get_secret_value(), comments=settings.issue_comments
+            )
+            got = source.issue(ref.number)
+        if got is not None:
+            known[ref] = got
+    return known
+
+
+def _open_prs(repo: str) -> list[int] | None:
+    """cofabriq's open PRs in `repo`; None without a token (unknown)."""
+    token = get_settings().github_token
+    if token is None:
+        return None
+    source = GitHubIssueSource(repo, token.get_secret_value())
+    return source.open_pulls(publish_mod.BRANCH_PREFIX)
+
+
+@app.command()
+def intake(
+    numbers: list[int], repo: str = "philippmossier/local-ai-chat-playground"
+) -> None:
+    """Tickets the dev filed from their own planning session, in the order
+    given: done, blocked (an open blocker: GitHub's dependencies or a
+    `Blocked by #N` line), waiting (a cofabriq PR is still open: one at a
+    time) or ready for `run`. Read-only."""
+    target = check_repo(repo)
+    steps = Steps(Console(stderr=True, soft_wrap=True))
+    tickets: list[Issue] = []
+    for n in numbers:
+        issue = _refresh_issue(target, n, steps)
+        if issue is None:
+            typer.echo(f"#{n} is not an issue of {target}", err=True)
+            raise typer.Exit(code=1)
+        tickets.append(issue)
+    prs = _open_prs(target)
+    if prs is None:
+        steps.note("PRs", "skipped: no GITHUB_TOKEN, open PRs unknown", ok=False)
+    for sl in intake_mod.slices(tickets, _blocker_issues(tickets), prs or []):
+        why = f"  {sl.reason}" if sl.reason else ""
+        typer.echo(f"  #{sl.number:<5} {sl.state:<8}{why}  {sl.title}")
+
+
 def _route(issue_type: str) -> refine_mod.Route:
     types = typing.get_args(triage_mod.IssueType.__value__)
     if issue_type not in types:
@@ -1060,6 +1115,10 @@ def run(
     if issue is None:
         typer.echo(f"#{number} is not in {settings.issues_dir}", err=True)
         raise typer.Exit(code=1)
+    (ticket,) = intake_mod.slices([issue], _blocker_issues([issue]), [])
+    if ticket.state == "blocked":  # before paying for refine
+        typer.echo(f"#{number} {ticket.reason}: start it once that is merged", err=True)
+        raise typer.Exit(code=1)
     bug = planted_for(issue.title, load_bugs(bugs, seed), seed)
     if bug is not None and bug.kind != "logic":
         bug = None  # a UI bug's repro is Playwright: not run by the loop yet
@@ -1085,6 +1144,10 @@ def run(
             r = refined.run
             done(f"{r.turns} turns, {r.latency_ms / 1000:.0f} s, ${r.cost_usd:.3f}")
     _show_spec(refined)
+    reasons = intake_mod.not_ready(refined, refine_mod.tracked(clone, refined.commit))
+    if reasons:  # back to the dev: edit the spec (--spec) or the ticket
+        typer.echo(f"not ready for the loop: {'; '.join(reasons)}", err=True)
+        raise typer.Exit(code=1)
     if not yes and not typer.confirm("Approve the plan and let the agent edit?"):
         raise typer.Exit(code=1)
     worktree = settings.work_dir / f"{target.replace('/', '-')}-{number}"

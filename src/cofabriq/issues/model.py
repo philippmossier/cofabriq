@@ -45,9 +45,10 @@ class Issue(BaseModel):
     `duplicate_of` / `duplicates` are GitHub's own duplicate marks (net of
     unmark events) seen from this issue's timeline, one list per direction.
     `Duplicate of #N` comments are not parsed here: that is the eval set's job.
-    `closed_by` is what closed it last: a merged pull request or a commit that
-    references it, None for a person or an open issue (and for stores fetched
-    before the field existed).
+    `blocked_by` is GitHub's native "blocked by" list (empty for stores
+    fetched before the field existed). `closed_by` is what closed it last:
+    a merged pull request or a commit that references it, None for a person
+    or an open issue (and for stores fetched before the field existed).
     """
 
     model_config = ConfigDict(frozen=True)
@@ -68,6 +69,7 @@ class Issue(BaseModel):
     comments: list[Comment]
     duplicate_of: list[IssueRef]  # this issue is a duplicate of these
     duplicates: list[IssueRef]  # these were marked as duplicates of this one
+    blocked_by: list[IssueRef] = []  # GitHub's native dependencies (0.3)
 
 
 class IssueSource(Protocol):

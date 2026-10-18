@@ -14,8 +14,9 @@ API = "https://api.github.com"
 PAGE_SIZE = 50
 MAX_RETRIES = 5
 
-# The fields cofabriq keeps per issue: its first N comments, duplicate marks
-# and what closed it last (a merged pull request, a commit, or a person).
+# The fields cofabriq keeps per issue: its first N comments, duplicate marks,
+# what closed it last (a merged pull request, a commit, or a person) and the
+# issues blocking it.
 FIELDS = """
 fragment IssueFields on Issue {
   number title body state stateReason createdAt updatedAt closedAt
@@ -41,11 +42,23 @@ fragment IssueFields on Issue {
   closed: timelineItems(last: 1, itemTypes: [CLOSED_EVENT]) {
     nodes { ... on ClosedEvent { closer { __typename } } }
   }
+  blockedBy(first: 10) { nodes { number repository { nameWithOwner } } }
 }
 
 fragment Target on IssueOrPullRequest {
   ... on Issue { number repository { nameWithOwner } }
   ... on PullRequest { number repository { nameWithOwner } }
+}
+"""
+
+PULLS_QUERY = """
+query($owner: String!, $name: String!) {
+  repository(owner: $owner, name: $name) {
+    pullRequests(states: OPEN, first: 100,
+                 orderBy: {field: CREATED_AT, direction: DESC}) {
+      nodes { number headRefName }
+    }
+  }
 }
 """
 
@@ -248,6 +261,16 @@ class GitHubIssueSource:
         node = data["repository"]["issue"]
         return _issue(self._repo, node) if node else None
 
+    def open_pulls(self, head_prefix: str) -> list[int]:
+        """Numbers of the repo's open pull requests whose branch starts with
+        `head_prefix` (cofabriq's own: `cofabriq/`), newest 100 only."""
+        owner, name = self._repo.split("/")
+        data = self._query(PULLS_QUERY, {"owner": owner, "name": name})
+        if data["repository"] is None:
+            raise GitHubError(f"repository not found: {self._repo}")
+        nodes: list[Json] = data["repository"]["pullRequests"]["nodes"]
+        return [n["number"] for n in nodes if n["headRefName"].startswith(head_prefix)]
+
     def history(self, numbers: Sequence[int]) -> dict[int, History]:
         """Labels each issue ever carried and whether its body was edited,
         HISTORY_BATCH issues per request. Absent: not an issue (any more).
@@ -400,4 +423,12 @@ def _issue(repo: str, node: Json) -> Issue:
         ],
         duplicate_of=[c for d, c in pairs if d == me],
         duplicates=[d for d, c in pairs if c == me],
+        blocked_by=_blockers(node),
     )
+
+
+def _blockers(node: Json) -> list[IssueRef]:
+    """`blockedBy` (absent in recorded fixtures from before 0.3)."""
+    blocked: Json | None = node.get("blockedBy")
+    nodes: list[Json] = blocked["nodes"] if blocked else []
+    return [r for r in map(_ref, nodes) if r is not None]
