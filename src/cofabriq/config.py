@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     claude_code_oauth_token: SecretStr | None = None
     agent_model: str = "claude-opus-5-5"
     agent_effort: str = "medium"
+    # the kill switch (0.4): no agent starts while this file exists, and one
+    # run (all its agents together) stops at this budget
+    stop_file: Path = Path("data/STOP")
+    run_budget_usd: float = 3.0
     clones_dir: Path = Path("data/clones")
     refine_dir: Path = Path("data/refine")
     work_dir: Path = Path("data/work")  # worktrees of the core loop

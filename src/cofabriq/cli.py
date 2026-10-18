@@ -69,12 +69,17 @@ from cofabriq.loop import publish as publish_mod
 from cofabriq.loop import refine as refine_mod
 from cofabriq.loop import run as run_mod
 from cofabriq.loop.engine import (
+    STOP_ENV,
     AgentError,
     AgentRun,
     ApiKey,
     Auth,
     ClaudeCode,
+    Guard,
+    Guarded,
+    Halted,
     Subscription,
+    stop_reason,
 )
 from cofabriq.loop.sandbox import Podman
 from cofabriq.map import build as map_build_mod
@@ -901,6 +906,7 @@ def _agent() -> ClaudeCode:
         auth=auth,
         model=settings.agent_model,
         effort=settings.agent_effort,
+        stop_file=settings.stop_file,
     )
 
 
@@ -1064,6 +1070,23 @@ def openapi(out: Path = Path("ui/openapi.json")) -> None:
 
 
 @app.command()
+def stop(clear: bool = False) -> None:
+    """The kill switch: no agent starts while the stop file exists (every
+    run and eval in progress ends at its next agent call, status halted).
+    `--clear` removes it. `COFABRIQ_STOP=1` does the same per shell."""
+    path = get_settings().stop_file
+    if clear:
+        path.unlink(missing_ok=True)
+    else:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"stopped at {datetime.now(UTC):%Y-%m-%d %H:%M:%S} UTC\n")
+    reason = stop_reason(path)
+    typer.echo(
+        f"agents stopped: {reason}" if reason else f"agents may run ({STOP_ENV} unset)"
+    )
+
+
+@app.command()
 def intake(
     numbers: list[int], repo: str = "philippmossier/local-ai-chat-playground"
 ) -> None:
@@ -1132,7 +1155,9 @@ def run(
         typer.echo(f"no [loop] in the target file of {target}", err=True)
         raise typer.Exit(code=1)
     write_token = _write_token(target) if apply else None  # before paying
-    agent = _agent()
+    # every agent of this run (refine, test, build, review, proofs) shares
+    # one budget: the kill switch's run cap
+    agent = Guarded(_agent(), Guard(settings.run_budget_usd))
     steps = Steps(Console(stderr=True, soft_wrap=True))
     clone = settings.clones_dir / target.replace("/", "-")
     with steps.step("clone", f"updating {clone}") as done:
@@ -1165,7 +1190,7 @@ def run(
         with steps.step("refine", f"reading the code ({agent.model})") as done:
             try:
                 refined = refine_mod.refine(issue, clone, agent, route)
-            except (AgentError, refine_mod.NoCriteria) as exc:
+            except (AgentError, Halted, refine_mod.NoCriteria) as exc:
                 typer.echo(str(exc), err=True)
                 raise typer.Exit(code=1) from exc
             r = refined.run
@@ -1212,15 +1237,18 @@ def run(
             # review, findings proven by a test, fixed, reviewed again
             gated = None
             if result.status == "green":
-                gated = gate_mod.review_gate(
-                    spec=refined.spec,
-                    rules=rules,
-                    result=result,
-                    worktree=worktree,
-                    reader=agent,
-                    editor=agent.editing(budget_usd=1.0),
-                    sandbox=sandbox,
-                )
+                try:
+                    gated = gate_mod.review_gate(
+                        spec=refined.spec,
+                        rules=rules,
+                        result=result,
+                        worktree=worktree,
+                        reader=agent,
+                        editor=agent.editing(budget_usd=1.0),
+                        sandbox=sandbox,
+                    )
+                except Halted as exc:  # no review, so no PR body either
+                    typer.echo(f"halted before the review was done: {exc}", err=True)
             # no verdicts by default: an issue without a planted bug has no
             # answer key, and with --planted the agent already had the repro
             judged = loop_eval.Judged(result=result)
@@ -1759,6 +1787,7 @@ def eval_loop(
     def run(bug: PlantedBug) -> loop_eval.Judged:
         refined = specs[bug.key]
         worktree = settings.work_dir / f"{prefix}-{bug.key}"
+        guarded = Guarded(agent, Guard(settings.run_budget_usd))  # per bug
         try:
             result = run_mod.run_loop(
                 repo=target,
@@ -1769,7 +1798,7 @@ def eval_loop(
                 worktree=worktree,
                 repro_file=repro_path(bugs, bug) if planted else None,
                 rules=rules,
-                agent=agent,
+                agent=guarded,
                 sandbox=sandbox,
                 instructions=review_eval.WRONG if wrong else run_mod.INSTRUCTIONS,
             )
@@ -1854,6 +1883,7 @@ def _eval_loop_features(repo: str, only: str | None, workers: int, path: Path) -
     def run(f: features_eval.Feature) -> loop_eval.Judged:
         refined = specs[f.key]
         worktree = settings.work_dir / f"feature-{f.key}"
+        guarded = Guarded(agent, Guard(settings.run_budget_usd))  # per feature
         patch = features_eval.removal_path(path, f.key)
         try:
             result = run_mod.run_loop(
@@ -1865,7 +1895,7 @@ def _eval_loop_features(repo: str, only: str | None, workers: int, path: Path) -
                 worktree=worktree,
                 repro_file=None,
                 rules=rules,
-                agent=agent,
+                agent=guarded,
                 sandbox=sandbox,
                 route="feature",
                 prepare=partial(features_eval.remove, patch=patch),

@@ -33,7 +33,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from cofabriq.loop.engine import Agent, AgentError, AgentRun
+from cofabriq.loop.engine import Agent, AgentError, AgentRun, Halted
 from cofabriq.loop.refine import Route, Spec, git_env
 from cofabriq.loop.sandbox import Ran, Sandbox
 
@@ -44,7 +44,13 @@ MAX_ATTEMPTS = 3
 _worktrees = threading.Lock()
 
 type Status = Literal[
-    "green", "escalated", "not_red", "no_repro", "setup_failed", "test_rejected"
+    "green",
+    "escalated",
+    "not_red",
+    "no_repro",
+    "setup_failed",
+    "test_rejected",
+    "halted",  # the kill switch: a stop, or the run's budget spent
 ]
 
 
@@ -598,38 +604,41 @@ def run_loop(
         ran = Ran(ok=False, seconds=installed.seconds, output="\n".join(stray[:20]))
         return result("setup_failed", setup_s, _result("install wrote", ran), [])
 
-    # 2. reproduce: the repro must fail on the unchanged code, else stop
-    if repro_file is None:
-        reproduced, repro, red = reproduce(
+    try:
+        # 2. reproduce: the repro must fail on the unchanged code, else stop
+        if repro_file is None:
+            reproduced, repro, red = reproduce(
+                spec=spec,
+                rules=rules,
+                worktree=worktree,
+                agent=agent,
+                sandbox=sandbox,
+                instructions=ACCEPTANCE if route == "feature" else REPRODUCE,
+                route=route,
+            )
+            if red is None:
+                return result("no_repro", setup_s, None, [])
+            if approve_test is not None and not approve_test(diff(worktree, [])):
+                return result("test_rejected", setup_s, red, [])
+        else:
+            ran = sandbox(repro_command(rules, repro), worktree, network=False)
+            red = _result("repro", ran)
+            if red.ok:
+                return result("not_red", setup_s, red, [])
+        # 3. fix loop, then 4. three tries used up: a human takes over
+        attempts = fix(
             spec=spec,
             rules=rules,
             worktree=worktree,
             agent=agent,
             sandbox=sandbox,
-            instructions=ACCEPTANCE if route == "feature" else REPRODUCE,
-            route=route,
+            repro=repro,
+            planted=planted,
+            failed=[red],
+            instructions=instructions,
         )
-        if red is None:
-            return result("no_repro", setup_s, None, [])
-        if approve_test is not None and not approve_test(diff(worktree, [])):
-            return result("test_rejected", setup_s, red, [])
-    else:
-        ran = sandbox(repro_command(rules, repro), worktree, network=False)
-        red = _result("repro", ran)
-        if red.ok:
-            return result("not_red", setup_s, red, [])
-    # 3. fix loop, then 4. three tries used up: a human takes over
-    attempts = fix(
-        spec=spec,
-        rules=rules,
-        worktree=worktree,
-        agent=agent,
-        sandbox=sandbox,
-        repro=repro,
-        planted=planted,
-        failed=[red],
-        instructions=instructions,
-    )
+    except Halted:  # the kill switch: what was done so far, no more agents
+        return result("halted", setup_s, None, [])
     status: Status = "green" if attempts[-1].green else "escalated"
     return result(status, setup_s, red, attempts)
 

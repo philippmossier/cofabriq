@@ -103,6 +103,17 @@ apply to the planted code. Rebuilt, the key proves 22/22; that test,
 re-checked against the rebuilt patch, is valid (the stored run still says
 8/12).
 
+### Kill switch
+
+No agent starts while `data/STOP` exists (`cofabriq stop`) or
+`COFABRIQ_STOP` is set; runs in progress end at their next agent call with
+status `halted`, which is not an agent error, so no retry spends an attempt
+on it. One run's agents share a budget (default $3; each call's own cap is
+clamped to what is left, failed calls count), and every agent run has a
+40-turn cap (5-13 in practice). Tested: unit tests for each, and live,
+`cofabriq stop` then `eval loop` ended the bug with no agent call ($0.00,
+the install only).
+
 ## 0.3: the feature route
 
 Features take the same loop once the spec is the truth. The playground has

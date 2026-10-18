@@ -22,6 +22,13 @@ Flags that make a run reproducible and contained:
   confined to the working directory.
 - `--strict-mcp-config`: no MCP servers.
 - `--max-budget-usd`: the run stops at the cap.
+- `--max-turns`: and at a turn cap far above a normal run's (5-13), so a
+  stuck agent ends before the budget does.
+
+The kill switch (0.4): a stop file or `COFABRIQ_STOP` halts every agent
+call before it starts (`Halted`, not an `AgentError`: the loop doesn't
+spend its next attempt on it), and a `Guard` gives one run a budget across
+all its agents.
 - `--permission-mode acceptEdits`, only with a writing tool: a headless run
   has nobody to ask. `--restricted` still keeps edits in the working
   directory and refuses git and settings files. No tool runs code: what the
@@ -32,6 +39,7 @@ import json
 import os
 import subprocess
 import tempfile
+import threading
 import time
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -52,7 +60,29 @@ class AgentRun(BaseModel):
 
 
 class AgentError(RuntimeError):
-    pass
+    """A run that ended without a usable answer; `cost_usd`: what it still
+    cost (a run stopped at its budget or turn cap is billed)."""
+
+    def __init__(self, message: str, cost_usd: float = 0.0) -> None:
+        super().__init__(message)
+        self.cost_usd = cost_usd
+
+
+class Halted(RuntimeError):
+    """The kill switch: a stop was asked for, or the run's budget is spent.
+    Not an `AgentError`, so no retry catches it."""
+
+
+STOP_ENV = "COFABRIQ_STOP"
+
+
+def stop_reason(stop_file: Path) -> str | None:
+    """Why agents must not start, or None: the stop file or the env var."""
+    if os.environ.get(STOP_ENV, "") not in ("", "0"):
+        return f"{STOP_ENV} is set"
+    if stop_file.exists():
+        return f"{stop_file} exists (`cofabriq stop --clear` removes it)"
+    return None
 
 
 @dataclass(frozen=True)
@@ -83,8 +113,10 @@ class ClaudeCode:
     effort: str = "medium"
     tools: tuple[str, ...] = READ_ONLY
     budget_usd: float = 1.0
+    max_turns: int = 40
     timeout_s: float = 600
     binary: str = "claude"
+    stop_file: Path = Path("data/STOP")
 
     def editing(self, budget_usd: float) -> "ClaudeCode":
         """The same agent with Edit/Write (the implementer of the loop)."""
@@ -114,6 +146,8 @@ class ClaudeCode:
             self.effort,
             "--max-budget-usd",  # the run stops at this cost
             str(self.budget_usd),
+            "--max-turns",  # and at this many turns
+            str(self.max_turns),
             "--output-format",  # one JSON result: answer, cost, turns
             "json",
             "--json-schema",  # the final answer must match this schema
@@ -121,6 +155,9 @@ class ClaudeCode:
         ]
 
     def __call__(self, prompt: str, schema: dict[str, object], cwd: Path) -> AgentRun:
+        reason = stop_reason(self.stop_file)
+        if reason is not None:
+            raise Halted(f"stopped: {reason}")
         start = time.perf_counter()
         with tempfile.TemporaryDirectory(prefix="cofabriq-claude-") as config:
             done = subprocess.run(
@@ -175,10 +212,11 @@ def parse(stdout: str, stderr: str, latency_ms: int) -> AgentRun:
         result = _Result.model_validate_json(stdout)
     except ValidationError as exc:
         raise AgentError(f"no JSON from claude: {stderr.strip()[:500]}") from exc
+    cost = result.total_cost_usd
     if result.is_error or result.subtype != "success":
-        raise AgentError(f"claude run failed: {result.result or result.subtype}")
+        raise AgentError(f"claude run failed: {result.result or result.subtype}", cost)
     if result.structured_output is None:
-        raise AgentError("claude returned no structured output")
+        raise AgentError("claude returned no structured output", cost)
     return AgentRun(
         output=result.structured_output,
         model=next(iter(result.model_usage), "unknown"),
@@ -186,3 +224,54 @@ def parse(stdout: str, stderr: str, latency_ms: int) -> AgentRun:
         turns=result.num_turns,
         latency_ms=latency_ms,
     )
+
+
+class Guard:
+    """One run's budget across all its agents (refine, test writer,
+    builder, reviewer, proofs). Thread-safe: an eval runs several bugs at
+    once, each with its own guard."""
+
+    def __init__(self, budget_usd: float) -> None:
+        self.budget_usd = budget_usd
+        self.spent_usd = 0.0
+        self._lock = threading.Lock()
+
+    def remaining(self) -> float:
+        with self._lock:
+            return self.budget_usd - self.spent_usd
+
+    def add(self, cost_usd: float) -> None:
+        with self._lock:
+            self.spent_usd += cost_usd
+
+
+@dataclass(frozen=True)
+class Guarded:
+    """An agent whose calls count against a `Guard`: each call's own budget
+    is clamped to what the run has left, and none starts once it is spent."""
+
+    agent: ClaudeCode
+    guard: Guard
+
+    @property
+    def model(self) -> str:
+        return self.agent.model
+
+    def editing(self, budget_usd: float) -> "Guarded":
+        return Guarded(self.agent.editing(budget_usd), self.guard)
+
+    def __call__(self, prompt: str, schema: dict[str, object], cwd: Path) -> AgentRun:
+        left = self.guard.remaining()
+        if left <= 0.01:
+            spent = self.guard.spent_usd
+            raise Halted(
+                f"run budget ${self.guard.budget_usd:.2f} spent (${spent:.2f})"
+            )
+        clamped = replace(self.agent, budget_usd=min(self.agent.budget_usd, left))
+        try:
+            run = clamped(prompt, schema, cwd)
+        except AgentError as exc:  # a failed run still cost something
+            self.guard.add(exc.cost_usd)
+            raise
+        self.guard.add(run.cost_usd)
+        return run
