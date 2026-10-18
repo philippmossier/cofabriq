@@ -6,10 +6,10 @@ Small, low-risk issues go through **autopilot**: triaged, implemented, gated
 by the repository's own CI, reviewed and handed to the dev as a draft PR.
 Features go the same way once their acceptance criteria are approved: the
 agent writes the acceptance test first, and it is frozen before any code.
-Today, in 0.4: bug reports and small feature requests to a draft PR,
+Today, in 0.5: bug reports and small feature requests to a draft PR,
 including bugs that only show in a browser, tried on a demo app with bugs
-planted and features removed on purpose, and a viewer that shows every
-step.
+planted and features removed on purpose. A run waits for the dev at each
+approval, as long as it takes, and the dev approves in the browser.
 
 What happens to one real bug report. A user filed
 [#54](https://github.com/philippmossier/local-ai-chat-playground/issues/54):
@@ -148,6 +148,39 @@ criteria and readiness, every run from the failing test to the review
 gate's proofs and the PR body. Self-hosted by design: it runs where the
 code is, with your keys ([ADR-009](docs/adr/009-self-hosted-not-saas-ui-in-the-repo.md)).
 
+## From a fuzzy note, approved in the browser (0.5)
+
+A rough note, the kind the `/ticket` skill takes:
+
+> just sent msg shows "Today 8:13 PM", would be nicer to say "just now"
+> for the first minute (german: gerade eben). other devices clock can be
+> a bit ahead
+
+Following the skill's rules (the note kept verbatim, nothing invented) it
+became
+[#83](https://github.com/philippmossier/local-ai-chat-playground/issues/83),
+and then:
+
+1. `cofabriq intake 83`: ready (no blocker, no open cofabriq PR).
+2. `cofabriq flow start 83 --type feature`: refine writes 8 acceptance
+   criteria (under 60 s "Just now", 59,999 ms still, 60 s not, a clock
+   slightly ahead, German), and the run **stops at the plan gate**. The
+   process exits; the run waits in Postgres.
+3. In the browser (`cofabriq serve --write`): **Approve the plan.** The
+   agent writes the acceptance test, it fails on the current code, and the
+   run stops again at the **test gate**.
+4. **Approve the test.** From here it's frozen. The build is a two-line
+   early return, the checks and the review gate pass, and the draft PR
+   body lands in the viewer. $0.14 for test and build (API list price).
+
+<img src="docs/demo/gate-test.png" width="760" alt="The browser gate at the test step for #83: Approve or Reject, the frozen test below it (expects Just now at 5 s, at the same instant and at 59,999 ms), and the spec's problem statement">
+
+Each pause is a step boundary of a LangGraph graph checkpointed in
+Postgres, so a run can wait for hours, in another process
+([ADR-010](docs/adr/010-langgraph-for-the-outer-loop-gates-as-nodes.md)).
+Approving needs the token `serve --write` prints once; any other page in
+the browser is refused.
+
 ## UI bugs (0.4)
 
 Some bugs only show in a browser. A user filed this one:
@@ -266,12 +299,17 @@ uv run cofabriq run 54 --repo $REPO        # refine, plan gate, repro, fix, revi
 uv run cofabriq run <n> --type feature     # a feature request: criteria, test gate, then the build
 ```
 
-Look at the specs and runs in the browser:
+Look at the specs and runs in the browser, or approve runs there:
 
 ```bash
 cd ui && pnpm install && cd ..
 make ui && uv run cofabriq serve           # http://127.0.0.1:8765, read-only
+uv run cofabriq flow start 54              # refine, then wait at the plan gate
+uv run cofabriq serve --write              # open the printed URL, approve under Flows
 ```
+
+From a rough note to a ticket: `ln -s "$PWD/skills/ticket" ~/.claude/skills/ticket`,
+then `/ticket <note>` in your own Claude Code session ([intake](docs/intake.md)).
 
 `--apply` opens the draft PR on GitHub (needs `GITHUB_WRITE_TOKEN`,
 playground only). For your own runs, the agent can use your Claude plan
@@ -289,7 +327,7 @@ UI's checks when `ui/` changed.
 - [x] **0.3** small features: acceptance criteria, a test frozen before
       code, intake of tickets, the read-only viewer
 - [x] **0.4** UI bugs in the loop (a browser in the sandbox), a kill switch
-- [ ] **0.5** approve plans and tests in the browser; from a fuzzy idea to
+- [x] **0.5** approve plans and tests in the browser; from a fuzzy idea to
       a ticket
 - [ ] **0.6** a real repository with tests
 - [ ] **Later:** self-host packaging, a second reviewer model, learning

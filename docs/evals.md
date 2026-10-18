@@ -75,6 +75,21 @@ right published 10/10; wrong fixed 8/8, **leaked 0**; 17 proof tests, all
 valid; $0.289 per case notional ($0.201 before: the extra proofs land on
 the wrong fixes only, every right fix is approved).
 
+## 0.5: runs that wait, approved in the browser
+
+0.5 adds no new eval set; what it changes is checked by running it.
+
+| Check | Result |
+| ----- | ------ |
+| LangGraph spike, against criteria set before it | ~300 lines on the loop's stages; resume live across 3 processes; evals untouched (they call the same stages) |
+| a flow approved in a headless browser | #54 (logic) and #69 (UI bug): done, review approved, recorded for the viewer |
+| the whole path, live | rough note -> /ticket -> #83 -> intake ready -> plan and test approved in the browser -> green first try, review approved, PR body; $0.14 for test and build |
+| the browser gate's trust boundary | a rebinding Host 403, another page's Origin 403, no or wrong token 401, read-only without a token 405 (unit tests and live) |
+
+One real run is a demo, not a rate. What it showed: the flow skipped the
+readiness check `run` does, and a feature's PR title said "Fix"; both
+fixed in 0.5.
+
 ## 0.4: UI bugs in the loop
 
 The 12 planted UI bugs (a button that never enables, a sidebar sorted the
