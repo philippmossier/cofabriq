@@ -220,6 +220,8 @@ export interface RunTrace {
   gate: string | null;
   rounds: ReviewRound[];
   pr_body: string | null;
+  sentinel: string[];
+  evidence: string[];
 }
 
 export type SpecSummaryRoute = typeof SpecSummaryRoute[keyof typeof SpecSummaryRoute];

@@ -154,6 +154,8 @@ class RunTrace(RunSummary):
     gate: str | None  # approved | unproven | blocked; None: no gate ran
     rounds: list[ReviewRound]
     pr_body: str | None
+    sentinel: list[str]  # the target's invariant broken: why it's blocked
+    evidence: list[str]  # screenshot URLs of the browser test after the change
 
 
 class FlowSummary(BaseModel):
@@ -217,6 +219,7 @@ def _file(folder: Path, name: str) -> Path:
 
 
 _object = TypeAdapter(dict[str, object])
+_names = TypeAdapter(list[str])
 _objects = TypeAdapter(list[dict[str, object]])
 
 
@@ -273,6 +276,7 @@ class _Stored(BaseModel):
     judged: Judged
     gated: Gated | None = None
     pr_body: str | None = None
+    evidence: list[str] = []  # file names in the run's folder
 
 
 def _runs_in(path: Path) -> list[_Stored]:
@@ -298,6 +302,10 @@ def _runs_in(path: Path) -> list[_Stored]:
         gated = Gated.model_validate(record["gate"]) if record.get("gate") else None
     except ValidationError:
         return []
+    try:
+        names = _names.validate_python(record.get("evidence") or [])
+    except ValidationError:
+        names = []
     body = path.with_suffix(".pr.md")
     return [
         _Stored(
@@ -307,6 +315,7 @@ def _runs_in(path: Path) -> list[_Stored]:
             judged=judged,
             gated=gated,
             pr_body=body.read_text("utf-8") if body.is_file() else None,
+            evidence=names,
         )
     ]
 
@@ -395,6 +404,8 @@ def _trace(s: _Stored) -> RunTrace:
         gate=None if s.gated is None else s.gated.status,
         rounds=rounds,
         pr_body=s.pr_body,
+        sentinel=s.gated.sentinel if s.gated is not None else [],
+        evidence=[f"/api/runs/{s.file}/evidence/{n}" for n in s.evidence],
     )
 
 
@@ -491,6 +502,17 @@ def build(
     @app.get("/api/runs", response_model=list[RunSummary])
     def runs() -> list[RunSummary]:
         return [_summary(s) for path in _files(runs_dir) for s in _runs_in(path)]
+
+    @app.get("/api/runs/{file}/evidence/{name}", include_in_schema=False)
+    def evidence(file: str, name: str) -> FileResponse:
+        """A screenshot of a run, only from that run's own folder."""
+        _file(runs_dir, file)  # the run must exist
+        folder = runs_dir / file
+        if not _NAME.match(name) or not (folder / name).is_file():
+            raise HTTPException(status_code=404, detail="no such file")
+        if (folder / name).resolve().parent != folder.resolve():
+            raise HTTPException(status_code=404, detail="no such file")
+        return FileResponse(folder / name)
 
     @app.get("/api/runs/{file}/{key}", response_model=RunTrace)
     def run(file: str, key: str) -> RunTrace:

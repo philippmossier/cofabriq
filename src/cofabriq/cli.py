@@ -1419,6 +1419,7 @@ def run(
         raise typer.Exit(code=1)
     worktree = settings.work_dir / f"{target.replace('/', '-')}-{number}"
     sandbox = Podman(image=rules.image, setup=rules.setup)
+    stem = f"{target.replace('/', '-')}-{number}-{datetime.now(UTC):%Y%m%dT%H%M%S}"
     test_gate = refined.route == "feature" and not yes
     loop_step = (
         _plain_step(steps, "loop")  # the test gate prompts: no spinner over it
@@ -1458,6 +1459,13 @@ def run(
                     )
                 except Halted as exc:  # no review, so no PR body either
                     typer.echo(f"halted before the review was done: {exc}", err=True)
+            # screenshots of the final change, before the judge resets the code
+            evidence: list[str] = []
+            if result.status == "green" and not (gated and gated.status == "blocked"):
+                final = gated.result if gated else result
+                evidence = run_mod.collect_evidence(
+                    rules, worktree, final.repro, sandbox, settings.runs_dir / stem
+                )
             # no verdicts by default: an issue without a planted bug has no
             # answer key, and with --planted the agent already had the repro
             judged = loop_eval.Judged(result=result)
@@ -1481,10 +1489,10 @@ def run(
         tries = len(result.attempts)
         done(f"{result.status}, {tries} attempts, ${result.cost_usd:.3f}")
     _show_loop(judged)
-    stem = f"{target.replace('/', '-')}-{number}-{datetime.now(UTC):%Y%m%dT%H%M%S}"
     out = settings.runs_dir / f"{stem}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     record = judged.model_dump(mode="json")
+    record["evidence"] = evidence
     if gated is not None:
         record["gate"] = gated.model_dump(mode="json")
         _show_gate(gated)
@@ -1499,6 +1507,7 @@ def run(
             review=gated.review,
             rounds=gated.rounds,
             route=refined.route,
+            evidence=len(evidence),
         )
         record["draft"] = draft.model_dump(mode="json")
         body = settings.runs_dir / f"{stem}.pr.md"

@@ -184,7 +184,11 @@ def _where(f: Finding) -> str:
 
 
 def _summary(
-    result: LoopResult, risk: Risk, review: Review | None, rounds: list[Round]
+    result: LoopResult,
+    risk: Risk,
+    review: Review | None,
+    rounds: list[Round],
+    evidence: int = 0,
 ) -> str:
     """The lines that decide how hard the dev looks."""
     top = sorted({f.component for f in risk.files if f.tier == risk.tier})
@@ -208,6 +212,11 @@ def _summary(
         f"- **Checks:** the test was red before the change; {checks} green after"
         + proven
     )
+    if evidence:
+        lines.append(
+            f"- **Screenshots:** {evidence} from the browser test after the change "
+            "(in cofabriq's viewer)"
+        )
     return "\n".join(lines)
 
 
@@ -332,13 +341,15 @@ def render(
     risk: Risk,
     review: Review | None,
     rounds: list[Round] | None = None,
+    evidence: int = 0,
 ) -> str:
-    """The PR body for a green loop result; `rounds`: the review gate's."""
+    """The PR body for a green loop result; `rounds`: the review gate's;
+    `evidence`: how many screenshots the viewer holds for it."""
     rounds = rounds or []
     tests, change = split_diff(result.diff, result.repro)
     parts = [
         f"Fixes #{result.number}.",
-        _summary(result, risk, review, rounds),
+        _summary(result, risk, review, rounds, evidence),
         *_spec(spec),
         *_test(result, tests),
         "### The change",
@@ -362,9 +373,17 @@ def draft(
     review: Review | None,
     rounds: list[Round] | None = None,
     route: Route = "bug",
+    evidence: int = 0,
 ) -> Draft:
     risk = risk_of(result.changed, tests, risk_rules, components)
     kind = "Feature" if route == "feature" else "Fix"
     title = f"{kind} #{result.number}: {unref(issue_title)}"[:200]
-    body = render(spec=spec, result=result, risk=risk, review=review, rounds=rounds)
+    body = render(
+        spec=spec,
+        result=result,
+        risk=risk,
+        review=review,
+        rounds=rounds,
+        evidence=evidence,
+    )
     return Draft(title=title, body=body, risk=risk, review=review)

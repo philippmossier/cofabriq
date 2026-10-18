@@ -81,3 +81,24 @@ unlisted = "medium"
 name = "privacy"
 policy_file = "vite.config.ts"
 about = "Nothing typed leaves the device: no request to a host the CSP doesn't allow; the CSP is never widened without a human."
+
+# Evidence (0.6): after a green run, the agent's browser tests run once more
+# with screenshots on, through an override config written into the ignored
+# test-results/ (it extends playwright.config.ts, so the diff stays clean).
+# The images go next to the run's record; the viewer shows them.
+[loop.evidence]
+suite = "playwright"
+glob = "test-results/cofabriq-evidence/**/*.png"
+cmd = """mkdir -p test-results && cat > test-results/cofabriq.config.ts <<'CFG'
+import path from "node:path";
+import base from "../playwright.config";
+const root = path.resolve(import.meta.dirname, "..");
+export default {
+  ...base,
+  testDir: root,
+  outputDir: path.join(root, "test-results", "cofabriq-evidence"),
+  use: { ...base.use, screenshot: "on" },
+  webServer: { ...base.webServer, cwd: root },
+};
+CFG
+pnpm exec playwright test --config test-results/cofabriq.config.ts --retries=0 --reporter=line"""

@@ -56,6 +56,7 @@ from cofabriq.loop.run import (
     Rules,
     Status,
     build_stage,
+    collect_evidence,
     diff,
     pack,
     remove_worktree,
@@ -234,9 +235,19 @@ def build_graph(deps: Deps) -> StateGraph[FlowState]:
             return {}
         stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
         stem = f"{s.issue.repo.replace('/', '-')}-{s.issue.number}-{stamp}"
+        evidence: list[str] = []
+        if s.gated.status != "blocked":  # screenshots of the final change
+            evidence = collect_evidence(
+                deps.rules,
+                deps.worktree(s.issue),
+                s.gated.result.repro,
+                deps.sandbox,
+                deps.runs_dir / stem,
+            )
         out: dict[str, object] = {
             "result": s.gated.result.model_dump(mode="json"),
             "gate": s.gated.model_dump(mode="json"),
+            "evidence": evidence,
         }
         deps.runs_dir.mkdir(parents=True, exist_ok=True)
         if s.gated.status != "blocked" and deps.targets_dir is not None:
@@ -250,6 +261,7 @@ def build_graph(deps: Deps) -> StateGraph[FlowState]:
                 review=s.gated.review,
                 rounds=s.gated.rounds,
                 route=s.route,
+                evidence=len(evidence),
             )
             out["draft"] = draft.model_dump(mode="json")
             (deps.runs_dir / f"{stem}.pr.md").write_text(draft.body, "utf-8")

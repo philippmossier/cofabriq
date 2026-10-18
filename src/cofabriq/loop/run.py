@@ -71,6 +71,16 @@ class Suite(BaseModel):
     about: str = ""
 
 
+class Evidence(BaseModel):
+    """`[loop.evidence]`: after a green run, the agent's tests of `suite`
+    run once more with `cmd` (their paths appended) and the files matching
+    `glob` are kept as evidence (screenshots of a browser test)."""
+
+    suite: str
+    cmd: str
+    glob: str
+
+
 class Rules(BaseModel):
     """`[loop]` in `targets/<owner>-<name>.toml`: how to set up a worktree
     and what has to pass. Without `suites`, every test runs with `repro`
@@ -89,6 +99,7 @@ class Rules(BaseModel):
     # use what the feature adds, so a type check can't gate it
     acceptance_checks: list[str] | None = None
     suites: list[Suite] = []  # 0.4: e.g. vitest for logic, Playwright for UI
+    evidence: Evidence | None = None  # 0.6: screenshots after a green run
 
     def suite(self, path: str) -> Suite | None:
         return next((s for s in self.suites if path.endswith(s.suffix)), None)
@@ -787,3 +798,37 @@ def fix(
             break
         failed = [c for c in checks if not c.ok]  # errors only, to the next try
     return attempts
+
+
+MAX_EVIDENCE = 6
+
+
+def collect_evidence(
+    rules: Rules, worktree: Path, tests: list[str], sandbox: Sandbox, dest: Path
+) -> list[str]:
+    """The evidence of a green run, copied to `dest`: its tests of the
+    evidence suite run once more (no network), at most MAX_EVIDENCE files
+    kept, named in order. Empty when the target declares none or the run
+    has no such test; a failed rerun keeps nothing (the run was green
+    already: the screenshots are for the dev, not a check)."""
+    ev = rules.evidence
+    if ev is None:
+        return []
+    picked = [
+        t for t in tests if (s := rules.suite(t)) is not None and s.name == ev.suite
+    ]
+    if not picked:
+        return []
+    ran = sandbox(
+        " ".join([ev.cmd, *map(shlex.quote, picked)]), worktree, network=False
+    )
+    if not ran.ok:
+        return []
+    found = sorted(worktree.glob(ev.glob))[:MAX_EVIDENCE]
+    dest.mkdir(parents=True, exist_ok=True)
+    names: list[str] = []
+    for n, path in enumerate(found, 1):
+        name = f"{n}-{path.parent.name[:60]}{path.suffix}"
+        shutil.copyfile(path, dest / name)
+        names.append(name)
+    return names

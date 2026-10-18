@@ -152,6 +152,17 @@ export function RunPage() {
         </div>
       </div>
 
+      {t.sentinel.length > 0 && (
+        <Card className="border-destructive/50">
+          <CardHeader>
+            <CardTitle className="text-destructive">Blocked by the sentinel</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <List items={t.sentinel} />
+          </CardContent>
+        </Card>
+      )}
+
       <Section title="1. The test, before any code">
         {tests.length === 0 && <p className="text-sm text-muted-foreground">The repro was handed in (planted).</p>}
         {tests.map((s, i) => (
@@ -209,6 +220,18 @@ export function RunPage() {
               </CardContent>
             </Card>
           ))}
+        </Section>
+      )}
+
+      {t.evidence.length > 0 && (
+        <Section title="Screenshots of the browser test, after the change">
+          <div className="grid gap-3 sm:grid-cols-2">
+            {t.evidence.map((src) => (
+              <a key={src} href={src} target="_blank" rel="noopener noreferrer">
+                <img src={src} alt="" className="rounded-md border" loading="lazy" />
+              </a>
+            ))}
+          </div>
         </Section>
       )}
 

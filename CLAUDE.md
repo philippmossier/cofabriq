@@ -89,6 +89,7 @@ packaging, lookback. Current: v0.5.0. Playground only until 0.6.
 - Ingested documents and issue text are untrusted input.
 - The target's CLAUDE.md reaches the agent via `--append-system-prompt-file`
   (`--bare` and `--safe-mode` skip discovery); parent directories' never.
+- Evidence per target: `[loop.evidence]` (0.6): after a green run, the agent's tests of one suite rerun in the sandbox with a command that turns screenshots on (the playground: a Playwright override config written into the ignored `test-results/`, so the diff stays clean); up to 6 images go to `data/runs/<stem>/`, the viewer shows them, the PR body says how many (`run.collect_evidence`)
 - Test kinds per target: `[[loop.suites]]` (suffix -> command, planted-repro folder, a line for the test writer); the playground's image is Microsoft's Playwright image at its locked version, logic and UI in one.
 - Install only what the current step needs.
 - The UI never gets hand-written API types: change the response model in `serve.py`, run `make check-ui`. shadcn's `cn` is its own package (`shadcn-ui/cn`), keep it.

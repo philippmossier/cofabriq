@@ -114,6 +114,13 @@ UI, features, hard bugs): 0 false alarms (`eval sentinel`). The leaks it
 must catch (a telemetry fetch, a web font, a lookalike host, a widened
 CSP) are unit tests; URLs in comments, tests and docs are left alone.
 
+**Screenshots as evidence** (`[loop.evidence]`): after a green UI run the
+agent's browser test runs once more with screenshots on, through an
+override config in the ignored `test-results/` (the diff stays clean).
+Live on the planted "New chat" bug (#67): 2 screenshots in the viewer and
+a line in the PR body. That run was also the first live retry: the first
+fix left the browser test red, the second turned it green.
+
 ## 0.5: runs that wait, approved in the browser
 
 0.5 adds no new eval set; what it changes is checked by running it.

@@ -938,6 +938,20 @@
               }
             ],
             "title": "Pr Body"
+          },
+          "sentinel": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Sentinel"
+          },
+          "evidence": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Evidence"
           }
         },
         "type": "object",
@@ -960,7 +974,9 @@
           "diff",
           "gate",
           "rounds",
-          "pr_body"
+          "pr_body",
+          "sentinel",
+          "evidence"
         ],
         "title": "RunTrace"
       },
