@@ -168,7 +168,7 @@ def test_quote_must_be_in_the_spec() -> None:
     assert not quoted("must say roughly fixed", SPEC)
 
 
-def test_body_shows_proven_and_unproven_blockers(tmp_path: Path) -> None:
+def test_body_shows_proven_and_unproven_findings(tmp_path: Path) -> None:
     result, worktree = half_fixed(tmp_path)
     reader = Reviews(
         {"verdict": "request_changes", "fixes_cause": False, "findings": [BLOCKER]},
@@ -189,9 +189,9 @@ def test_body_shows_proven_and_unproven_blockers(tmp_path: Path) -> None:
         review=got.review,
         rounds=got.rounds,
     )
-    assert "- **Unproven blockers** (no test could show them, read these):" in body
+    assert "- **Unproven findings** (no test could show them, read these):" in body
     assert "  - `src/a.ts:1` a hunch" in body
-    assert "1 reviewer blocker(s) proven by a test, fixed" in body
+    assert "1 reviewer finding(s) proven by a test, fixed" in body
     assert "**Round 1:** `src/a.ts:1` not exact" in body
     assert 'checking the spec\'s "must say exactly fixed"; fixed on attempt 1' in body
     assert "| round 1 proof 1 |" in body and "| round 1 fix 1 |" in body
@@ -214,3 +214,33 @@ def test_gate_eval_outcomes() -> None:
     assert case("wrong", "blocked", False, True).outcome == "blocked"
     assert case("wrong", "unproven", True, True).outcome == "fixed"
     assert case("wrong", "approved", True, False).outcome == "leaked"  # witness red
+
+
+CONCERN = BLOCKER | {"severity": "concern"}
+NIT = BLOCKER | {"severity": "nit", "text": "style"}
+
+
+def test_a_concern_is_proven_when_the_reviewer_asks_for_changes(
+    tmp_path: Path,
+) -> None:
+    # 0.3: the leaked wrong fix: the defect named, but filed as a concern
+    result, worktree = half_fixed(tmp_path)
+    reader = Reviews(
+        {"verdict": "request_changes", "findings": [CONCERN, NIT]},
+        {},  # round 2: approved
+    )
+    editor = Script(
+        (write("src/p.test.sh", EXACT), {"summary": "s", "spec_quote": "nothing more"}),
+        (write("src/a.ts", "fixed\n"), {"summary": "exact now"}),
+    )
+    got = gate(result, worktree, reader, editor)
+    assert got.status == "approved"
+    assert [p.finding.severity for p in got.rounds[0].proofs] == ["concern"]
+    assert got.rounds[0].proofs[0].proven and got.rounds[0].attempts[-1].green
+
+
+def test_an_approving_reviews_concerns_stay_notes(tmp_path: Path) -> None:
+    result, worktree = half_fixed(tmp_path)
+    reader = Reviews({"verdict": "approve", "findings": [CONCERN, NIT]})
+    got = gate(result, worktree, reader, Script())
+    assert got.status == "approved" and got.rounds[0].proofs == []

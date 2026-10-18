@@ -13,8 +13,10 @@ spec refine made, and says per ticket whether it may start:
     ready    may start
 
 Readiness of a spec is checked in code, never by a model: criteria a test
-can check (features), paths that exist, no open questions, size S or M.
-Anything else goes back to the dev with the reason.
+can check (features), paths that exist, size S or M. Anything else goes
+back to the dev with the reason. Open questions don't stop it: they are
+shown at the plan gate, and the dev's approval there answers them (with
+`--yes` nobody reads them, so there they stop the run).
 """
 
 import re
@@ -100,8 +102,6 @@ def not_ready(refined: Refined, tracked: set[str]) -> list[str]:
     ]
     if missing:
         reasons.append(f"files not in the repo: {', '.join(missing)}")
-    if s.open_questions:
-        reasons.append(f"{len(s.open_questions)} open question(s) for the dev")
     if s.size == "L":
         reasons.append("size L: split it into tickets in your planning session")
     if not s.files:

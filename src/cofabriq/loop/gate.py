@@ -2,22 +2,26 @@
 
 A reviewer's blocker is a claim; a dev can't verify it without running the
 code, and in the human round green checks won over it. So a blocker
-blocks only once a test proves it:
+blocks only once a test proves it. The reviewer's severity is a label, not
+a verdict: when it asks for changes, its concerns are proven the same way
+(0.3: a wrong fix leaked as an unproven concern whose text named the
+defect, 3 runs of 3). Nits never are.
 
     the green loop's change, committed in the worktree (each step below is
     a commit there: a clean layer for the write boundary; the PR's diff is
     taken against the spec's commit, so the layers don't show)
       -> review (own context, read-only)
-      -> per blocker: an agent writes a proof test (test files only), which
+      -> per claim (a blocker; a concern too unless the reviewer
+         approves): an agent writes a proof test (test files only), which
          must quote the spec line it checks, be red on the change, and pass
          types/lint; max 3 tries
       -> proven: the implementer gets the proof tests as more repro (it
          can't change them), max 3 tries -> review again
       -> unproven: shown at the top of the PR body, doesn't block
 
-    approved   no blocker, the reviewer approves
+    approved   no blocker, the reviewer approves (its concerns stay notes)
     unproven   the reviewer is not happy, but proved nothing: a PR, flagged
-    blocked    a proven blocker is left after MAX_ROUNDS reviews, or the
+    blocked    a proven claim is left after MAX_ROUNDS reviews, or the
                fix for it failed: no PR, a human takes over
 
 A proof proves the claim, not that the claim is right: without a reference
@@ -55,12 +59,12 @@ from cofabriq.loop.run import (
 )
 from cofabriq.loop.sandbox import Sandbox
 
-MAX_ROUNDS = 2  # reviews: the first, and one after fixing proven blockers
+MAX_ROUNDS = 2  # reviews: the first, and one after fixing proven claims
 
 type GateStatus = Literal["approved", "unproven", "blocked"]
 
 PROVE = """\
-A reviewer reported the blocker in <finding> about the change in your
+A reviewer reported the problem in <finding> about the change in your
 working directory, which fixes the bug in the spec below. Write a test that
 fails now because of exactly this problem, and passes once it is fixed the
 way the spec asks. Do not fix anything.
@@ -71,7 +75,7 @@ way the spec asks. Do not fix anything.
 - spec_quote: the words of the spec, copied exactly from <spec>, that say
   what the right behaviour is. If the spec does not ask for what the
   finding expects, write no test and leave spec_quote empty: then the
-  finding is an opinion, not a blocker.
+  finding is an opinion, nothing to prove.
 - You cannot run commands. When you finish, your test runs and has to
   fail; {checks} run too and have to pass. You get back what went wrong.
 - summary: what the test checks and why it fails now, one or two sentences.
@@ -127,7 +131,7 @@ class Proof(BaseModel):
 class Round(BaseModel):
     review: Review
     proofs: list[Proof]
-    attempts: list[Attempt]  # the implementer against the proven blockers
+    attempts: list[Attempt]  # the implementer against the proven claims
 
 
 class Gated(BaseModel):
@@ -239,7 +243,7 @@ def prove(
     agent: Agent,
     sandbox: Sandbox,
 ) -> Proof:
-    """One proof test for one blocker, on the committed change: proven and
+    """One proof test for one claim, on the committed change: proven and
     committed, or reset. An empty spec_quote is the agent saying the spec
     doesn't back the finding: unproven at once."""
     attempts: list[Attempt] = []
@@ -291,6 +295,13 @@ def _current(result: LoopResult, worktree: Path, repro: list[str]) -> LoopResult
     )
 
 
+def to_prove(rv: Review) -> list[Finding]:
+    """The findings a proof test is tried for: every blocker, and the
+    concerns when the reviewer asks for changes."""
+    kinds = {"blocker"} if rv.approved else {"blocker", "concern"}
+    return [f for f in rv.reviewed.findings if f.severity in kinds]
+
+
 def review_gate(
     *,
     spec: Spec,
@@ -301,7 +312,7 @@ def review_gate(
     editor: Agent,
     sandbox: Sandbox,
 ) -> Gated:
-    """Review -> prove blockers -> fix them -> review again, on the worktree
+    """Review -> prove claims -> fix them -> review again, on the worktree
     a green loop left (its install still in place). `reader`: read-only
     agent (reviewer); `editor`: Edit/Write (proofs, fixes)."""
     planted = result.repro if result.planted else []
@@ -317,7 +328,7 @@ def review_gate(
         except AgentError as exc:
             error = str(exc)
             return Gated(status="unproven", result=current, rounds=rounds, error=error)
-        blockers = [f for f in rv.reviewed.findings if f.severity == "blocker"]
+        claims = to_prove(rv)
         proofs = [
             prove(
                 finding=b,
@@ -327,7 +338,7 @@ def review_gate(
                 agent=editor,
                 sandbox=sandbox,
             )
-            for b in blockers
+            for b in claims
         ]
         proven = [p for p in proofs if p.proven]
         if not proven:

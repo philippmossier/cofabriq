@@ -63,9 +63,17 @@ system prompt inflates them: compare times and rates, not dollars.
 The leak is the first miss on any set: on the same stored wrong fix
 (`reload-active-chat`, a `messages.length > 0` check the spec never asked
 for) the reviewer names the exact defect both times, but now files it as a
-concern instead of a blocker, 3 runs out of 3. The gate only tries to prove
-blockers, so an unproven concern publishes. Whether the CLAUDE.md or safe
+concern instead of a blocker, 3 runs out of 3. The gate only tried to prove
+blockers, so an unproven concern published. Whether the CLAUDE.md or safe
 mode's system prompt moved the severity isn't separated yet.
+
+The fix is in the gate, not the prompt: severity is the model's label, so
+it no longer decides alone what gets proven. When the reviewer asks for
+changes, its concerns get a proof test too (nits never); the spec quote
+still turns an opinion into "nothing to prove". Same 18 fixes after it:
+right published 10/10; wrong fixed 8/8, **leaked 0**; 17 proof tests, all
+valid; $0.289 per case notional ($0.201 before: the extra proofs land on
+the wrong fixes only, every right fix is approved).
 
 ## 0.3: the feature route
 
@@ -81,7 +89,7 @@ removal: every check green without the feature, the hidden tests red.
 | --------------------------------------------- | ------------------------------------------------------------- | ----------- |
 | refine, 9 features: spec names the files      | hit@1 1.00, precision 0.85; size right 9/9; 7 criteria median | 35 s        |
 | loop, 9 features: acceptance test, then build | test red 9/9; built 9/9, all first try; hidden tests green 9/9; agent's test green on main 7/9 | 94 s |
-| readiness (intake, in code): the 9 specs       | ready 5/9; 4 back to the dev with open questions               | free        |
+| readiness (intake, in code): the 9 specs       | 9/9 pass; 4 bring open questions to the plan gate             | free        |
 
 Docs the spec lists are left out of precision, as they are left out of the
 truth (a feature's spec rightly names the doc it updates; with them, 0.65).
@@ -96,8 +104,9 @@ too-slow advice to the lighter model, which is planted bug
 way. In amd-strong-gpu the test uses AMD fixtures the build added to a
 helper file, which main doesn't have.
 
-The readiness check sends a spec back when it has open questions. The four
-it sent back ask things a dev should answer, and three of them point at a
+Open questions don't fail the check: they go to the plan gate, where the
+dev's approval answers them (with `--yes` they stop the run). The four
+specs that carry them ask things a dev should answer, and three point at a
 planted bug next to the feature: should the too-slow advice be fixed in the
 same PR, which chat is "first" when the sidebar sorts the other way, and
 whether weekday names near the 7-day edge are ambiguous. The fourth quotes

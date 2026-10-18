@@ -9,8 +9,8 @@ as low (a test can't break the product), a component in no list gets
 yet; it tells the dev how hard to look.
 
 The body leads with what decides the review (tier, the reviewer's verdict,
-unproven blockers, red before and green after), then the approved plan (the full spec
-collapsed), the test, the change, the reviewer's blockers a test proved
+unproven findings, red before and green after), then the approved plan (the full spec
+collapsed), the test, the change, the reviewer's findings a test proved
 (`gate.py`), what the spec named but the change did not touch, and the
 trace with the cost. Rendered locally
 (dry run); nothing goes to GitHub from here.
@@ -200,10 +200,10 @@ def _summary(
     ]
     unproven = [p.finding for p in rounds[-1].proofs if not p.proven] if rounds else []
     if unproven:
-        lines.append("- **Unproven blockers** (no test could show them, read these):")
+        lines.append("- **Unproven findings** (no test could show them, read these):")
         lines += [f"  - {_where(f)} {safe(f.text)}" for f in unproven]
     fixed = sum(p.proven for r in rounds if r.attempts for p in r.proofs)
-    proven = f"; {fixed} reviewer blocker(s) proven by a test, fixed" if fixed else ""
+    proven = f"; {fixed} reviewer finding(s) proven by a test, fixed" if fixed else ""
     lines.append(
         f"- **Checks:** the test was red before the change; {checks} green after"
         + proven
@@ -263,7 +263,7 @@ def _review(review: Review) -> list[str]:
 
 
 def _rounds(rounds: list[Round]) -> list[str]:
-    """Blockers a test proved, and what happened to them."""
+    """Findings a test proved, and what happened to them."""
     parts: list[str] = []
     for n, r in enumerate(rounds, 1):
         for p in r.proofs:
@@ -277,7 +277,7 @@ def _rounds(rounds: list[Round]) -> list[str]:
                 f'"{safe(p.quote)}"; {outcome}. Red before:',
                 code(p.red.output, "text"),
             ]
-    return ["### Reviewer blockers proven by a test", *parts] if parts else []
+    return ["### Reviewer findings proven by a test", *parts] if parts else []
 
 
 def _against_plan(spec: Spec, result: LoopResult) -> list[str]:

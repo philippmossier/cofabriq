@@ -1148,7 +1148,14 @@ def run(
     if reasons:  # back to the dev: edit the spec (--spec) or the ticket
         typer.echo(f"not ready for the loop: {'; '.join(reasons)}", err=True)
         raise typer.Exit(code=1)
-    if not yes and not typer.confirm("Approve the plan and let the agent edit?"):
+    asked = len(refined.spec.open_questions)
+    if yes and asked:  # nobody at the gate to answer them
+        typer.echo(f"{asked} open question(s): answer them at the gate", err=True)
+        raise typer.Exit(code=1)
+    question = "Approve the plan and let the agent edit?"
+    if asked:
+        question = f"Approve the plan as the answer to its {asked} open question(s)?"
+    if not yes and not typer.confirm(question):
         raise typer.Exit(code=1)
     worktree = settings.work_dir / f"{target.replace('/', '-')}-{number}"
     sandbox = Podman(image=rules.image, setup=rules.setup)
@@ -1175,7 +1182,7 @@ def run(
                 approve_test=_approve_test if test_gate else None,
             )
             # the review gate on the green tree, before the judge resets it:
-            # review, blockers proven by a test, fixed, reviewed again
+            # review, findings proven by a test, fixed, reviewed again
             gated = None
             if result.status == "green":
                 gated = gate_mod.review_gate(
@@ -1299,11 +1306,11 @@ def _indented(out: Console, text: Text) -> None:
 
 
 def _show_gate(gated: gate_mod.Gated) -> None:
-    """Per review round: blockers proven or not, the fix against them."""
+    """Per review round: findings proven or not, the fix against them."""
     out = Console(highlight=False, soft_wrap=True)
     for n, r in enumerate(gated.rounds, 1):
         verdict = "approved" if r.review.approved else "changes requested"
-        out.print(Text(f"review {n} {verdict}, {len(r.proofs)} blockers"))
+        out.print(Text(f"review {n} {verdict}, {len(r.proofs)} to prove"))
         for p in r.proofs:
             state = f"proven by {', '.join(p.tests)}" if p.proven else "unproven"
             where = gate_mod.finding_text(p.finding)
@@ -1314,7 +1321,7 @@ def _show_gate(gated: gate_mod.Gated) -> None:
     if gated.error:
         out.print(Text(f"review failed: {gated.error}", style="yellow"))
     blocked = gated.status == "blocked"
-    note = " (a proven blocker is left: no PR)" if blocked else ""
+    note = " (a proven finding is left: no PR)" if blocked else ""
     line = f"gate     {gated.status}{note}, ${gated.cost_usd:.3f}"
     out.print(Text(line, style="red" if blocked else ""))
 

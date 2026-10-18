@@ -78,7 +78,6 @@ def test_readiness_reasons() -> None:
     assert reasons == [
         "no acceptance criteria a test can check",
         "files not in the repo: src/new.ts",
-        "1 open question(s) for the dev",
         "size L: split it into tickets in your planning session",
     ]
     ok = refined(criteria=["f(1) is 2"]).spec.model_copy()

@@ -49,6 +49,7 @@ open draft PRs (read-only) and says per ticket:
 
 `run` checks the same before paying for refine, and after refine checks the
 spec in code: acceptance criteria present (features), the source files it
-names exist (or are said to be new), no open questions, size S or M.
-Anything else goes back to you with the reason: answer the question in the
-ticket, or edit the spec and pass it with `--spec`.
+names exist (or are said to be new), size S or M. Anything else goes back
+to you with the reason: fix the ticket, or edit the spec and pass it with
+`--spec`. Open questions are shown at the plan gate: approving the plan
+answers them (with `--yes` they stop the run).
