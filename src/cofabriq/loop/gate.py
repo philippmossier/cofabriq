@@ -59,6 +59,7 @@ from cofabriq.loop.run import (
     suites_note,
 )
 from cofabriq.loop.sandbox import Sandbox
+from cofabriq.loop.sentinel import Checker
 
 MAX_ROUNDS = 2  # reviews: the first, and one after fixing proven claims
 
@@ -140,6 +141,7 @@ class Gated(BaseModel):
     result: LoopResult  # the final change: diff and files against the spec's commit
     rounds: list[Round]
     error: str = ""  # a review run failed: status unproven, no verdict
+    sentinel: list[str] = []  # the target's invariant broken (0.6): blocked
 
     @property
     def review(self) -> Review | None:
@@ -313,10 +315,41 @@ def review_gate(
     reader: Agent,
     editor: Agent,
     sandbox: Sandbox,
+    sentinel: Checker | None = None,
 ) -> Gated:
     """Review -> prove claims -> fix them -> review again, on the worktree
     a green loop left (its install still in place). `reader`: read-only
-    agent (reviewer); `editor`: Edit/Write (proofs, fixes)."""
+    agent (reviewer); `editor`: Edit/Write (proofs, fixes). `sentinel`: the
+    target's invariant, checked in code on the change before any review is
+    paid for and on the final change: a violation blocks."""
+    broken = sentinel(result.diff) if sentinel else []
+    if broken:
+        return Gated(status="blocked", result=result, rounds=[], sentinel=broken)
+    gated = _review_gate(
+        spec=spec,
+        rules=rules,
+        result=result,
+        worktree=worktree,
+        reader=reader,
+        editor=editor,
+        sandbox=sandbox,
+    )
+    broken = sentinel(gated.result.diff) if sentinel else []
+    if broken:  # a fix round brought it in
+        return gated.model_copy(update={"status": "blocked", "sentinel": broken})
+    return gated
+
+
+def _review_gate(
+    *,
+    spec: Spec,
+    rules: Rules,
+    result: LoopResult,
+    worktree: Path,
+    reader: Agent,
+    editor: Agent,
+    sandbox: Sandbox,
+) -> Gated:
     planted = result.repro if result.planted else []
     repro = list(result.repro)
     current = result

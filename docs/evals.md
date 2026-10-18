@@ -106,6 +106,14 @@ or heuristics, raise doubts as open questions. Not measured yet: whether a
 rule stops a repeat. The signals come from wrong-on-purpose fixes, and on
 these sets the loop makes no natural mistakes to repeat.
 
+**The privacy sentinel** (`[sentinel]`, checked in code before any review):
+the playground's contract is "nothing typed leaves the device", and its
+allow-list is its CSP. A new URL whose host the CSP doesn't allow, or any
+change to the CSP, blocks the run. On the 50 stored right changes (logic,
+UI, features, hard bugs): 0 false alarms (`eval sentinel`). The leaks it
+must catch (a telemetry fetch, a web font, a lookalike host, a widened
+CSP) are unit tests; URLs in comments, tests and docs are left alone.
+
 ## 0.5: runs that wait, approved in the browser
 
 0.5 adds no new eval set; what it changes is checked by running it.

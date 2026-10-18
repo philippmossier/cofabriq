@@ -72,3 +72,12 @@ high = ["privacy", "build-deploy"]  # the local-only promise; CI, deps, headers
 medium = ["inference", "models", "hardware-check"]  # needs a GPU or a download to see
 low = ["chat", "ui"]
 unlisted = "medium"
+
+# The contract (0.6): "nothing typed leaves the device" (the playground's
+# CLAUDE.md). Checked in code on every change before review: a new URL whose
+# host the CSP in vite.config.ts doesn't allow, or any change to that file,
+# blocks the run (see src/cofabriq/loop/sentinel.py).
+[sentinel]
+name = "privacy"
+policy_file = "vite.config.ts"
+about = "Nothing typed leaves the device: no request to a host the CSP doesn't allow; the CSP is never widened without a human."

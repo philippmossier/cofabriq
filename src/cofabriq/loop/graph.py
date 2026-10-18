@@ -43,6 +43,7 @@ from cofabriq.issues.model import Issue
 from cofabriq.loop import gate as gate_mod
 from cofabriq.loop import pr as pr_mod
 from cofabriq.loop import refine as refine_mod
+from cofabriq.loop import sentinel as sentinel_mod
 from cofabriq.loop.engine import Agent, AgentError, Guard
 from cofabriq.loop.intake import not_ready
 from cofabriq.loop.run import (
@@ -222,6 +223,7 @@ def build_graph(deps: Deps) -> StateGraph[FlowState]:
             reader=deps.reader,
             editor=deps.editor,
             sandbox=deps.sandbox,
+            sentinel=_sentinel(deps, s.issue.repo, s.refined.commit),
         )
         return {"stage": "reviewed", "gated": gated}
 
@@ -331,6 +333,16 @@ def compiled(deps: Deps, dsn: str) -> Generator[CompiledStateGraph[FlowState]]:
     """The graph with its Postgres checkpointer."""
     with checkpoints(dsn) as saver:
         yield build_graph(deps).compile(checkpointer=saver)
+
+
+def _sentinel(deps: Deps, repo: str, commit: str) -> sentinel_mod.Checker | None:
+    if deps.targets_dir is None:
+        return None
+    found = sentinel_mod.load_sentinel(deps.targets_dir, repo)
+    if found is None:
+        return None
+    policy = sentinel_mod.policy_at(deps.clone, commit, found)
+    return sentinel_mod.checker(found, policy, deps.rules.tests)
 
 
 def _answer(value: object) -> tuple[bool, str]:

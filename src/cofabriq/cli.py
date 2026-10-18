@@ -23,7 +23,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command
 from neo4j import Driver, GraphDatabase
-from pydantic import TypeAdapter
+from pydantic import TypeAdapter, ValidationError
 from rich.console import Console
 from rich.padding import Padding
 from rich.table import Table
@@ -73,6 +73,7 @@ from cofabriq.loop import pr as pr_mod
 from cofabriq.loop import publish as publish_mod
 from cofabriq.loop import refine as refine_mod
 from cofabriq.loop import run as run_mod
+from cofabriq.loop import sentinel as sentinel_mod
 from cofabriq.loop.engine import (
     STOP_ENV,
     AgentError,
@@ -1307,6 +1308,17 @@ def intake(
         typer.echo(f"  #{sl.number:<5} {sl.state:<8}{why}  {sl.title}")
 
 
+def _sentinel(
+    target: str, clone: Path, commit: str, rules: run_mod.Rules
+) -> sentinel_mod.Checker | None:
+    """The target's invariant check, its policy read at the run's commit."""
+    found = sentinel_mod.load_sentinel(get_settings().targets_dir, target)
+    if found is None:
+        return None
+    policy = sentinel_mod.policy_at(clone, commit, found)
+    return sentinel_mod.checker(found, policy, rules.tests)
+
+
 def _route(issue_type: str) -> refine_mod.Route:
     types = typing.get_args(triage_mod.IssueType.__value__)
     if issue_type not in types:
@@ -1442,6 +1454,7 @@ def run(
                         reader=agent,
                         editor=agent.editing(budget_usd=1.0),
                         sandbox=sandbox,
+                        sentinel=_sentinel(target, clone, refined.commit, rules),
                     )
                 except Halted as exc:  # no review, so no PR body either
                     typer.echo(f"halted before the review was done: {exc}", err=True)
@@ -1560,6 +1573,8 @@ def _indented(out: Console, text: Text) -> None:
 def _show_gate(gated: gate_mod.Gated) -> None:
     """Per review round: findings proven or not, the fix against them."""
     out = Console(highlight=False, soft_wrap=True)
+    for v in gated.sentinel:  # the target's invariant: blocked, no review
+        out.print(Text(f"blocked by the sentinel: {v}"))
     for n, r in enumerate(gated.rounds, 1):
         verdict = "approved" if r.review.approved else "changes requested"
         out.print(Text(f"review {n} {verdict}, {len(r.proofs)} to prove"))
@@ -1864,6 +1879,44 @@ def eval_bug_set(
     typer.echo(f"  {valid}/{len(proofs)} valid")
     if valid < len(proofs):
         raise typer.Exit(code=1)
+
+
+@eval_app.command("sentinel")
+def eval_sentinel(repo: str = "philippmossier/local-ai-chat-playground") -> None:
+    """The sentinel's false alarms: every stored right change (a green run
+    the hidden judge passed, in eval-* and features-*) checked against the
+    target's invariant; a right change it flags is a false alarm. Free; the
+    leaks it must catch are unit tests (tests/test_sentinel.py)."""
+    settings = get_settings()
+    target = check_repo(repo)
+    rules = run_mod.load_rules(settings.targets_dir, target)
+    found = sentinel_mod.load_sentinel(settings.targets_dir, target)
+    if rules is None or found is None:
+        typer.echo(f"no [loop] or [sentinel] in the target file of {target}", err=True)
+        raise typer.Exit(code=1)
+    clone = settings.clones_dir / target.replace("/", "-")
+    check = sentinel_mod.checker(
+        found, sentinel_mod.policy_at(clone, "HEAD", found), rules.tests
+    )
+    checked, alarms = 0, 0
+    for path in sorted(settings.runs_dir.glob("*.json")):
+        if not path.name.startswith(("eval-", "features-")):
+            continue
+        stored: dict[str, object] = json_mod.loads(path.read_text("utf-8"))
+        for key, value in stored.items():
+            try:
+                judged = loop_eval.Judged.model_validate(value)
+            except ValidationError:
+                continue  # an older stored shape
+            r = judged.result
+            right = r.status == "green" and (judged.judge is None or judged.judge.ok)
+            if r.repo != target or not right or not r.diff:
+                continue
+            checked += 1
+            for v in check(r.diff):
+                alarms += 1
+                typer.echo(f"  false alarm {path.stem}/{key}: {v}")
+    typer.echo(f"{target}: {checked} right changes checked, {alarms} false alarms")
 
 
 @eval_app.command("feature-set")

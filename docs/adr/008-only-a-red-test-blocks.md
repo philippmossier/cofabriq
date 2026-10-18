@@ -78,3 +78,13 @@ concern, 3 runs of 3, and only blockers got a proof. Since 0.3 step 5,
 when the reviewer requests changes, its concerns get a proof test like
 blockers (nits never; an approving review's concerns stay notes). Same
 gate eval: leaked 0 of 8, 17 proof tests all valid.
+
+## Addendum, 2026-10-18 (0.6): an invariant checked in code blocks too
+
+A target can declare its contract as a sentinel (`[sentinel]`; the
+playground's: nothing typed leaves the device). The check runs in code on
+the change before any review: a new URL whose host the target's own policy
+(its CSP) doesn't allow, or any change to that policy, blocks the run. It
+blocks without a red test because its evidence is just as checkable: the
+added line and the policy it breaks. On the 50 stored right changes it
+raised no false alarm.
