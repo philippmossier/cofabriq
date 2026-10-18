@@ -43,7 +43,8 @@ from cofabriq.issues.model import Issue
 from cofabriq.loop import gate as gate_mod
 from cofabriq.loop import pr as pr_mod
 from cofabriq.loop import refine as refine_mod
-from cofabriq.loop.engine import Agent, Guard
+from cofabriq.loop.engine import Agent, AgentError, Guard
+from cofabriq.loop.intake import not_ready
 from cofabriq.loop.run import (
     FEATURE,
     INSTRUCTIONS,
@@ -131,7 +132,16 @@ class Deps:
 
 def build_graph(deps: Deps) -> StateGraph[FlowState]:
     def refine(s: FlowState) -> dict[str, object]:
-        return {"refined": refine_mod.refine(s.issue, deps.clone, deps.reader, s.route)}
+        try:
+            refined = refine_mod.refine(s.issue, deps.clone, deps.reader, s.route)
+        except (AgentError, refine_mod.NoCriteria) as exc:  # back to the dev
+            return {"stage": "failed", "note": f"not ready: {exc}"}
+        # the readiness check `run` does: back to the dev before any gate
+        reasons = not_ready(refined, refine_mod.tracked(deps.clone, refined.commit))
+        if reasons:
+            note = f"not ready: {'; '.join(reasons)}"
+            return {"refined": refined, "stage": "failed", "note": note}
+        return {"refined": refined}
 
     def plan_gate(s: FlowState) -> dict[str, object]:
         assert s.refined is not None
@@ -227,6 +237,7 @@ def build_graph(deps: Deps) -> StateGraph[FlowState]:
                 components=components_mod.load_rules(deps.targets_dir, s.issue.repo),
                 review=s.gated.review,
                 rounds=s.gated.rounds,
+                route=s.route,
             )
             out["draft"] = draft.model_dump(mode="json")
             (deps.runs_dir / f"{stem}.pr.md").write_text(draft.body, "utf-8")
@@ -274,7 +285,7 @@ def build_graph(deps: Deps) -> StateGraph[FlowState]:
     for name, node in nodes.items():
         g.add_node(name, node)  # pyright: ignore[reportArgumentType,reportUnknownMemberType]
     g.add_edge(START, "refine")
-    g.add_edge("refine", "plan_gate")
+    g.add_conditional_edges("refine", go_on, {"next": "plan_gate", "finish": "finish"})
     g.add_conditional_edges("plan_gate", go_on, {"next": "setup", "finish": "finish"})
     g.add_conditional_edges("setup", go_on, {"next": "write_test", "finish": "finish"})
     g.add_conditional_edges(

@@ -1450,6 +1450,7 @@ def run(
             components=components_mod.load_rules(settings.targets_dir, target),
             review=gated.review,
             rounds=gated.rounds,
+            route=refined.route,
         )
         record["draft"] = draft.model_dump(mode="json")
         body = settings.runs_dir / f"{stem}.pr.md"

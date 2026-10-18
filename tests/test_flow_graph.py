@@ -71,6 +71,8 @@ def test_feature_flow_pauses_twice_and_resumes_in_a_new_graph(tmp_path: Path) ->
     runs = tmp_path / "runs"
     assert (runs / f"{state.record}.json").is_file()
     assert "a.ts" in (runs / f"{state.record}.pr.md").read_text()
+    record = (runs / f"{state.record}.json").read_text()
+    assert '"title": "Feature #3:' in record
     assert editor.roles == ["reproduce", "implement"]
     assert not (tmp_path / "work").exists() or not any((tmp_path / "work").iterdir())
 
@@ -106,3 +108,13 @@ def test_a_paused_flow_keeps_what_it_spent(tmp_path: Path) -> None:
     graph.invoke(FlowState(issue=issue(3), route="bug"), config)
     state = FlowState.model_validate(graph.get_state(config).values)
     assert state.spent_usd == 0.01  # refine's cost, there for the next process
+
+
+def test_a_spec_that_isnt_ready_goes_back_before_any_gate(tmp_path: Path) -> None:
+    d = deps(tmp_path, EditingAgent(), [])  # a feature without criteria
+    graph = build_graph(d).compile(checkpointer=InMemorySaver())
+    config: RunnableConfig = {"configurable": {"thread_id": "t"}}
+    graph.invoke(FlowState(issue=issue(3), route="feature"), config)
+    state = FlowState.model_validate(graph.get_state(config).values)
+    assert state.stage == "failed" and "not ready" in state.note
+    assert not graph.get_state(config).next  # no gate waits

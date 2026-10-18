@@ -28,7 +28,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 from cofabriq.loop.gate import Round
-from cofabriq.loop.refine import Spec
+from cofabriq.loop.refine import Route, Spec
 from cofabriq.loop.review import Finding, Review, split_diff
 from cofabriq.loop.run import Attempt, LoopResult, is_test
 from cofabriq.map.components import ComponentRules, component_of
@@ -361,8 +361,10 @@ def draft(
     components: ComponentRules,
     review: Review | None,
     rounds: list[Round] | None = None,
+    route: Route = "bug",
 ) -> Draft:
     risk = risk_of(result.changed, tests, risk_rules, components)
-    title = f"Fix #{result.number}: {unref(issue_title)}"[:200]
+    kind = "Feature" if route == "feature" else "Fix"
+    title = f"{kind} #{result.number}: {unref(issue_title)}"[:200]
     body = render(spec=spec, result=result, risk=risk, review=review, rounds=rounds)
     return Draft(title=title, body=body, risk=risk, review=review)
