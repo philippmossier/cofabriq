@@ -196,6 +196,26 @@ flowchart LR
     R --> Dev(["Dev copies the good ones<br/>into the target's CLAUDE.md"])
 ```
 
+A **signal** is one incident, numbered `s1`, `s2`, ... in the order collected.
+There are three kinds:
+
+| Kind | Comes from |
+| --- | --- |
+| proven finding | a review-gate finding that a test quoting the spec proved red on the fix |
+| rejected plan | the dev pressed Reject at the plan gate, with the reason given |
+| rejected test | the dev pressed Reject at the test gate (the test is red on purpose there; the dev judges whether it tests the right thing) |
+
+`--propose` is one read-only agent run over all signals of a repo. It writes
+at most 5 rules in total per run, each citing the signal ids it comes from; a
+rule that cites an id that doesn't exist is dropped in code. The result is a
+draft in `data/lessons/` and is never written into the target. A rejection
+ends the flow (there is no revise loop yet); the reason is kept only as a
+signal.
+
+Where the signals come from today: the proven findings in the first draft
+(36 signals, 5 rules) all come from the 8 fixes an implementer was told to get
+wrong on purpose, since the loop makes no natural mistakes on the demo sets.
+
 ### 6. Stop everything
 
 `cofabriq stop` creates `data/STOP`; every agent checks it before it starts,

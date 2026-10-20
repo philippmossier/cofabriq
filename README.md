@@ -1,15 +1,17 @@
 # cofabriq
 
-An agentic software factory that devs use as a tool, not a review queue for them.
+From a GitHub issue to a reviewed draft PR, with you approving the two
+decisions that matter. A tool devs point at their repo, not a review queue.
 
-Small, low-risk issues go through **autopilot**: triaged, implemented, gated
-by the repository's own CI, reviewed and handed to the dev as a draft PR.
-Features go the same way once their acceptance criteria are approved: the
-agent writes the acceptance test first, and it is frozen before any code.
-Today, in 0.5: bug reports and small feature requests to a draft PR,
-including bugs that only show in a browser, tried on a demo app with bugs
-planted and features removed on purpose. A run waits for the dev at each
-approval, as long as it takes, and the dev approves in the browser.
+<img src="docs/demo/flow.png" width="820" alt="The flow: issue, plan (you approve), failing test (you approve), fix in a sandbox, review, draft PR. 10/10 planted bugs fixed, 8/8 wrong fixes caught, about $0.35 per bug">
+
+You approve the plan and the failing test, an agent fixes the code in a
+sandbox, and a second agent reviews it. You get a draft PR and nothing is
+merged for you. Tried on a demo app with bugs planted on purpose.
+
+[Quickstart](#quickstart)
+
+## How it works: one real bug
 
 What happens to one real bug report. A user filed
 [#54](https://github.com/philippmossier/local-ai-chat-playground/issues/54):
@@ -108,6 +110,95 @@ About 2 minutes and $0.35 for this bug.
 > ```
 >
 > </details>
+
+## Numbers
+
+On the demo app: 10 planted logic bugs, 12 planted UI bugs, 9 features
+removed on purpose.
+
+| | |
+| --- | --- |
+| logic bugs fixed, with the agent's own failing test first | 10/10, all on the first try |
+| UI bugs fixed, with the agent's own browser test first | 12/12, 11 on the first try |
+| features built against a frozen acceptance test | 9/9, all on the first try |
+| features whose original (hidden) tests pass on the result | 9/9 |
+| right fixes let through by the review gate | 10/10 |
+| wrong fixes caught by the review gate and repaired before the PR | 8/8 |
+| cost per bug or feature, end to end | about $0.20-0.35 |
+
+The wrong fixes were written wrong on purpose (an agent told to make a
+plausible but wrong fix), since the loop itself made none. Early and easy:
+small changes in a small repo, one model in every role. Of the 12 browser
+tests, 3 also needed a neighbouring planted bug fixed, and the agent fixed
+it on the way. Details and caveats: [docs/evals.md](docs/evals.md).
+
+## Quickstart
+
+Requires [uv](https://docs.astral.sh/uv/), Podman (or Docker) with compose,
+an OpenAI key and a fine-grained GitHub token with "Public repositories
+(read-only)" and no other permission. Without `run --apply`, cofabriq
+never writes to GitHub.
+
+```bash
+make setup               # install deps, create .env (set OPENAI_API_KEY, GITHUB_TOKEN)
+make up                  # Postgres + pgvector (5433), Neo4j (7474, 7687), test Neo4j (7688)
+uv run cofabriq health   # OK per service
+```
+
+Triage an issue on the playground (a small local-first chat app with
+seeded issues):
+
+```bash
+REPO=philippmossier/local-ai-chat-playground
+git clone https://github.com/$REPO ../local-ai-chat-playground
+uv run cofabriq fetch-issues --repo $REPO    # all issues -> data/issues/ (read-only, incremental)
+uv run cofabriq embed-issues --repo $REPO    # title + body into pgvector: the duplicate candidates
+uv run cofabriq fetch ../local-ai-chat-playground && uv run cofabriq embed   # docs, for "related docs"
+uv run cofabriq triage 11 --repo $REPO       # add --json for the raw card
+```
+
+Run the loop on a playground issue (needs an Anthropic key, the
+[`claude`](https://docs.anthropic.com/en/docs/claude-code) CLI on the PATH
+and Podman; about $0.35 per issue):
+
+```bash
+uv run cofabriq refine 54 --repo $REPO     # the spec only: read-only agent, prints it
+uv run cofabriq run 54 --repo $REPO        # refine, plan gate, repro, fix, review gate, PR body (dry run)
+uv run cofabriq run <n> --type feature     # a feature request: criteria, test gate, then the build
+```
+
+Look at the specs and runs in the browser, or approve runs there:
+
+```bash
+cd ui && pnpm install && cd ..
+make ui && uv run cofabriq serve           # http://127.0.0.1:8765, read-only
+uv run cofabriq flow start 54              # refine, then wait at the plan gate
+uv run cofabriq serve --write              # open the printed URL, approve under Flows
+```
+
+Walk through the browser flow on one issue:
+
+1. `make ui` (once), then `uv run cofabriq flow start <n>`: refines the issue,
+   then waits at the plan gate.
+2. `uv run cofabriq serve --write`, open the printed URL, go to Flows.
+3. Approve the plan (or reject it with a reason). The agent then writes a
+   failing test; approve that too.
+4. The build, the review and the draft PR text run on their own, a few minutes.
+5. Read the result under Runs: the plan, the test, the diff, the review and
+   the draft PR body. It stays on your disk. Opening the PR on GitHub is still
+   `run --apply` in the terminal.
+
+From a rough note to a ticket: `ln -s "$PWD/skills/ticket" ~/.claude/skills/ticket`,
+then `/ticket <note>` in your own Claude Code session ([intake](docs/intake.md)).
+
+`--apply` opens the draft PR on GitHub (needs `GITHUB_WRITE_TOKEN`,
+playground only). For your own runs, the agent can use your Claude plan
+instead of the key: `AGENT_AUTH=subscription` and a token from
+`claude setup-token` (see `.env.example`); costs shown are then API list
+prices, not billed.
+
+Development: `make check` runs ruff, pyright (strict) and pytest, and the
+UI's checks when `ui/` changed.
 
 ## Features (0.3)
 
@@ -210,6 +301,42 @@ and the bug's own hidden test passes on it. About 2 minutes and $0.17
 browser tests for the UI) and the agent picks the one that can show the
 bug.
 
+## Learning from what went wrong (0.6)
+
+**Rules from failures, not up front.** `cofabriq lessons` collects what the
+factory already knows went wrong: findings the review gate proved with a
+failing test, and plans or tests the dev rejected, with the reason they
+gave. `--propose` turns them into at most 5 rules for the target's own
+CLAUDE.md, each citing the signals it comes from (a rule citing nothing
+real is dropped in code). On the demo app, 36 signals became 5 rules (all 36
+come from the 8 fixes that were written wrong on purpose, since the loop makes
+no natural mistakes on these sets); the first one:
+
+> When a task comes with a spec, make exactly the change it describes [...].
+> Do not add your own heuristics, extra conditions or different units [...].
+> If you think the spec misses a case, leave the code as specified and raise
+> the case as an open question in your summary.
+
+It's a draft for the dev; nothing is written into the target. Whether a
+rule stops the mistake from coming back isn't measured yet.
+
+**The app's contract, checked in code.** The demo app promises that nothing
+typed leaves the device, and its Content-Security-Policy lists the only
+hosts it may talk to. Every change is checked against that list before a
+reviewer is paid for: a new URL to another host, or any change to the
+policy, blocks the run with the line as evidence. On the 50 right changes
+stored so far: 0 false alarms.
+
+**Screenshots of the browser test.** After a UI fix goes green, the agent's
+browser test runs once more with screenshots on; the viewer shows them and
+the PR body says so.
+
+<img src="docs/demo/viewer-evidence.png" width="760" alt="The viewer's screenshots of the browser test after the New chat fix: the sidebar keeps the first question, a new empty chat is open">
+
+Also in 0.6: a harder planted set (symptom-only tickets, causes in data, a
+shared helper, two files), and it wasn't harder for the model: 5 of 5 fixed
+on the first try. It stays as a regression check.
+
 ## Why it is built this way
 
 - **The dev stays in charge.** Autopilot only takes small, low-risk issues;
@@ -227,30 +354,11 @@ bug.
   ([ADR-007](docs/adr/007-agent-written-code-runs-only-in-a-sandbox.md)).
   The only write to GitHub is one branch and a draft PR, on an explicit
   `--apply`, with a scoped token. `cofabriq stop` halts every agent before
-  its next step; a run has a budget and every agent a turn cap.
+  its next step; a run has a budget and every agent a turn cap. A target's
+  own contract (on the demo app: its privacy promise) is checked in code on
+  every change.
 - **A number per stage.** Every agent or retrieval change is measured
   ([evals](docs/evals.md)).
-
-## Numbers
-
-On the demo app: 10 planted logic bugs, 12 planted UI bugs, 9 features
-removed on purpose.
-
-| | |
-| --- | --- |
-| logic bugs fixed, with the agent's own failing test first | 10/10, all on the first try |
-| UI bugs fixed, with the agent's own browser test first | 12/12, 11 on the first try |
-| features built against a frozen acceptance test | 9/9, all on the first try |
-| features whose original (hidden) tests pass on the result | 9/9 |
-| right fixes let through by the review gate | 10/10 |
-| wrong fixes caught by the review gate and repaired before the PR | 8/8 |
-| cost per bug or feature, end to end | about $0.20-0.35 |
-
-The wrong fixes were written wrong on purpose (an agent told to make a
-plausible but wrong fix), since the loop itself made none. Early and easy:
-small changes in a small repo, one model in every role. Of the 12 browser
-tests, 3 also needed a neighbouring planted bug fixed, and the agent fixed
-it on the way. Details and caveats: [docs/evals.md](docs/evals.md).
 
 ## Triage (0.1)
 
@@ -262,63 +370,9 @@ draft for the reporter. Measured on real issues of
 
 <img src="docs/demo/triage.gif" width="820" alt="cofabriq triage on two playground issues: a likely duplicate proven by a quote, routed to the dev with a reply draft for the missing version, then an issue with an injected instruction that the card ignores, routed ready">
 
-How each part works: [docs/how-it-works.md](docs/how-it-works.md).
-
-## Quickstart
-
-Requires [uv](https://docs.astral.sh/uv/), Podman (or Docker) with compose,
-an OpenAI key and a fine-grained GitHub token with "Public repositories
-(read-only)" and no other permission. Without `run --apply`, cofabriq
-never writes to GitHub.
-
-```bash
-make setup               # install deps, create .env (set OPENAI_API_KEY, GITHUB_TOKEN)
-make up                  # Postgres + pgvector (5433), Neo4j (7474, 7687), test Neo4j (7688)
-uv run cofabriq health   # OK per service
-```
-
-Triage an issue on the playground (a small local-first chat app with
-seeded issues):
-
-```bash
-REPO=philippmossier/local-ai-chat-playground
-git clone https://github.com/$REPO ../local-ai-chat-playground
-uv run cofabriq fetch-issues --repo $REPO    # all issues -> data/issues/ (read-only, incremental)
-uv run cofabriq embed-issues --repo $REPO    # title + body into pgvector: the duplicate candidates
-uv run cofabriq fetch ../local-ai-chat-playground && uv run cofabriq embed   # docs, for "related docs"
-uv run cofabriq triage 11 --repo $REPO       # add --json for the raw card
-```
-
-Run the loop on a playground issue (needs an Anthropic key, the
-[`claude`](https://docs.anthropic.com/en/docs/claude-code) CLI on the PATH
-and Podman; about $0.35 per issue):
-
-```bash
-uv run cofabriq refine 54 --repo $REPO     # the spec only: read-only agent, prints it
-uv run cofabriq run 54 --repo $REPO        # refine, plan gate, repro, fix, review gate, PR body (dry run)
-uv run cofabriq run <n> --type feature     # a feature request: criteria, test gate, then the build
-```
-
-Look at the specs and runs in the browser, or approve runs there:
-
-```bash
-cd ui && pnpm install && cd ..
-make ui && uv run cofabriq serve           # http://127.0.0.1:8765, read-only
-uv run cofabriq flow start 54              # refine, then wait at the plan gate
-uv run cofabriq serve --write              # open the printed URL, approve under Flows
-```
-
-From a rough note to a ticket: `ln -s "$PWD/skills/ticket" ~/.claude/skills/ticket`,
-then `/ticket <note>` in your own Claude Code session ([intake](docs/intake.md)).
-
-`--apply` opens the draft PR on GitHub (needs `GITHUB_WRITE_TOKEN`,
-playground only). For your own runs, the agent can use your Claude plan
-instead of the key: `AGENT_AUTH=subscription` and a token from
-`claude setup-token` (see `.env.example`); costs shown are then API list
-prices, not billed.
-
-Development: `make check` runs ruff, pyright (strict) and pytest, and the
-UI's checks when `ui/` changed.
+How each part works: [docs/how-it-works.md](docs/how-it-works.md); a map of
+the repository, the parts and the user journeys:
+[docs/architecture.md](docs/architecture.md).
 
 ## Roadmap
 
@@ -329,9 +383,11 @@ UI's checks when `ui/` changed.
 - [x] **0.4** UI bugs in the loop (a browser in the sandbox), a kill switch
 - [x] **0.5** approve plans and tests in the browser; from a fuzzy idea to
       a ticket
-- [ ] **0.6** a real repository with tests
-- [ ] **Later:** self-host packaging, a second reviewer model, learning
-      from past runs
+- [x] **0.6** rules from what went wrong, the app's contract checked in
+      code, screenshots as evidence, a harder planted set
+- [ ] **Next:** a second reviewer model, "who knows this area" for risky
+      changes, starting and publishing runs from the browser, run metrics
+- [ ] **Later:** a real repository with tests, self-host packaging
 
 0.x releases: the CLI may still change. Decisions are recorded in
 [`docs/adr/`](docs/adr/) as they are made.
