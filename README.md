@@ -344,7 +344,8 @@ on the first try. It stays as a regression check.
   merged. One issue, one dev, one branch, one draft PR.
 - **A claim isn't evidence, a failing test is.** In a timed review of 10
   draft PRs, 3 of them wrong, the AI reviewer had flagged all 3 and I still
-  merged 2: after a few green PRs a prose warning stops registering. So a
+  merged 2 (one reviewer who skimmed without testing locally, so an
+  anecdote, not an eval): after a few green PRs a prose warning stops registering. So a
   reviewer can only block a PR with a test that fails on it
   ([ADR-008](docs/adr/008-only-a-red-test-blocks.md)). When it asks for
   changes, every concern it raises gets that chance, not only the ones it

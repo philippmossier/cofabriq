@@ -30,7 +30,8 @@ features in the next section):
 Why the gate only trusts a red test: the first reviewer only informed. In a
 timed round on 10 draft PRs, 3 of them proven wrong, the reviewer had
 rejected all 3, its blockers in each PR body; I reviewed in 1.2
-minutes per PR (median) and merged 2 of the 3. After a few green PRs the
+minutes per PR (median) and merged 2 of the 3 (one reviewer who skimmed without testing
+locally, so an anecdote, not an eval). After a few green PRs the
 verdict line stopped registering, and telling "rounds instead of floors
 across DST" apart from a right fix needs running the code. A dev can check
 a red test that quotes the spec in a minute; a reviewer's prose, not.

@@ -20,7 +20,7 @@ the 10 logic bugs; UI repros aren't in the loop yet.
 | loop, 10 logic bugs: own failing test, fix               | reproduced 10/10, test valid 10/10, resolved 10/10, all first try | $0.105, 97 s |
 | reviewer alone: 10 right fixes, 9 proven wrong           | right approved 10/10, wrong rejected 9/9                   | $0.057            |
 | review gate: 10 right fixes, 8 proven wrong              | right published 10/10; wrong fixed 8/8, leaked 0; 10 proof tests, all valid | $0.137 |
-| human round: 10 draft PRs, 3 wrong, before the gate      | 1.2 min per PR (median), 1.6 per merged PR; wrong merged 2/3 | -               |
+| human round: 10 draft PRs, 3 wrong, before the gate      | 1.2 min per PR (median), 1.6 per merged PR; wrong merged 2/3 (skimmed, no local tests) | -               |
 
 End to end, a right fix costs about $0.34 (refine, loop, one review) and
 about 2.5 minutes of agent time; the dev's part is reading the spec at the
@@ -40,7 +40,8 @@ What it says: the mechanism works, the sets don't discriminate. Every
 stage is saturated: one-file bugs in a small repo, a spec that names the
 cause, the same model writing, sabotaging and reviewing, and wrong fixes
 that are sabotage, not natural mistakes. The human round is one reviewer
-(me, who also planted the bugs) on 10 PRs. Next difficulty bars: UI bugs,
+(me, who also planted the bugs) on 10 PRs, who skimmed without testing
+locally: an anecdote, not an eval. Next difficulty bars: UI bugs,
 real issues, a different reviewer model.
 
 Reproduce: `cofabriq eval refine`, `eval loop`, `eval loop --wrong`,

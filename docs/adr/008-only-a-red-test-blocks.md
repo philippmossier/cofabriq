@@ -15,7 +15,8 @@ The human round (`eval human`) tested that. Ten draft PRs on the
 playground, three of them proven wrong (a witness test is red on the fix,
 green with the reference fix), shuffled. The reviewer had rejected all
 three, with the blockers at the top of each body. The dev reviewed in
-1.2 minutes per PR (median) and merged two of the three wrong ones. After
+1.2 minutes per PR (median) and merged two of the three wrong ones (one reviewer who skimmed without
+testing locally, so an anecdote, not a measurement). After
 a few green PRs the verdict line no longer registered, and a dev can't
 check a claim like "this rounds instead of floors across DST" without
 running the code, which a two-minute review doesn't do.
