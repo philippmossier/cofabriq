@@ -8,7 +8,9 @@ from cofabriq.context.store import postgres
 from cofabriq.issues import vectors
 from cofabriq.issues.fetch import issue_dir
 from cofabriq.issues.model import Issue
+from cofabriq.issues.rerank import Order, Seen
 from cofabriq.issues.triage import (
+    CANDIDATE_ISSUES,
     Context,
     Duplicate,
     Fields,
@@ -291,3 +293,53 @@ def test_refresh_leaves_the_store_alone_if_the_source_lacks_the_issue(
     assert refresh_issue(OneSource(None), tmp_path, 9) is None
     with pytest.raises(NotReady, match="not fetched"):
         gather(conn, tmp_path, tmp_path, REPO, 9)
+
+
+class ReverseReranker:
+    """Puts the last candidate first. Records how many it was shown."""
+
+    def __init__(self) -> None:
+        self.shown = 0
+
+    def rerank(self, query: Issue, candidates: Sequence[Seen]) -> tuple[Order, Usage]:
+        self.shown = len(candidates)
+        numbers = [c.number for c in reversed(candidates)]
+        return Order(numbers=numbers), Usage(1, 1, 1)
+
+
+def test_gather_reranks_a_wide_list_down_to_the_verdicts_short_list(
+    conn: postgres.Conn, tmp_path: Path
+) -> None:
+    old = [
+        issue(n, f"Download {n}", "The model download starts over.")
+        for n in range(1, 16)
+    ]
+    new = issue(30, "Download again", "The model download starts over.")
+    _store(tmp_path, *old, new)
+    vectors.sync(conn, [*old, new], FakeEmbedder())
+    reranker = ReverseReranker()
+
+    plain = gather(conn, tmp_path, tmp_path, REPO, 30)
+    ctx = gather(conn, tmp_path, tmp_path, REPO, 30, reranker)
+
+    assert len(plain.candidates) == CANDIDATE_ISSUES
+    assert reranker.shown == 15  # every earlier issue, not only ten
+    assert len(ctx.candidates) == CANDIDATE_ISSUES
+    # the fake keeps the ten the vector search ranked last
+    assert {c.number for c in ctx.candidates} != {c.number for c in plain.candidates}
+    assert [r.number for r in ctx.related_issues] == [c.number for c in ctx.candidates][
+        : len(ctx.related_issues)
+    ]
+
+
+def test_gather_makes_no_rerank_call_when_there_is_nothing_to_cut(
+    conn: postgres.Conn, tmp_path: Path
+) -> None:
+    _store(tmp_path, OLD, NEW)
+    vectors.sync(conn, [OLD, NEW], FakeEmbedder())
+    reranker = ReverseReranker()
+
+    ctx = gather(conn, tmp_path, tmp_path, REPO, 9, reranker)
+
+    assert reranker.shown == 0
+    assert [c.number for c in ctx.candidates] == [1]

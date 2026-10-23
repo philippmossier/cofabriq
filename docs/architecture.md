@@ -29,7 +29,7 @@ features removed on purpose.
 | `cli.py` | every command (`triage`, `refine`, `run`, `flow`, `intake`, `serve`, `lessons`, `stop`, `eval ...`) |
 | `config.py` | settings from `.env` |
 | `context/` | the docs layer from the project's first version: fetch, parse, chunk, embed docs into Postgres, extract decisions into Neo4j; behind the MCP tools `search`, `decisions`, `affected` |
-| `issues/` | GitHub issues in: the GraphQL source, the local store, vectors for duplicates, the triage card, the readiness check for missing info |
+| `issues/` | GitHub issues in: the GraphQL source, the local store, vectors for duplicates (the text cleaned first, an optional rerank of the top 50), the triage card, the readiness check for missing info |
 | `map/` | the repo map from git history: files to components, co-change, which commit fixed which issue; behind `impact` |
 | `loop/` | the factory itself (below) |
 | `eval/` | one module per eval: the planted sets, the metrics |
@@ -110,6 +110,7 @@ graph LR
 | `data/work/` | the loop | one git worktree per run, removed afterwards |
 | `data/refine/` | `eval refine` | specs (`eval-*` bugs, `features-*` features and hard bugs) |
 | `data/runs/` | `run`, flows, evals | run records, PR bodies (`*.pr.md`), screenshots (`<run>/`) |
+| `data/verdicts/`, `data/rerank/` | `eval dedupe`, `triage` | cached duplicate verdicts and reranked candidate lists |
 | `data/lessons/` | gate rejections, `lessons --propose` | rejection reasons, proposed rules |
 | `data/STOP` | `cofabriq stop` | while it exists, no agent starts |
 

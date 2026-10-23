@@ -231,6 +231,81 @@ split.
 No LLM call. Kept as an MCP tool, not as the way the loop finds code: the
 agent reads the code. Reproduce: `cofabriq eval impact [--test]`.
 
+## After 0.6: cleaner issue text, a reranker (unreleased)
+
+Two changes to duplicate retrieval, on the same frozen sets as 0.1 below (the
+snapshot, the pairs and the negatives are unchanged; only the vectors and what
+reaches the verdict are new). Recall is the share of duplicates whose target is
+in the top k; "strict" counts the exact target, "cluster" any issue of its
+duplicate group.
+
+**1. Clean the text before embedding** (`clean_issue_text`, `issues/vectors.py`).
+Dropped: template comments, vscode's System Info / A/B Experiments / Extensions
+blocks, ticked checkboxes with their bullets, empty answers, section headers,
+screenshots, attachment links and long tokens; code fences keep their first 600
+and last 200 characters. On vscode 53% of the embedded characters were such
+text (mean 1,649 to 599 characters per issue), on open-webui 33% (2,348 to
+1,557).
+
+| Retrieval, strict (n = 200 / 155 duplicates)  | raw @1 / @5 / @10   | cleaned @1 / @5 / @10 |
+| --------------------------------------------- | ------------------- | --------------------- |
+| vscode                                        | 0.210 / 0.360 / 0.400 | 0.255 / 0.450 / 0.490 |
+| open-webui                                    | 0.368 / 0.497 / 0.568 | 0.316 / 0.477 / 0.574 |
+
+vscode gains 9 points at @10 (cluster @10 0.560 to 0.680). open-webui does not
+gain: @1 loses 5 points (8 pairs of 155), which is inside the 8-point noise of
+a set this size, and nothing found a cause. Tried on open-webui, strict
+@1 / @5 / @10: no fence cap 0.297 / 0.465 / 0.555, a looser cap (1,500 and 500)
+0.310 / 0.465 / 0.574, headers kept 0.310 / 0.477 / 0.574, version / OS /
+browser answers dropped 0.335 / 0.497 / 0.581. Not adopted: none moves more
+than the noise. On vscode, dropping the reporter's `VS Code version:` / `OS
+version:` / `Modes:` lines gave @10 0.465, no gain. Re-embedding is not exactly
+reproducible (near-ties flip: vscode @1 read 0.245 to 0.255 across runs).
+Impact (`eval impact`, vscode) did not regress: kNN fixed hit @10 0.793 to 0.820,
+hit @5 0.717 to 0.747.
+
+**2. Rerank the vector top 50** (`issues/rerank.py`, `eval dedupe --rerank`).
+One LLM call per issue reads the issue and the 50 nearest earlier issues (title
+and the first 400 characters of the cleaned body, no comments) and names the
+10 most likely to report the same problem, best first. Numbers it was not
+offered are dropped; what it leaves out keeps its vector order behind it.
+$0.00073 to $0.00076 and 3.3 s median per issue.
+
+| Retrieval, strict @1 / @5 / @10 (cluster @10) | vector top 10          | reranked top 50 | vector @50 |
+| --------------------------------------------- | ---------------------- | --------------- | ---------- |
+| vscode                                        | 0.250 / 0.450 / 0.490 (0.680) | 0.395 / 0.575 / 0.635 (0.795) | 0.655 |
+| open-webui                                    | 0.316 / 0.477 / 0.574 (0.665) | 0.465 / 0.677 / 0.703 (0.781) | 0.723 |
+
+The reranker gets almost all of what a perfect one could (the target is in the
+vector top 50 for 65.5% / 72.3% of duplicates). Reading 100 instead of 50 gave
+the same strict @10 on vscode (0.635) and cluster @10 0.830 (from 0.795) for
+1.8 times the cost ($0.00133), so it stays at 50. The vector top 200 holds the
+target for 74.5% / 83.9%.
+
+**Not the same as better verdicts.** The LLM verdict over the reranked top 10
+(strict, `duplicate_of`):
+
+| Verdict, strict         | vector top 10 | reranked top 10 |
+| ----------------------- | ------------- | --------------- |
+| vscode, 400 issues      | P 0.406, R 0.315, F1 0.355 (155 calls) | P 0.408, R 0.365, F1 0.385 (179 calls) |
+| open-webui, 310 issues  | P 0.474, R 0.348, F1 0.401 (114 calls) | P 0.386, R 0.316, F1 0.348 (127 calls) |
+
+(For comparison, 0.1.1 on raw vectors: vscode P 0.346, R 0.235; open-webui P
+0.434, R 0.342.) Cluster recall: vscode 0.420 to 0.455, open-webui 0.387 to
+0.381. So the cleaning lifts the verdict on vscode by 8 points of recall; the
+reranker adds 5 more there and loses 3 on open-webui, and its precision is
+lower on open-webui, whose "negatives" are only issues nobody marked (see
+below). Where the target is among the 10 candidates, the verdict names it in 64% (vscode)
+and 61% (open-webui) of cases with vector retrieval, and in 57% and 45% with
+reranking: the duplicates the reranker rescues are the ones whose wording
+differs, and the verdict, which asks for the same cause, can't confirm them.
+That reading fits the numbers; it is not tested. Hence `RERANK_CANDIDATES` in
+triage is off by default.
+
+Reproduce: `cofabriq embed-issues --repo <r>`, then
+`cofabriq eval dedupe --repo <r> [--rerank] [--verdict]` (paid with the flags;
+cached per candidate list).
+
 ## 0.1: duplicates and missing info
 
 Duplicate detection is measured on two real issue histories. Each query only

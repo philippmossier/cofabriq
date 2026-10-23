@@ -8,6 +8,7 @@ import webbrowser
 from collections import Counter
 from collections.abc import Callable, Generator
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from datetime import UTC, date, datetime
 from functools import partial
 from pathlib import Path
@@ -59,6 +60,7 @@ from cofabriq.eval.bugs import (
     prove_bugs,
     repro_path,
 )
+from cofabriq.issues import rerank as rerank_mod
 from cofabriq.issues import triage as triage_mod
 from cofabriq.issues import vectors
 from cofabriq.issues import verdict as verdict_mod
@@ -267,21 +269,26 @@ def dedupe_set(repo: str | None = None, force: bool = False) -> None:
 
 
 @eval_app.command("dedupe")
-def eval_dedupe(repo: str | None = None, verdict: bool = False) -> None:
+def eval_dedupe(
+    repo: str | None = None, verdict: bool = False, rerank: bool = False
+) -> None:
     """Retrieval recall@k and the embedding-threshold baseline on the frozen set.
 
-    `--verdict` adds the LLM duplicate verdict over the top 10 (paid calls,
-    cached in the verdicts dir: a rerun costs nothing).
+    `--rerank` adds an LLM rerank of the vector top 50 and scores its top 10
+    (paid calls, cached in the rerank dir). `--verdict` adds the LLM duplicate
+    verdict over the top 10, reranked with `--rerank` (paid calls, cached in the
+    verdicts dir: a rerun costs nothing).
     """
     settings = get_settings()
     target = _target_repo(repo)
     evalset = dedupe.EvalSet.model_validate_json(_evalset_path(target).read_bytes())
     issues = {i.number: i for i in load_issues(settings.issues_dir, target)}
+    depth = rerank_mod.WIDE if rerank else CANDIDATE_ISSUES
     with postgres.connect(settings.postgres_dsn) as conn:
 
         def rank(number: int) -> list[tuple[int, float]]:
             before = issues[number].created_at
-            hits = vectors.nearest(conn, target, number, CANDIDATE_ISSUES, before)
+            hits = vectors.nearest(conn, target, number, depth, before)
             return [(h.number, h.score) for h in hits]
 
         ranked = dedupe.rank_all(evalset, rank)
@@ -289,7 +296,12 @@ def eval_dedupe(repo: str | None = None, verdict: bool = False) -> None:
         f"{target}, frozen {evalset.frozen_at:%Y-%m-%d}: "
         f"{len(evalset.pairs)} pairs, {len(evalset.negatives)} negatives"
     )
-    records = _verdicts(target, ranked, issues) if verdict else None
+    reranked = _reranked(target, ranked, issues) if rerank else None
+    shortlist = [
+        replace(r, candidates=r.candidates[:CANDIDATE_ISSUES])
+        for r in (reranked or ranked)
+    ]
+    records = _verdicts(target, shortlist, issues) if verdict else None
     for name, cluster in [("strict", False), ("cluster", True)]:
         m = dedupe.score(ranked, cluster=cluster)
         recall = "  ".join(f"@{k} {r:.3f}" for k, r in m.recall_at.items())
@@ -298,9 +310,18 @@ def eval_dedupe(repo: str | None = None, verdict: bool = False) -> None:
             f"  {name:<8} recall {recall}  |  threshold baseline t={b.value:.3f}: "
             f"precision {b.precision:.3f}, recall {b.recall:.3f}, F1 {b.f1:.3f}"
         )
+        if reranked is not None:
+            wide = dedupe.score(ranked, ks=(20, rerank_mod.WIDE), cluster=cluster)
+            after = dedupe.score(reranked, cluster=cluster)
+            typer.echo(
+                f"  {'':<8} reranked top {rerank_mod.WIDE}: recall "
+                + "  ".join(f"@{k} {r:.3f}" for k, r in after.recall_at.items())
+                + "  |  vector "
+                + "  ".join(f"@{k} {r:.3f}" for k, r in wide.recall_at.items())
+            )
         if records is not None:
             answers = {n: (r.verdict, r.target) for n, r in records.items()}
-            v = dedupe.score_verdicts(ranked, answers, cluster=cluster)
+            v = dedupe.score_verdicts(shortlist, answers, cluster=cluster)
             typer.echo(
                 f"  {'':<8} LLM verdict ({v.predicted} duplicate_of): "
                 f"precision {v.precision:.3f}, recall {v.recall:.3f}, F1 {v.f1:.3f}"
@@ -611,6 +632,38 @@ def eval_triage(
         typer.echo(f"  miss  {miss}")
 
 
+def _reranked(
+    repo: str, ranked: list[dedupe.Ranked], issues: dict[int, Issue]
+) -> list[dedupe.Ranked]:
+    """The vector top 50 of every eval issue in the LLM's order (cached per
+    candidate list). Scores stay the vector scores, so they no longer fall."""
+    jobs = [
+        rerank_mod.Job(
+            issues[r.query], [rerank_mod.Seen.of(issues[n]) for n, _ in r.candidates]
+        )
+        for r in ranked
+    ]
+    path = get_settings().rerank_dir / f"{repo.replace('/', '-')}.json"
+    records, report = rerank_mod.rerank_all(
+        jobs, path, rerank_mod.OpenAIReranker(_openai_key())
+    )
+    typer.echo(
+        f"  rerank: {report.reranked} reranked, {report.cached} cached -> {path}"
+    )
+    rows = list(records.values())
+    typer.echo(
+        f"  per issue: ${fmean(x.cost_usd for x in rows):.5f} mean, "
+        f"{median(x.latency_ms for x in rows) / 1000:.1f} s median latency"
+    )
+    out: list[dedupe.Ranked] = []
+    for r in ranked:
+        score = dict(r.candidates)
+        out.append(
+            replace(r, candidates=[(n, score[n]) for n in records[r.query].order])
+        )
+    return out
+
+
 def _verdicts(
     repo: str, ranked: list[dedupe.Ranked], issues: dict[int, Issue]
 ) -> dict[int, verdict_mod.VerdictRecord]:
@@ -645,6 +698,7 @@ def _triage_fn(
     settings = get_settings()
     key = _openai_key()
     triager, judge = triage_mod.OpenAITriager(key), verdict_mod.OpenAIJudge(key)
+    reranker = rerank_mod.OpenAIReranker(key) if settings.rerank_candidates else None
     embed = openai_embedder(key)
     token = settings.github_token if refresh else None
     show = steps or Steps(None)
@@ -665,7 +719,12 @@ def _triage_fn(
             show.note("GitHub", "skipped: no GITHUB_TOKEN, local copy", ok=False)
         with show.step("search", "nearest earlier issues and docs") as done:
             ctx = triage_mod.gather(
-                conn, settings.issues_dir, settings.targets_dir, repo, number
+                conn,
+                settings.issues_dir,
+                settings.targets_dir,
+                repo,
+                number,
+                reranker,
             )
             done(f"{len(ctx.candidates)} earlier issues, {len(ctx.related_docs)} docs")
         with show.step("LLM", "card fields + duplicate verdict") as done:

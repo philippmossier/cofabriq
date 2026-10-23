@@ -1,6 +1,7 @@
 """Issue vectors in pgvector: one row per issue, nearest earlier issues."""
 
 import hashlib
+import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -41,12 +42,81 @@ class Neighbour:
     score: float  # cosine similarity, 1 = same direction
 
 
+FENCE_HEAD = 600  # characters kept from the start of a code fence
+FENCE_TAIL = 200  # and from its end: a traceback names the error last
+
+_FENCE = re.compile(r"```[^\n]*\n.*?```", re.S)
+_COMMENT = re.compile(r"<!--.*?-->", re.S)
+# The blocks vscode's issue reporter appends; a dev's own <details> stays.
+_REPORTER_DETAILS = re.compile(
+    r"<details>\s*<summary>\s*"
+    r"(?:System Info|A/B Experiments|Extensions[^<]*|Process Info|Workspace Info)"
+    r"\s*</summary>.*?</details>",
+    re.S,
+)
+_IMAGE = re.compile(r"!\[([^\]]*)\]\([^)]*\)")
+_HTML_IMAGE = re.compile(r"<img\b[^>]*>", re.I)
+_ATTACHMENT = re.compile(
+    r"https://(?:github\.com/user-attachments|user-images\.githubusercontent\.com)/\S+"
+)
+_DATA_URI = re.compile(r"data:[\w/+.-]+;base64,[A-Za-z0-9+/=]+")
+_LONG_TOKEN = re.compile(r"\b[A-Za-z0-9_-]{60,}\b")
+_ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+# A ticked template box and the plain bullets under it ("my steps:" lists).
+_CHECKBOX = re.compile(r"^[ \t]*- \[[ xX]\].*\n(?:[ \t]*- (?!\[).*\n)*", re.M)
+_HEADER = re.compile(r"^#{1,6}[ \t]+(?:\S+[ \t]*){1,5}$", re.M)  # "### Browser"
+_NO_RESPONSE = re.compile(r"^_No response_$", re.M)
+_BLANKS = re.compile(r"\n{3,}")
+
+
+def _cap_fence(match: re.Match[str]) -> str:
+    fence = match.group(0)
+    if len(fence) <= FENCE_HEAD + FENCE_TAIL:
+        return fence
+    return f"{fence[:FENCE_HEAD]}\n[...]\n{fence[-FENCE_TAIL:]}"
+
+
+def _clean_prose(text: str) -> str:
+    text = _IMAGE.sub(r"\1", text)
+    text = _HTML_IMAGE.sub("", text)
+    text = _ATTACHMENT.sub("", text)
+    text = _DATA_URI.sub("", text)
+    text = _LONG_TOKEN.sub("", text)
+    text = _CHECKBOX.sub("", text if text.endswith("\n") else text + "\n")
+    text = _HEADER.sub("", text)
+    return _NO_RESPONSE.sub("", text)
+
+
+def clean_issue_text(body: str) -> str:
+    """The body without what every report in the repo repeats or nobody reads.
+
+    Template comments, the reporter's system blocks, ticked checkboxes, empty
+    answers and section headers, screenshots, attachment links and long tokens
+    go. Code fences stay but keep only their head and tail (a pasted log would
+    otherwise fill the embedding). The rest of the cleaning skips fences, so a
+    `# comment` in a shell block is never taken for a header.
+    """
+    body = _ANSI.sub("", body.replace("\r\n", "\n"))
+    # Before the fence split: the reporter's blocks hold fences of their own.
+    body = _REPORTER_DETAILS.sub("", _COMMENT.sub("", body))
+    parts: list[str] = []
+    end = 0
+    for fence in _FENCE.finditer(body):
+        parts.append(_clean_prose(body[end : fence.start()]))
+        parts.append(_cap_fence(fence))
+        end = fence.end()
+    parts.append(_clean_prose(body[end:]))
+    lines = "".join(parts).split("\n")
+    return _BLANKS.sub("\n\n", "\n".join(line.rstrip() for line in lines)).strip()
+
+
 def embed_input(issue: Issue) -> str:
-    """Title and body only. Comments are left out on purpose: on a closed
+    """Title and the cleaned body. Comments are left out on purpose: on a closed
     duplicate they name the answer ("duplicate of #N"), and a new issue has
     none yet anyway.
     """
-    return f"{issue.title}\n\n{issue.body[:MAX_BODY]}"
+    body = clean_issue_text(issue.body)[:MAX_BODY]
+    return f"{issue.title}\n\n{body}" if body else issue.title
 
 
 def create_schema(conn: Conn) -> None:

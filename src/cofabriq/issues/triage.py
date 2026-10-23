@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field
 
 from cofabriq.context.ingest.embed import Embed
 from cofabriq.context.store import postgres
-from cofabriq.issues import readiness, vectors, verdict
+from cofabriq.issues import readiness, rerank, vectors, verdict
 from cofabriq.issues.fetch import fetch_one, load_issue
 from cofabriq.issues.model import Issue, IssueSource
 from cofabriq.issues.readiness import Evidence, InfoItem, Readiness
@@ -272,8 +272,27 @@ def refresh_vector(conn: postgres.Conn, issue: Issue, embed: Embed) -> bool:
     return vectors.sync(conn, [issue], embed).embedded > 0
 
 
+def _shortlist(
+    issue: Issue,
+    hits: list[vectors.Neighbour],
+    earlier: dict[int, Issue | None],
+    reranker: rerank.Reranker,
+) -> list[vectors.Neighbour]:
+    """The `CANDIDATE_ISSUES` best of a wide vector list, in the LLM's order."""
+    known = {h.number: h for h in hits if earlier[h.number] is not None}
+    seen = [rerank.Seen.of(i) for n in known if (i := earlier[n]) is not None]
+    order, _ = reranker.rerank(issue, seen)
+    ranked = rerank.merge(list(known), order.numbers[: rerank.KEEP])
+    return [known[n] for n in ranked[:CANDIDATE_ISSUES]]
+
+
 def gather(
-    conn: postgres.Conn, issues_dir: Path, targets_dir: Path, repo: str, number: int
+    conn: postgres.Conn,
+    issues_dir: Path,
+    targets_dir: Path,
+    repo: str,
+    number: int,
+    reranker: rerank.Reranker | None = None,
 ) -> Context:
     """Issue, candidates and related docs from the local stores. Nothing is
     fetched from GitHub here: `refresh_issue` and `refresh_vector` (or
@@ -282,6 +301,10 @@ def gather(
     Candidates are earlier issues only (a duplicate points back in time).
     Docs are searched with the issue's stored vector, in the repo's clone
     (docs are keyed by folder name, which is the repo's name).
+
+    With a `reranker` the candidates are the best `CANDIDATE_ISSUES` of the
+    vector top `rerank.WIDE`; with `CANDIDATE_ISSUES` or fewer earlier issues
+    there is nothing to cut and no call is made.
     """
     issue = load_issue(issues_dir, repo, number)
     if issue is None:
@@ -290,8 +313,12 @@ def gather(
     vector = vectors.embedding(conn, repo, number)
     if vector is None:
         raise NotReady(f"{repo}#{number} is not embedded: run embed-issues")
-    hits = vectors.nearest(conn, repo, number, CANDIDATE_ISSUES, issue.created_at)
+    depth = rerank.WIDE if reranker else CANDIDATE_ISSUES
+    hits = vectors.nearest(conn, repo, number, depth, issue.created_at)
     earlier = {h.number: load_issue(issues_dir, repo, h.number) for h in hits}
+    if reranker is not None and len(hits) > CANDIDATE_ISSUES:
+        hits = _shortlist(issue, hits, earlier, reranker)
+        earlier = {h.number: earlier[h.number] for h in hits}
     candidates = [Candidate.of(i, issue) for i in earlier.values() if i is not None]
     chunks = postgres.search(conn, vector, RELATED_CHUNKS, repo=repo.split("/")[1])
     return Context(

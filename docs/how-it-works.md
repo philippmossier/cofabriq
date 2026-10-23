@@ -142,8 +142,10 @@ philippmossier/local-ai-chat-playground#11 (open)
 ```
 
 How a card is made: if the issue is new or changed on GitHub, it is fetched
-and embedded first. Its vector finds the nearest earlier issues and docs in
-pgvector. Two LLM calls run in parallel, one for the card fields and
+and embedded first (title and body, with the template, reporter blocks,
+checkboxes and long logs cut out). Its vector finds the nearest earlier issues and
+docs in pgvector; with `RERANK_CANDIDATES=true` one more LLM call picks the
+10 candidates from the nearest 50. Two LLM calls run in parallel, one for the card fields and
 one for the duplicate verdict over the top 10 candidates. Plain code then
 checks what the model returned: the component must be on the repository's
 list (`targets/<owner>-<name>.toml`), severity is kept only on bugs, the

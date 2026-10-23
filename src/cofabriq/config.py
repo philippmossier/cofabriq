@@ -20,12 +20,16 @@ class Settings(BaseSettings):
     openai_api_key: SecretStr | None = None
     issues_dir: Path = Path("data/issues")
     verdicts_dir: Path = Path("data/verdicts")
+    rerank_dir: Path = Path("data/rerank")
     readiness_dir: Path = Path("data/readiness")
     targets_dir: Path = Path("targets")
     target_repo: str | None = None
     github_token: SecretStr | None = None
     github_write_token: SecretStr | None = None  # `run --apply` only (0.2)
     issue_comments: int = 10
+    # triage: one more LLM call picks the verdict's 10 candidates from the
+    # vector top 50 (docs/evals.md: better retrieval, a mixed verdict)
+    rerank_candidates: bool = False
     anthropic_api_key: SecretStr | None = None  # the coding agent (0.2)
     # opt-in: the dev's own runs on their Claude plan (`claude setup-token`)
     agent_auth: Literal["api", "subscription"] = "api"
