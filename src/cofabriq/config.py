@@ -28,8 +28,9 @@ class Settings(BaseSettings):
     github_write_token: SecretStr | None = None  # `run --apply` only (0.2)
     issue_comments: int = 10
     # triage: one more LLM call picks the verdict's 10 candidates from the
-    # vector top 50 (docs/evals.md: better retrieval, a mixed verdict)
-    rerank_candidates: bool = False
+    # vector top 50 (docs/evals.md: better retrieval, a mixed verdict; on,
+    # since a human reads the candidates and decides)
+    rerank_candidates: bool = True
     anthropic_api_key: SecretStr | None = None  # the coding agent (0.2)
     # opt-in: the dev's own runs on their Claude plan (`claude setup-token`)
     agent_auth: Literal["api", "subscription"] = "api"

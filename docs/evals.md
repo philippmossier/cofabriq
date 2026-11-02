@@ -231,7 +231,7 @@ split.
 No LLM call. Kept as an MCP tool, not as the way the loop finds code: the
 agent reads the code. Reproduce: `cofabriq eval impact [--test]`.
 
-## After 0.6: cleaner issue text, a reranker (unreleased)
+## 0.7: cleaner issue text, a reranker
 
 Two changes to duplicate retrieval, on the same frozen sets as 0.1 below (the
 snapshot, the pairs and the negatives are unchanged; only the vectors and what
@@ -299,8 +299,12 @@ below). Where the target is among the 10 candidates, the verdict names it in 64%
 and 61% (open-webui) of cases with vector retrieval, and in 57% and 45% with
 reranking: the duplicates the reranker rescues are the ones whose wording
 differs, and the verdict, which asks for the same cause, can't confirm them.
-That reading fits the numbers; it is not tested. Hence `RERANK_CANDIDATES` in
-triage is off by default.
+That reading fits the numbers; it is not tested. `RERANK_CANDIDATES` in triage
+is still on by default: the card lists the top 5 candidates for a human, and
+there strict @5 goes from 0.450 to 0.575 (vscode) and 0.477 to 0.677
+(open-webui). Whether two issues with a similar cause are duplicates is a
+judgement call even for a maintainer, so a missed candidate costs more than a
+wrong verdict.
 
 Reproduce: `cofabriq embed-issues --repo <r>`, then
 `cofabriq eval dedupe --repo <r> [--rerank] [--verdict]` (paid with the flags;

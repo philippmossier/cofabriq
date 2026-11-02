@@ -12,8 +12,10 @@ Roadmap: 0.1 triage (read-only) -> 0.2 the core loop on the playground
 PR) -> 0.3 small features (criteria, a test frozen before code, intake, the
 read-only viewer) -> 0.4 UI bugs in the loop + kill switch -> 0.5 browser
 gate + guided planning -> 0.6 lessons, the sentinel, screenshots, a harder
-set -> next: a second reviewer model, risky-change routing -> later: a real
-repo with tests, self-host packaging. Current: v0.6.0. Playground only.
+set -> 0.7 duplicate retrieval (issues cleaned before embedding, an LLM rerank
+of the nearest 50) -> next: a second reviewer model, risky-change routing ->
+later: a real repo with tests, self-host packaging. Current: v0.7.0.
+Playground only.
 
 ## Commands
 
@@ -28,7 +30,7 @@ repo with tests, self-host packaging. Current: v0.6.0. Playground only.
 - `uv run cofabriq fetch-issues` / `embed-issues`: issues of `TARGET_REPO` into `data/issues/` (needs `GITHUB_TOKEN`, read-only), title + body into pgvector; `fetch-issues --repo <r> --created 2022-01-01..2024-12-31` fetches a creation window instead (eval sets on large repos, cursor untouched)
 - `uv run cofabriq eval dedupe-set` / `eval dedupe`: freeze the duplicate eval set to `evals/` (once; `--force` rebuilds), print recall@k and the threshold baseline (strict and cluster; `--rerank`: an LLM picks the 10 from the vector top 50, scored next to it; `--verdict`: the LLM duplicate verdict over the top 10; both paid and cached); per-repo rules (window, duplicate label, negatives, sample) in `targets/<owner>-<name>.toml` `[dedupe]`
 - `uv run cofabriq eval readiness-set [--test]` / `eval readiness [--test]`: freeze the missing-info eval set (vscode `info-needed`, `[readiness]` rules in the target file, label history checked on GitHub) and score needs_info precision/recall; dev split 2023-2024, held-out test split 2022 (score once)
-- `uv run cofabriq triage <n> [--repo] [--json]`: triage card for one issue (two LLM calls: card fields, duplicate verdict); fetches and embeds that issue first if it is new or changed on GitHub; `RERANK_CANDIDATES=true` reranks the vector top 50 before the verdict (`fetch.py` keeps the `fetch-issues` cursor in `cursor.json`, untouched by single fetches)
+- `uv run cofabriq triage <n> [--repo] [--json]`: triage card for one issue (two LLM calls: card fields, duplicate verdict); fetches and embeds that issue first if it is new or changed on GitHub; an LLM reranks the vector top 50 before the verdict (default; `RERANK_CANDIDATES=false` turns it off) (`fetch.py` keeps the `fetch-issues` cursor in `cursor.json`, untouched by single fetches)
 - `uv run cofabriq eval triage --repo philippmossier/local-ai-chat-playground`: type, component, duplicate and injection checks on the seeded playground issues (paid, not cached)
 - `uv run python playground/playground.py seed` / `reset --yes`: seed or wipe-and-reseed the demo playground via `gh` (your login; the repo is hard-coded)
 - `uv run cofabriq map build <clone> [--repo] [--until YYYY-MM-DD]` / `map show [--component]`: repo map from a local clone's history (history only is enough: `git clone --filter=blob:none --no-checkout`), components from `[map]` in the target file, co-change counts, into Neo4j (replaces that repo's map); vscode clone in `data/clones/`

@@ -371,12 +371,13 @@ draft for the reporter. Measured on real issues of
 
 Duplicate candidates come from the issue's embedding, made from its title and
 body with the template, the reporter's system blocks, checkboxes and long logs
-cut out first. Setting `RERANK_CANDIDATES=true` (in `.env`) adds one LLM call
-that picks the verdict's 10 candidates from the 50 nearest earlier issues
-(about $0.0007 and 3 s per card). The exact duplicate is then in the shortlist
-far more often: top-10 recall 0.40 to 0.635 on vscode and 0.568 to 0.703 on
-open-webui. The final verdict does not improve on both yet, so it is off by
-default ([numbers](docs/evals.md#after-06-cleaner-issue-text-a-reranker-unreleased)).
+cut out first. One more LLM call then picks the verdict's 10 candidates from
+the 50 nearest earlier issues (about $0.0007 and 3 s per card;
+`RERANK_CANDIDATES=false` in `.env` turns it off). The exact duplicate is then
+in the shortlist far more often: top-10 recall 0.40 to 0.635 on vscode and
+0.568 to 0.703 on open-webui. The final verdict does not improve on both yet,
+but the card lists the top 5 candidates and a human decides, so recall comes
+first ([numbers](docs/evals.md#07-cleaner-issue-text-a-reranker)).
 
 <img src="docs/demo/triage.gif" width="820" alt="cofabriq triage on two playground issues: a likely duplicate proven by a quote, routed to the dev with a reply draft for the missing version, then an issue with an injected instruction that the card ignores, routed ready">
 
@@ -395,6 +396,8 @@ the repository, the parts and the user journeys:
       a ticket
 - [x] **0.6** rules from what went wrong, the app's contract checked in
       code, screenshots as evidence, a harder planted set
+- [x] **0.7** better duplicate retrieval: issues cleaned before embedding,
+      an LLM rerank of the nearest 50
 - [ ] **Next:** a second reviewer model, "who knows this area" for risky
       changes, starting and publishing runs from the browser, run metrics
 - [ ] **Later:** a real repository with tests, self-host packaging
