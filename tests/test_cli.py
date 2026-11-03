@@ -22,3 +22,13 @@ def test_an_unknown_key_exits_and_names_it(capsys: pytest.CaptureFixture[str]) -
 
     assert exit_.value.exit_code == 1
     assert capsys.readouterr().err == "unknown bug keys: typo\n"
+
+
+def test_a_known_key_without_an_item_is_no_case_not_a_typo(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(typer.Exit) as exit_:
+        pick_only(ITEMS, "a,d,typo", lambda i: i[0], "case", known={"a", "d"})
+
+    assert exit_.value.exit_code == 1
+    assert capsys.readouterr().err == "no case for: d\nunknown case keys: typo\n"

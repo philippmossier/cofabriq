@@ -971,7 +971,7 @@ def eval_witness(
         for k, j in sorted(wrong.items())
         if review_eval.usable(j) and j.judge is not None and j.judge.ok
     ]
-    todo = pick_only(todo, only, lambda k: k, "wrong fix")
+    todo = pick_only(todo, only, lambda k: k, "wrong fix", known=by_key)
     typer.echo(f"{target}: {len(todo)} wrong fixes the planted repro missed")
     sandbox = Podman(image=rules.image, setup=rules.setup)
 
@@ -1175,7 +1175,7 @@ def eval_gate(
     witnesses = witness_eval.load_witnesses(settings.runs_dir)
     witnessed = frozenset(k for k, w in witnesses.items() if w.confirmed)
     todo = review_eval.cases(settings.runs_dir, witnessed)
-    todo = pick_only(todo, only, lambda c: c[0], "case")
+    todo = pick_only(todo, only, lambda c: c[0], "case", known=by_key)
     typer.echo(
         f"{target}: {sum(k == 'right' for _, k, _ in todo)} right, "
         f"{sum(k == 'wrong' for _, k, _ in todo)} wrong fixes, {reader.model}"
@@ -1248,7 +1248,7 @@ def eval_review(
     todo = review_eval.cases(
         settings.runs_dir, witness_eval.load_witnessed(settings.runs_dir)
     )
-    todo = pick_only(todo, only, lambda c: c[0], "case")
+    todo = pick_only(todo, only, lambda c: c[0], "case", known=specs)
     typer.echo(
         f"{target}: {sum(k == 'right' for _, k, _ in todo)} right, "
         f"{sum(k == 'wrong' for _, k, _ in todo)} wrong fixes, {agent.model}"

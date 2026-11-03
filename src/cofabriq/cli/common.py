@@ -2,7 +2,7 @@
 repo, the GitHub source, the target's loop rules, `--only`, the agent, the
 write token and the OpenAI and Neo4j clients."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 
 import typer
 from neo4j import Driver
@@ -67,16 +67,26 @@ def loop_rules(target: str) -> run_mod.LoopRules:
 
 
 def pick_only[T](
-    items: list[T], only: str | None, key: Callable[[T], str], what: str
+    items: list[T],
+    only: str | None,
+    key: Callable[[T], str],
+    what: str,
+    known: Collection[str] = (),
 ) -> list[T]:
     """The items `--only key,key` picks, all without it; exits on a key
-    none of them has, so a typo doesn't run nothing."""
+    none of them has, so a typo doesn't run nothing. `known`: real keys
+    that may have no item (a bug without a case), told apart from typos."""
     if only is None:
         return items
     keys = set(only.split(","))
-    unknown = keys - {key(i) for i in items}
+    missing = keys - {key(i) for i in items}
+    no_item = {k for k in missing if k in known}
+    unknown = missing - no_item
+    if no_item:
+        typer.echo(f"no case for: {', '.join(sorted(no_item))}", err=True)
     if unknown:
         typer.echo(f"unknown {what} keys: {', '.join(sorted(unknown))}", err=True)
+    if missing:
         raise typer.Exit(code=1)
     return [i for i in items if key(i) in keys]
 
