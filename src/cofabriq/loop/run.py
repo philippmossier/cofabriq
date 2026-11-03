@@ -151,6 +151,11 @@ class CheckResult(BaseModel):
         output = ran.output if keep_output or not ran.ok else ""
         return cls(name=name, ok=ran.ok, seconds=ran.seconds, output=output)
 
+    @classmethod
+    def verdict(cls, name: str, ok: bool, failure: str, seconds: float = 0) -> Self:
+        """A check cofabriq judges itself; `failure` is its output when not ok."""
+        return cls(name=name, ok=ok, seconds=seconds, output="" if ok else failure)
+
 
 class Attempt(BaseModel):
     n: int
@@ -286,15 +291,17 @@ def render_spec(spec: Spec, tests: bool = False) -> str:
     return "\n".join(lines)
 
 
-def _later(n: int, diff: str, failed: list[CheckResult]) -> list[str]:
+RETRY = "Your earlier changes are in the working tree; fix what still fails."
+
+
+def retry_parts(
+    n: int, diff: str, failed: list[CheckResult], retry: str = RETRY
+) -> list[str]:
     """The prompt parts after the instructions and the spec: from attempt 2
-    on the agent's own diff, then what failed."""
+    on `retry` and the agent's own diff, then what failed."""
     parts: list[str] = []
     if n > 1:
-        parts.append(
-            f"Attempt {n} of {MAX_ATTEMPTS}. Your earlier changes are in the "
-            "working tree; fix what still fails."
-        )
+        parts.append(f"Attempt {n} of {MAX_ATTEMPTS}. {retry}")
         parts.append(fenced("diff", diff or "(no changes)"))
     parts += [fenced("failed", c.output, check=c.name) for c in failed]
     return parts
@@ -317,7 +324,7 @@ def prompt(
         checks=", ".join(c.name for c in rules.checks),
     )
     spec_part = fenced("spec", render_spec(spec))
-    parts = [text, spec_part, *context, *_later(n, diff, failed)]
+    parts = [text, spec_part, *context, *retry_parts(n, diff, failed)]
     return "\n\n".join(parts)
 
 
@@ -340,7 +347,8 @@ def reproduce_prompt(
     )
     spec_part = fenced("spec", render_spec(spec, tests=True))
     note = [suites_note(rules)] if rules.suites else []
-    return "\n\n".join([text, *note, spec_part, *context, *_later(n, diff, failed)])
+    later = retry_parts(n, diff, failed)
+    return "\n\n".join([text, *note, spec_part, *context, *later])
 
 
 def _differs(path: Path, original: bytes) -> bool:
@@ -388,6 +396,39 @@ def run_checks(
     ]
 
 
+def keep_only_tests(rules: Rules, worktree: Path) -> tuple[list[str], list[str]]:
+    """A test writer's write boundary: every changed file but its tests put
+    back. (reverted paths, its test files)"""
+    reverted = [p for p in changed_paths(worktree) if not is_test(p, rules.tests)]
+    restore(worktree, reverted, {})
+    return reverted, changed_paths(worktree)
+
+
+def new_test_checks(
+    rules: Rules,
+    tests: list[str],
+    gate: list[str],
+    not_red: str,
+    worktree: Path,
+    sandbox: Sandbox,
+) -> tuple[list[CheckResult], Ran | None]:
+    """A new test's checks: red on the tree (`not_red` when it passes), and
+    the `gate` checks green. (the checks, the red run if a test was written)"""
+    ran: Ran | None = None
+    if tests:
+        ran = sandbox(repro_command(rules, tests), worktree, network=False)
+        red = CheckResult.verdict("red", not ran.ok, not_red, ran.seconds)
+    else:
+        written = f"No test file written ({', '.join(rules.tests)})."
+        red = CheckResult.verdict("red", False, written)
+    checks = [
+        CheckResult.of(c.name, sandbox(c.cmd, worktree, network=False))
+        for c in rules.checks
+        if c.name in gate
+    ]
+    return [red, *checks], ran
+
+
 def reproduce(
     *,
     spec: Spec,
@@ -406,15 +447,14 @@ def reproduce(
     check, not the bug. `instructions` and `context`: another test writer
     on the same gate (the reviewer eval's witness). `route` "feature": the
     acceptance test, gated by `acceptance_checks`."""
-    names = rules.gate(route)
-    gate = [c for c in rules.checks if c.name in names]
+    gate = rules.gate(route)
     attempts: list[Attempt] = []
     failed: list[CheckResult] = []
     for n in range(1, MAX_ATTEMPTS + 1):
         # 1. the agent writes; from attempt 2 it sees its diff and the errors
         current = diff(worktree, []) if n > 1 else ""
         text = reproduce_prompt(
-            spec, rules, failed, n, current, instructions, context, gate=names
+            spec, rules, failed, n, current, instructions, context, gate=gate
         )
         try:
             run = agent(text, Reproduced.model_json_schema(), worktree)
@@ -422,29 +462,9 @@ def reproduce(
         except AgentError as exc:
             run, summary, error = None, "", str(exc)
         # 2. write boundary: everything but test files is put back
-        reverted = [p for p in changed_paths(worktree) if not is_test(p, rules.tests)]
-        restore(worktree, reverted, {})
-        tests = changed_paths(worktree)
+        reverted, tests = keep_only_tests(rules, worktree)
         # 3. the test has to be red, the gate checks green
-        ran: Ran | None = None
-        if tests:
-            ran = sandbox(repro_command(rules, tests), worktree, network=False)
-            red = CheckResult(
-                name="red",
-                ok=not ran.ok,
-                seconds=ran.seconds,
-                output="" if not ran.ok else NOT_RED,
-            )
-        else:
-            written = f"No test file written ({', '.join(rules.tests)})."
-            red = CheckResult(name="red", ok=False, seconds=0, output=written)
-        checks = [
-            red,
-            *[
-                CheckResult.of(c.name, sandbox(c.cmd, worktree, network=False))
-                for c in gate
-            ],
-        ]
+        checks, ran = new_test_checks(rules, tests, gate, NOT_RED, worktree, sandbox)
         attempt = Attempt(
             n=n, summary=summary, run=run, error=error, reverted=reverted, checks=checks
         )
