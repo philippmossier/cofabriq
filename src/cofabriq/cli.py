@@ -210,6 +210,21 @@ def _loop_rules(target: str) -> run_mod.Rules:
     return rules
 
 
+def _only[T](
+    items: list[T], only: str | None, key: Callable[[T], str], what: str
+) -> list[T]:
+    """The items `--only key,key` picks, all without it; exits on a key
+    none of them has, so a typo doesn't run nothing."""
+    if only is None:
+        return items
+    keys = set(only.split(","))
+    unknown = keys - {key(i) for i in items}
+    if unknown:
+        typer.echo(f"unknown {what} keys: {', '.join(sorted(unknown))}", err=True)
+        raise typer.Exit(code=1)
+    return [i for i in items if key(i) in keys]
+
+
 def _date_range(value: str) -> tuple[date, date]:
     """`2022-01-01..2024-12-31`, GitHub search syntax."""
     try:
@@ -1627,14 +1642,7 @@ def eval_refine(
     settings = get_settings()
     target = check_repo(repo)
     agent = _agent()
-    planted = load_bugs(bugs, seed)
-    if only is not None:
-        keys = only.split(",")
-        unknown = set(keys) - {b.key for b in planted}
-        if unknown:
-            typer.echo(f"unknown bug keys: {', '.join(sorted(unknown))}", err=True)
-            raise typer.Exit(code=1)
-        planted = [b for b in planted if b.key in keys]
+    planted = _only(load_bugs(bugs, seed), only, lambda b: b.key, "bug")
     items = [
         s for s in triage_eval.load_seed(seed) if s.key in {b.key for b in planted}
     ]
@@ -1716,14 +1724,7 @@ def _eval_refine_features(
     settings = get_settings()
     target = check_repo(repo)
     agent = _agent()
-    feats = features_eval.load_features(path)
-    if only is not None:
-        keys = only.split(",")
-        unknown = set(keys) - {f.key for f in feats}
-        if unknown:
-            typer.echo(f"unknown feature keys: {', '.join(sorted(unknown))}", err=True)
-            raise typer.Exit(code=1)
-        feats = [f for f in feats if f.key in keys]
+    feats = _only(features_eval.load_features(path), only, lambda f: f.key, "feature")
     clone = clone_dir(settings.clones_dir, target)
     commit = refine_mod.update_clone(target, clone)
     typer.echo(f"{target} at {commit[:7]}: {len(feats)} features, {agent.model}")
@@ -1783,9 +1784,7 @@ def eval_bug_set(
     settings = get_settings()
     target = check_repo(repo)
     rules = _loop_rules(target)
-    planted = load_bugs(bugs, seed)
-    if only is not None:
-        planted = [b for b in planted if b.key in only.split(",")]
+    planted = _only(load_bugs(bugs, seed), only, lambda b: b.key, "bug")
     clone = clone_dir(settings.clones_dir, target)
     commit = refine_mod.update_clone(target, clone)
     typer.echo(f"{target} at {commit[:7]}: {len(planted)} planted bugs")
@@ -1944,14 +1943,7 @@ def eval_loop(
         typer.echo("--kind must be logic, ui or all", err=True)
         raise typer.Exit(code=1)
     logic = [b for b in load_bugs(bugs, seed) if kind in ("all", b.kind)]
-    if only is not None:
-        keys = only.split(",")
-        unknown = set(keys) - {b.key for b in logic}
-        if unknown:
-            names = ", ".join(sorted(unknown))
-            typer.echo(f"unknown {kind} bug keys: {names}", err=True)
-            raise typer.Exit(code=1)
-        logic = [b for b in logic if b.key in keys]
+    logic = _only(logic, only, lambda b: b.key, f"{kind} bug")
     clone = clone_dir(settings.clones_dir, target)
     commit = refine_mod.update_clone(target, clone)
     specs = loop_eval.load_specs(settings.refine_dir)
@@ -2035,14 +2027,7 @@ def _eval_loop_features(repo: str, only: str | None, workers: int, path: Path) -
     target = check_repo(repo)
     rules = _loop_rules(target)
     agent = _agent().editing(budget_usd=1.0)
-    feats = features_eval.load_features(path)
-    if only is not None:
-        keys = only.split(",")
-        unknown = set(keys) - {f.key for f in feats}
-        if unknown:
-            typer.echo(f"unknown feature keys: {', '.join(sorted(unknown))}", err=True)
-            raise typer.Exit(code=1)
-        feats = [f for f in feats if f.key in keys]
+    feats = _only(features_eval.load_features(path), only, lambda f: f.key, "feature")
     clone = clone_dir(settings.clones_dir, target)
     commit = refine_mod.update_clone(target, clone)
     specs = features_eval.load_specs(settings.refine_dir)
@@ -2137,8 +2122,7 @@ def eval_witness(
         for k, j in sorted(wrong.items())
         if review_eval.usable(j) and j.judge is not None and j.judge.ok
     ]
-    if only is not None:
-        todo = [k for k in todo if k in only.split(",")]
+    todo = _only(todo, only, lambda k: k, "wrong fix")
     typer.echo(f"{target}: {len(todo)} wrong fixes the planted repro missed")
     sandbox = Podman(image=rules.image, setup=rules.setup)
 
@@ -2342,8 +2326,7 @@ def eval_gate(
     witnesses = witness_eval.load_witnesses(settings.runs_dir)
     witnessed = frozenset(k for k, w in witnesses.items() if w.confirmed)
     todo = review_eval.cases(settings.runs_dir, witnessed)
-    if only is not None:
-        todo = [c for c in todo if c[0] in only.split(",")]
+    todo = _only(todo, only, lambda c: c[0], "case")
     typer.echo(
         f"{target}: {sum(k == 'right' for _, k, _ in todo)} right, "
         f"{sum(k == 'wrong' for _, k, _ in todo)} wrong fixes, {reader.model}"
@@ -2416,8 +2399,7 @@ def eval_review(
     todo = review_eval.cases(
         settings.runs_dir, witness_eval.load_witnessed(settings.runs_dir)
     )
-    if only is not None:
-        todo = [c for c in todo if c[0] in only.split(",")]
+    todo = _only(todo, only, lambda c: c[0], "case")
     typer.echo(
         f"{target}: {sum(k == 'right' for _, k, _ in todo)} right, "
         f"{sum(k == 'wrong' for _, k, _ in todo)} wrong fixes, {agent.model}"
