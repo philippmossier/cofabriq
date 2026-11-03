@@ -1098,7 +1098,6 @@ def _publish_human_set(
     clone = clone_dir(settings.clones_dir, target)
     pulls = publish_mod.GitHubPulls(token)
     published = {(e.key, e.kind): e for e in hset.entries}
-    set_path.parent.mkdir(parents=True, exist_ok=True)
     for p in hset.picks:
         if (p.key, p.kind) in published and not update:
             continue
@@ -1132,7 +1131,7 @@ def _publish_human_set(
                 pulls=pulls,
             )
         except (publish_mod.PublishError, httpx.HTTPError) as exc:
-            set_path.write_text(hset.model_dump_json(indent=2), "utf-8")
+            write_atomic(set_path, hset.model_dump_json(indent=2).encode())
             typer.echo(f"  #{result.number}: {exc}", err=True)
             raise typer.Exit(code=1) from exc
         hset.entries.append(
@@ -1146,7 +1145,7 @@ def _publish_human_set(
                 approved=review.approved,
             )
         )
-        set_path.write_text(hset.model_dump_json(indent=2), "utf-8")
+        write_atomic(set_path, hset.model_dump_json(indent=2).encode())
         typer.echo(f"  #{result.number} -> {got.url}")
     typer.echo(f"{len(hset.entries)} draft PRs, set in {set_path}")
 
