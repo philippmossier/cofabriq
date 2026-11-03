@@ -34,7 +34,7 @@ from cofabriq.eval.loop import Judged
 from cofabriq.files import STAMP
 from cofabriq.issues.model import check_repo
 from cofabriq.loop.gate import Gated
-from cofabriq.loop.graph import FlowRunner, FlowStatus
+from cofabriq.loop.graph import FlowRunner, FlowStatus, GateAnswer
 from cofabriq.loop.intake import not_ready
 from cofabriq.loop.record import RunRecord
 from cofabriq.loop.refine import Refined
@@ -190,9 +190,9 @@ class FlowView(FlowSummary):
     diff: str  # the frozen test, at the test gate
 
 
-class Answer(BaseModel):
-    approve: bool
-    reason: str = Field(default="", max_length=500)  # why, when rejecting
+class Answer(GateAnswer):
+    # the gate's answer under the API's name; a longer reason is a 422 here
+    reason: str = Field(default="", max_length=500)
 
 
 class Answered(BaseModel):
@@ -539,11 +539,7 @@ def build(
 
 def _flow_summary(f: FlowStatus) -> FlowSummary:
     st = f.state
-    outcome = (
-        st.gated.status if st.gated else st.result.status if st.result else st.stage
-    )
-    if st.note:
-        outcome = f"{outcome}: {st.note}"
+    outcome = f"{st.outcome}: {st.note}" if st.note else st.outcome
     return FlowSummary(
         thread=f.thread,
         repo=st.issue.repo,
@@ -595,9 +591,6 @@ def _flow_routes(app: FastAPI, flows: FlowRunner) -> None:
 
     @app.post("/api/flows/{owner}/{name}/{number}/answer", response_model=Answered)
     def flow_answer(owner: str, name: str, number: int, answer: Answer) -> Answered:
-        started = flows.answer(
-            thread(owner, name, number), answer.approve, answer.reason
-        )
-        if not started:
+        if not flows.answer(thread(owner, name, number), answer):
             raise HTTPException(status_code=409, detail="not waiting at a gate")
         return Answered(started=True)

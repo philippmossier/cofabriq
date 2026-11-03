@@ -2,7 +2,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from cofabriq.loop.graph import FlowRunner, FlowState, FlowStatus
+from cofabriq.loop.graph import FlowRunner, FlowState, FlowStatus, GateAnswer
 from cofabriq.serve import build
 from tests.test_dedupe import REPO, issue
 
@@ -29,10 +29,10 @@ class FakeRunner(FlowRunner):
             thread=thread, state=state, waiting="plan" if self.waiting else None
         )
 
-    def answer(self, thread: str, approve: bool, reason: str = "") -> bool:
+    def answer(self, thread: str, answer: GateAnswer) -> bool:
         if not self.waiting:
             return False
-        self.answers.append((thread, approve, reason))
+        self.answers.append((thread, answer.approve, answer.reason))
         return True
 
 

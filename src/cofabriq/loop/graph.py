@@ -38,7 +38,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command, interrupt
 from psycopg.rows import DictRow, dict_row
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from cofabriq.files import stamp
 from cofabriq.git import files_at
@@ -87,6 +87,30 @@ class FlowState(BaseModel):
     record: str = ""  # the finished run's file in data/runs (the viewer's Runs)
     result: LoopResult | None = None
     gated: gate_mod.Gated | None = None
+
+    @property
+    def outcome(self) -> str:
+        """How it ended: the review gate's status, else the loop's, else the
+        stage it stopped at."""
+        if self.gated is not None:
+            return self.gated.status
+        return self.result.status if self.result is not None else self.stage
+
+
+class GateAnswer(BaseModel):
+    """The dev's answer at a gate. It resumes the graph as a plain dict
+    (`model_dump`): the checkpoint keeps it, and `ALLOWED` stays as it is."""
+
+    approve: bool
+    reason: str = ""  # why, when rejecting; kept for `cofabriq lessons`
+
+    @field_validator("reason")
+    @classmethod
+    def _trim(cls, reason: str) -> str:
+        return reason.strip()[:500]
+
+    def note(self, gate: str) -> str:
+        return f"{gate} rejected{f': {self.reason}' if self.reason else ''}"
 
 
 # the classes a checkpoint may contain (module, class), nothing else
@@ -150,14 +174,14 @@ def build_graph(deps: Deps) -> StateGraph[FlowState]:
 
     def plan_gate(s: FlowState) -> dict[str, object]:
         assert s.refined is not None
-        ok, reason = _answer(
+        a = GateAnswer.model_validate(
             interrupt({"gate": "plan", "spec": s.refined.spec.model_dump()})
         )
-        if not ok:
-            _log_rejection(deps, s, "plan", reason)
+        if not a.approve:
+            _log_rejection(deps, s, "plan", a.reason)
         return {
-            "stage": "approved" if ok else "rejected",
-            "note": "" if ok else f"plan rejected{f': {reason}' if reason else ''}",
+            "stage": "approved" if a.approve else "rejected",
+            "note": "" if a.approve else a.note("plan"),
         }
 
     def setup(s: FlowState) -> dict[str, object]:
@@ -191,12 +215,11 @@ def build_graph(deps: Deps) -> StateGraph[FlowState]:
 
     def test_gate(s: FlowState) -> dict[str, object]:
         test = diff(deps.worktree(s.issue), [])
-        ok, reason = _answer(interrupt({"gate": "test", "diff": test}))
-        if ok:
+        a = GateAnswer.model_validate(interrupt({"gate": "test", "diff": test}))
+        if a.approve:
             return {}
-        _log_rejection(deps, s, "test", reason)
-        note = f"test rejected{f': {reason}' if reason else ''}"
-        return {"stage": "rejected", "note": note}
+        _log_rejection(deps, s, "test", a.reason)
+        return {"stage": "rejected", "note": a.note("test")}
 
     def build(s: FlowState) -> dict[str, object]:
         assert s.refined is not None and s.progress is not None
@@ -347,11 +370,6 @@ def compiled(deps: Deps, dsn: str) -> Generator[CompiledStateGraph[FlowState]]:
         yield build_graph(deps).compile(checkpointer=saver)
 
 
-def _answer(value: dict[str, object]) -> tuple[bool, str]:
-    """A gate's answer: `{"approve": .., "reason": ..}`."""
-    return bool(value.get("approve")), str(value.get("reason", "")).strip()[:500]
-
-
 def _log_rejection(deps: Deps, s: FlowState, gate: str, reason: str) -> None:
     """A rejected gate, kept for `cofabriq lessons` (one JSON line each)."""
     deps.lessons_dir.mkdir(parents=True, exist_ok=True)
@@ -382,6 +400,22 @@ class FlowStatus(BaseModel):
     diff: str = ""  # the frozen test, at the test gate
     running: bool = False  # an answer is being worked off right now
     error: str = ""  # the last answer's run failed
+
+
+def read_status(graph: CompiledStateGraph[FlowState], thread: str) -> FlowStatus | None:
+    """Where a flow stands, from its newest checkpoint; None if it has none.
+    A paused flow's interrupt payload is `{"gate": .., "spec" | "diff": ..}`."""
+    snap = graph.get_state(_config(thread))
+    if not snap.values:
+        return None
+    payloads = [i.value for t in snap.tasks for i in t.interrupts]
+    gate = payloads[0] if payloads else None
+    return FlowStatus(
+        thread=thread,
+        state=FlowState.model_validate(snap.values),
+        waiting=gate["gate"] if gate else None,
+        diff=gate.get("diff", "") if gate else "",
+    )
 
 
 _THREAD = re.compile(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+#\d+$")
@@ -415,23 +449,15 @@ class FlowRunner:
     def status(self, thread: str) -> FlowStatus | None:
         repo = thread.split("#", 1)[0]
         with compiled(self.deps_for(repo, 0.0), self.dsn) as graph:
-            snap = graph.get_state(_config(thread))
-        if not snap.values:
+            found = read_status(graph, thread)
+        if found is None:
             return None
-        payloads = [i.value for t in snap.tasks for i in t.interrupts]
-        gate = payloads[0] if payloads else None
         with self._lock:
-            running, error = thread in self._running, self._errors.get(thread, "")
-        return FlowStatus(
-            thread=thread,
-            state=FlowState.model_validate(snap.values),
-            waiting=gate["gate"] if gate else None,
-            diff=gate.get("diff", "") if gate else "",
-            running=running,
-            error=error,
-        )
+            found.running = thread in self._running
+            found.error = self._errors.get(thread, "")
+        return found
 
-    def answer(self, thread: str, approve: bool, reason: str = "") -> bool:
+    def answer(self, thread: str, answer: GateAnswer) -> bool:
         """Start working off the answer; False if the flow waits at no gate
         or an answer is already running."""
         current = self.status(thread)
@@ -443,18 +469,17 @@ class FlowRunner:
             self._running.add(thread)
             self._errors.pop(thread, None)
         spent = current.state.spent_usd
-        answer = {"approve": approve, "reason": reason}
         worker = threading.Thread(
             target=self._resume, args=(thread, answer, spent), daemon=True
         )
         worker.start()
         return True
 
-    def _resume(self, thread: str, approve: dict[str, object], spent: float) -> None:
+    def _resume(self, thread: str, answer: GateAnswer, spent: float) -> None:
         repo = thread.split("#", 1)[0]
         try:
             with compiled(self.deps_for(repo, spent), self.dsn) as graph:
-                graph.invoke(Command(resume=approve), _config(thread))
+                graph.invoke(Command(resume=answer.model_dump()), _config(thread))
         except Exception as exc:  # shown on the page; the checkpoint stays
             with self._lock:
                 self._errors[thread] = f"{type(exc).__name__}: {exc}"

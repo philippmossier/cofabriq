@@ -1196,29 +1196,21 @@ def _flow_deps(target: str, spent_usd: float = 0.0) -> tuple[graph_mod.Deps, str
 
 def _flow_report(graph: "CompiledStateGraph[graph_mod.FlowState]", thread: str) -> None:
     """Where the run stands: the gate it waits at, or how it ended."""
-    snap = graph.get_state({"configurable": {"thread_id": thread}})
-    if not snap.values:
+    found = graph_mod.read_status(graph, thread)
+    if found is None:
         typer.echo(f"no flow for {thread}")
         return
-    state = graph_mod.FlowState.model_validate(snap.values)
-    waiting = [i.value for t in snap.tasks for i in t.interrupts]
-    if waiting:
-        payload = waiting[0]
-        typer.echo(f"{thread}: waiting at the {payload['gate']} gate")
-        if payload["gate"] == "plan" and state.refined is not None:
+    state = found.state
+    if found.waiting:
+        typer.echo(f"{thread}: waiting at the {found.waiting} gate")
+        if found.waiting == "plan" and state.refined is not None:
             _show_spec(state.refined)
-        if payload["gate"] == "test":
-            typer.echo(payload["diff"])
+        if found.waiting == "test":
+            typer.echo(found.diff)
         typer.echo(f"-> cofabriq flow resume {state.issue.number} --approve | --reject")
         return
-    status = (
-        state.gated.status
-        if state.gated
-        else state.result.status
-        if state.result
-        else state.stage
-    )
-    typer.echo(f"{thread}: done, {status}{f' ({state.note})' if state.note else ''}")
+    note = f" ({state.note})" if state.note else ""
+    typer.echo(f"{thread}: done, {state.outcome}{note}")
 
 
 @flow_app.command("start")
@@ -1268,14 +1260,15 @@ def flow_resume(
     config: RunnableConfig = {"configurable": {"thread_id": thread}}
     deps, dsn = _flow_deps(target)
     with graph_mod.compiled(deps, dsn) as graph:  # read what was spent so far
-        values = graph.get_state(config).values
-    spent = graph_mod.FlowState.model_validate(values).spent_usd if values else 0.0
+        found = graph_mod.read_status(graph, thread)
+    spent = found.state.spent_usd if found else 0.0
     deps, dsn = _flow_deps(target, spent)
     with graph_mod.compiled(deps, dsn) as graph:
         if not graph.get_state(config).next:
             typer.echo(f"{thread} waits at no gate", err=True)
             raise typer.Exit(code=1)
-        graph.invoke(Command(resume={"approve": approve, "reason": reason}), config)
+        answer = graph_mod.GateAnswer(approve=approve, reason=reason)
+        graph.invoke(Command(resume=answer.model_dump()), config)
         _flow_report(graph, thread)
 
 
