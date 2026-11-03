@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted, 2026-10-18.
+Accepted, 2026-10-18. Amended 2026-11-03: `cofabriq run` drives the same
+graph in one process, so the graph is the only orchestrator of a run.
 
 ## Context
 
@@ -36,6 +37,12 @@ approved. So every pause point has to be a step boundary.
   allow-list.
 - **What a paused run must keep lives in its state**, the run budget included:
   a resumed run continues with what is left, not a fresh budget.
+- **`run` uses the graph too** (amendment): an in-memory checkpointer, each
+  interrupt answered in the terminal. What only `run` needs stays out of the
+  graph's flow: the answer-key judge on a planted bug and `--keep` are two
+  hooks the CLI passes in (the judge runs in `record`, before the worktree is
+  removed); `--spec` and `--planted` are inputs in the state; publishing
+  (`--apply`) runs after the graph, from the stored record.
 
 ## Consequences
 
@@ -49,7 +56,12 @@ approved. So every pause point has to be a step boundary.
 - The checkpoint allow-list has to grow with the state; a missing type shows up
   as a warning now and will be an error in a later LangGraph version.
 - Two ways to run one issue: `run` (blocking, the terminal gates) and `flow`
-  (paused, the browser gate). Both share the stages.
+  (paused, the browser gate). Until the amendment both shared only the
+  stages, and the orchestration around them drifted: only `run` checked
+  blockers, only the flow kept rejection reasons, and each stored a different
+  result. Now both drive one graph: the same checks, the same record (the
+  loop's result before review), and every run that got past setup is
+  recorded, a flow's red build or rejected test too.
 
 ## Alternatives considered
 

@@ -1,10 +1,9 @@
 """The core loop's commands: refine, run, the flow and its gates, intake,
 lessons, the kill switch, and the API the viewer and the browser gate use."""
 
-import contextlib
 import json as json_mod
 import typing
-from collections.abc import Callable, Generator
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -30,11 +29,9 @@ from cofabriq.config import get_settings
 from cofabriq.eval import loop as loop_eval
 from cofabriq.eval.bugs import fix_path, load_bugs, planted_for, repro_path
 from cofabriq.files import stamp
-from cofabriq.git import files_at
 from cofabriq.issues import triage as triage_mod
 from cofabriq.issues.fetch import load_issue
 from cofabriq.issues.model import Issue, IssueRef, check_repo
-from cofabriq.loop import gate as gate_mod
 from cofabriq.loop import graph as graph_mod
 from cofabriq.loop import intake as intake_mod
 from cofabriq.loop import lessons as lessons_mod
@@ -43,13 +40,11 @@ from cofabriq.loop import publish as publish_mod
 from cofabriq.loop import record as record_mod
 from cofabriq.loop import refine as refine_mod
 from cofabriq.loop import run as run_mod
-from cofabriq.loop import worktree as worktree_mod
 from cofabriq.loop.engine import (
     STOP_ENV,
     AgentError,
     Guard,
     Guarded,
-    Halted,
     stop_reason,
 )
 from cofabriq.loop.sandbox import Podman
@@ -111,17 +106,82 @@ def _refresh_issue(repo: str, number: int, steps: Steps) -> Issue | None:
     return got[0] if got is not None else load_issue(settings.issues_dir, repo, number)
 
 
-@contextlib.contextmanager
-def _plain_step(steps: Steps, name: str) -> Generator[Callable[[str], None]]:
-    """A step without a spinner, for one that asks the dev something."""
-    yield lambda detail: steps.note(name, detail)
+def _gate_answer(question: str) -> graph_mod.GateAnswer:
+    """The dev's answer at a gate in the terminal: a no asks why (Enter
+    skips), the same reason the flow's gates keep for `lessons`."""
+    if typer.confirm(question):
+        return graph_mod.GateAnswer(approve=True)
+    reason: str = typer.prompt(
+        "Why? (optional, kept for cofabriq lessons)", default="", show_default=False
+    )
+    return graph_mod.GateAnswer(approve=False, reason=reason)
 
 
-def _approve_test(test_diff: str) -> bool:
-    """The test gate: the frozen acceptance test, before any code."""
-    typer.echo("acceptance test (frozen once approved):")
-    typer.echo(test_diff)
-    return typer.confirm("Approve the test and let the agent build against it?")
+def _terminal_gate(at: graph_mod.FlowStatus, yes: bool) -> graph_mod.GateAnswer:
+    """`run`'s answer at the gate its graph waits at: `--yes` approves
+    (but leaves no open question unanswered), else the dev in the terminal.
+    The test gate shows the frozen acceptance test, before any code."""
+    assert at.state.refined is not None
+    asked = len(at.state.refined.spec.open_questions)
+    if at.waiting == "plan" and yes and asked:  # nobody at the gate to answer
+        typer.echo(f"{asked} open question(s): answer them at the gate", err=True)
+        raise typer.Exit(code=1)
+    if yes:
+        return graph_mod.GateAnswer(approve=True)
+    if at.waiting == "test":
+        typer.echo("acceptance test (frozen once approved):")
+        typer.echo(at.diff)
+        return _gate_answer("Approve the test and let the agent build against it?")
+    if asked:
+        return _gate_answer(
+            f"Approve the plan as the answer to its {asked} open question(s)?"
+        )
+    return _gate_answer("Approve the plan and let the agent edit?")
+
+
+def _invoke(
+    graph: "CompiledStateGraph[graph_mod.FlowState]",
+    given: graph_mod.FlowState | graph_mod.GateAnswer,
+    thread: str,
+) -> graph_mod.FlowStatus:
+    """Start the graph, or resume it with the dev's answer, to its next
+    gate or its end; where it stands then."""
+    config = graph_mod.thread_config(thread)
+    if isinstance(given, graph_mod.GateAnswer):
+        graph.invoke(Command(resume=given.model_dump()), config)
+    else:
+        graph.invoke(given, config)
+    now = graph_mod.read_status(graph, thread)
+    assert now is not None
+    return now
+
+
+def _answer_key(
+    repro: Path, fix: Path, keep: bool, deps: graph_mod.Deps
+) -> graph_mod.Judge:
+    """`run`'s judge on a planted bug: the hidden planted repro on the tree
+    the loop left, and the agent's repro with the reference fix."""
+    rules, sandbox = deps.rules, deps.sandbox
+
+    def judge(
+        result: run_mod.LoopResult, worktree: Path
+    ) -> tuple[run_mod.CheckResult | None, run_mod.CheckResult | None]:
+        if keep:  # validity resets the code: keep the fix to look at
+            return loop_eval.judge(worktree, rules, repro, sandbox), None
+        j = loop_eval.against_key(result, worktree, rules, repro, fix, sandbox)
+        return j.judge, j.valid
+
+    return judge
+
+
+def _refuse_blocked(issue: Issue) -> None:
+    """A ticket with an open blocker stops here, before anything is paid."""
+    (ticket,) = intake_mod.slices([issue], _blocker_issues([issue]), [])
+    if ticket.state == "blocked":
+        typer.echo(
+            f"#{issue.number} {ticket.reason}: start it once that is merged", err=True
+        )
+        raise typer.Exit(code=1)
 
 
 def _blocker_issues(tickets: list[Issue]) -> dict[IssueRef, Issue]:
@@ -256,6 +316,7 @@ def flow_start(
     if issue is None:
         typer.echo(f"#{number} is not in the issue store", err=True)
         raise typer.Exit(code=1)
+    _refuse_blocked(issue)
     refine_mod.update_clone(target, clone_dir(get_settings().clones_dir, target))
     deps, dsn = _flow_deps(target)
     thread = graph_mod.thread_id(issue)
@@ -419,26 +480,22 @@ def run(
     route = _route(issue_type)
     settings = get_settings()
     target = check_repo(repo)
-    rules = loop_rules(target)
     write_token = write_token_for(target) if apply else None  # before paying
-    # every agent of this run (refine, test, build, review, proofs) shares
-    # one budget: the kill switch's run cap
-    agent = Guarded(claude_code(), Guard(settings.run_budget_usd))
+    # the flow's graph in one process: every agent of this run (refine,
+    # test, build, review, proofs) shares one budget, the kill switch's cap
+    deps, _ = _flow_deps(target)
     steps = Steps(Console(stderr=True, soft_wrap=True))
-    clone = clone_dir(settings.clones_dir, target)
-    with steps.step("clone", f"updating {clone}") as done:
-        commit = refine_mod.update_clone(target, clone)
-        done(f"{clone} at {commit[:7]}")
+    with steps.step("clone", f"updating {deps.clone}") as done:
+        commit = refine_mod.update_clone(target, deps.clone)
+        done(f"{deps.clone} at {commit[:7]}")
     issue = _refresh_issue(target, number, steps)
     if issue is None:
         typer.echo(f"#{number} is not in {settings.issues_dir}", err=True)
         raise typer.Exit(code=1)
-    (ticket,) = intake_mod.slices([issue], _blocker_issues([issue]), [])
-    if ticket.state == "blocked":  # before paying for refine
-        typer.echo(f"#{number} {ticket.reason}: start it once that is merged", err=True)
-        raise typer.Exit(code=1)
+    _refuse_blocked(issue)
+    state = graph_mod.FlowState(issue=issue, route=route)
     bug = planted_for(issue.title, load_bugs(bugs, seed), seed)
-    if bug is not None and bug.kind == "ui" and rules.suite(bug.repro) is None:
+    if bug is not None and bug.kind == "ui" and deps.rules.suite(bug.repro) is None:
         bug = None  # the target has no suite to run a Playwright repro
     if planted and bug is None:
         typer.echo(f"#{number} is not a planted bug the loop can run", err=True)
@@ -446,147 +503,80 @@ def run(
     if bug is not None:
         role = "handed to the agent" if planted else "judges the result"
         steps.note("repro", f"planted {bug.key} ({bug.repro}) {role}")
+        if planted:
+            state.planted = str(repro_path(bugs, bug))
+        else:  # no verdicts by default: no answer key without a planted bug
+            key = _answer_key(repro_path(bugs, bug), fix_path(bugs, bug), keep, deps)
+            deps = replace(deps, judge=key)
     if spec is not None:
-        refined = refine_mod.Refined.model_validate_json(spec.read_text("utf-8"))
-        if (refined.repo, refined.number) != (target, number):
-            typer.echo(f"{spec} is for {refined.repo}#{refined.number}", err=True)
+        given = refine_mod.Refined.model_validate_json(spec.read_text("utf-8"))
+        if (given.repo, given.number) != (target, number):
+            typer.echo(f"{spec} is for {given.repo}#{given.number}", err=True)
             raise typer.Exit(code=1)
-        steps.note("spec", f"from {spec} (at {refined.commit[:7]})")
+        steps.note("spec", f"from {spec} (at {given.commit[:7]})")
+        state.refined, state.route = given, given.route
+    deps = replace(deps, keep=keep, prefix="")  # not the flow's worktree
+    graph, worktree = graph_mod.in_memory(deps), deps.worktree(issue)
+    thread = graph_mod.thread_id(issue)
+    if spec is not None:
+        now = _invoke(graph, state, thread)
     else:
-        with steps.step("refine", f"reading the code ({agent.model})") as done:
-            try:
-                refined = refine_mod.refine(issue, clone, agent, route)
-            except (AgentError, Halted, refine_mod.NoCriteria) as exc:
-                typer.echo(str(exc), err=True)
-                raise typer.Exit(code=1) from exc
+        with steps.step("refine", f"reading the code ({settings.agent_model})") as done:
+            now = _invoke(graph, state, thread)
+            if (refined := now.state.refined) is None:
+                typer.echo(now.state.note, err=True)
+                raise typer.Exit(code=1)
             r = refined.run
             done(f"{r.turns} turns, {r.latency_ms / 1000:.0f} s, ${r.cost_usd:.3f}")
-    show_spec(refined)
-    reasons = intake_mod.not_ready(refined, set(files_at(clone, refined.commit)))
-    if reasons:  # back to the dev: edit the spec (--spec) or the ticket
-        typer.echo(f"not ready for the loop: {'; '.join(reasons)}", err=True)
+    if now.state.refined is not None:
+        show_spec(now.state.refined)
+    if now.waiting is None:  # back to the dev: edit the spec (--spec) or the ticket
+        typer.echo(now.state.note, err=True)
         raise typer.Exit(code=1)
-    asked = len(refined.spec.open_questions)
-    if yes and asked:  # nobody at the gate to answer them
-        typer.echo(f"{asked} open question(s): answer them at the gate", err=True)
+    while now.waiting is not None:
+        answer = _terminal_gate(now, yes)
+        if not answer.approve:  # logged for lessons; a rejected test is recorded
+            now = _invoke(graph, answer, thread)
+            break
+        with steps.step("loop", f"repro, fix, checks in {worktree}") as done:
+            now = _invoke(graph, answer, thread)
+            if (res := now.state.result) is None:
+                done("the test written, for the test gate")
+            else:
+                tries = len(res.attempts)
+                done(f"{res.status}, {tries} attempts, ${res.cost_usd:.3f}")
+    if not now.state.record:  # the plan rejected: nothing ran
         raise typer.Exit(code=1)
-    question = "Approve the plan and let the agent edit?"
-    if asked:
-        question = f"Approve the plan as the answer to its {asked} open question(s)?"
-    if not yes and not typer.confirm(question):
-        raise typer.Exit(code=1)
-    worktree = settings.work_dir / f"{repo_slug(target)}-{number}"
-    sandbox = Podman(image=rules.image, setup=rules.setup)
-    stem = f"{repo_slug(target)}-{number}-{stamp()}"
-    test_gate = refined.route == "feature" and not yes
-    loop_step = (
-        _plain_step(steps, "loop")  # the test gate prompts: no spinner over it
-        if test_gate
-        else steps.step("loop", f"repro, fix, checks in {worktree}")
+    out = settings.runs_dir / f"{now.state.record}.json"
+    record = record_mod.RunRecord.model_validate_json(out.read_text("utf-8"))
+    show_loop(
+        loop_eval.Judged(result=record.result, judge=record.judge, valid=record.valid)
     )
-    with loop_step as done:
-        try:
-            result = run_mod.run_loop(
-                repo=target,
-                number=number,
-                commit=refined.commit,
-                spec=refined.spec,
-                clone=clone,
-                worktree=worktree,
-                repro_file=repro_path(bugs, bug) if planted and bug else None,
-                rules=rules,
-                agent=agent.editing(budget_usd=1.0),
-                sandbox=sandbox,
-                route=refined.route,
-                approve_test=_approve_test if test_gate else None,
-            )
-            # the review gate on the green tree, before the judge resets it:
-            # review, findings proven by a test, fixed, reviewed again
-            gated = None
-            if result.status == "green":
-                try:
-                    gated = gate_mod.review_gate(
-                        spec=refined.spec,
-                        rules=rules,
-                        result=result,
-                        worktree=worktree,
-                        reader=agent,
-                        editor=agent.editing(budget_usd=1.0),
-                        sandbox=sandbox,
-                        sentinel=record_mod.sentinel_for(
-                            settings.targets_dir,
-                            target,
-                            clone,
-                            refined.commit,
-                            rules.tests,
-                        ),
-                    )
-                except Halted as exc:  # no review, so no PR body either
-                    typer.echo(f"halted before the review was done: {exc}", err=True)
-            # screenshots of the final change, before the judge resets the code
-            evidence: list[str] = []
-            if result.status == "green" and not (gated and gated.status == "blocked"):
-                final = gated.result if gated else result
-                evidence = run_mod.collect_evidence(
-                    rules, worktree, final.repro, sandbox, settings.runs_dir / stem
-                )
-            # no verdicts by default: an issue without a planted bug has no
-            # answer key, and with --planted the agent already had the repro
-            judged = loop_eval.Judged(result=result)
-            if bug is not None and not planted:
-                if keep:  # validity resets the code: keep the fix to look at
-                    judged.judge = loop_eval.judge(
-                        worktree, rules, repro_path(bugs, bug), sandbox
-                    )
-                else:
-                    judged = loop_eval.against_key(
-                        result,
-                        worktree,
-                        rules,
-                        repro_path(bugs, bug),
-                        fix_path(bugs, bug),
-                        sandbox,
-                    )
-        finally:
-            if not keep:
-                worktree_mod.remove_worktree(clone, worktree)
-        tries = len(result.attempts)
-        done(f"{result.status}, {tries} attempts, ${result.cost_usd:.3f}")
-    show_loop(judged)
-    record = record_mod.RunRecord(
-        result=judged.result, judge=judged.judge, valid=judged.valid, evidence=evidence
-    )
-    if gated is not None:
-        record.gate = gated
-        show_gate(gated)
-    if gated is not None and gated.status != "blocked":
-        draft = record_mod.draft_for(
-            settings.targets_dir,
-            target,
-            title=issue.title,
-            spec=refined.spec,
-            result=gated.result,
-            tests=rules.tests,
-            review=gated.review,
-            rounds=gated.rounds,
-            route=refined.route,
-            evidence=len(evidence),
-        )
-        record.draft = draft
-        body = settings.runs_dir / f"{stem}.pr.md"  # written with the record
-        show_draft(draft)
+    if now.state.note:
+        typer.echo(now.state.note, err=True)
+    if record.gate is not None:
+        show_gate(record.gate)
+    if record.gate is not None and record.draft is not None:
+        body = settings.runs_dir / f"{now.state.record}.pr.md"
+        show_draft(record.draft)
         if write_token is None:
             typer.echo(f"-> {body} (dry run: nothing sent to GitHub)")
         else:
             typer.echo(f"-> {body}")
             record.published = _publish(  # a PR or the error: the run is kept
-                target, clone, issue, gated.result, draft, write_token, steps
+                target,
+                deps.clone,
+                issue,
+                record.gate.result,
+                record.draft,
+                write_token,
+                steps,
             )
-    out = record_mod.write_record(settings.runs_dir, stem, record)
+            record_mod.write_record(settings.runs_dir, now.state.record, record)
     typer.echo(f"-> {out}")
-    blocked = gated is not None and gated.status == "blocked"
-    judged_red = judged.judge is not None and not judged.judge.ok
-    if result.status != "green" or blocked or judged_red:
+    blocked = record.gate is not None and record.gate.status == "blocked"
+    judged_red = record.judge is not None and not record.judge.ok
+    if record.result.status != "green" or blocked or judged_red:
         raise typer.Exit(code=2)
 
 

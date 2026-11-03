@@ -47,7 +47,7 @@ features removed on purpose.
 | --- | --- |
 | `intake.py` | is the ticket blocked, is another cofabriq PR still open, is the spec ready |
 | `refine.py` | issue -> spec (problem, files, criteria, plan, open questions, size), read-only agent |
-| `graph.py` | the run as a LangGraph graph with pauses at the plan and test gates (`cofabriq flow`) |
+| `graph.py` | the run as a LangGraph graph with pauses at the plan and test gates: `cofabriq run` drives it in one process, `cofabriq flow` across processes |
 | `run.py` | the stages: start (worktree, install), test (written first, must fail), build (fix attempts); write boundaries; screenshots |
 | `worktree.py` | the throwaway worktree the stages and the evals work in: what changed, files put back, local layer commits |
 | `engine.py` | the coding agent (`claude -p`, no shell), the kill switch, the run budget |
@@ -55,7 +55,7 @@ features removed on purpose.
 | `sentinel.py` | the target's invariant, checked in code before review |
 | `gate.py`, `review.py` | the separate reviewer; a finding blocks only when a test proves it |
 | `pr.py`, `publish.py` | risk tier and draft PR body; `--apply` pushes a branch and opens a draft PR |
-| `record.py` | what `run` and the flow share at the end: the sentinel for the gate, the draft, the run record in `data/runs/` |
+| `record.py` | the graph's tail: the sentinel for the gate, the draft, the run record in `data/runs/` |
 | `lessons.py` | rules for the target's CLAUDE.md from what went wrong |
 
 ## The parts and where they keep things
@@ -77,7 +77,7 @@ graph LR
         ISSUES["issues/<br/>fetch, triage"]
         MAP["map/<br/>repo history"]
         LOOP["loop/<br/>refine, stages, gate,<br/>sentinel, PR"]
-        GRAPH["loop/graph.py<br/>paused runs"]
+        GRAPH["loop/graph.py<br/>the run and its gates"]
         EVAL["eval/<br/>answer keys, metrics"]
     end
 
@@ -157,6 +157,10 @@ sequenceDiagram
     C->>S: screenshots (UI bugs)
     C-->>Dev: draft PR body (dry run) or a draft PR (--apply)
 ```
+
+`run` and `flow` are one graph (`loop/graph.py`): `run` keeps its
+checkpoints in memory and answers each gate in the terminal; on a planted
+bug its answer key judges the tree in the graph's `record` step.
 
 ### 3. A feature, approved in the browser (`cofabriq flow`, 0.3 to 0.5)
 

@@ -624,7 +624,6 @@ def run_loop(
     instructions: str | None = None,
     route: Route = "bug",
     prepare: Callable[[Path], None] | None = None,
-    approve_test: Callable[[str], bool] | None = None,
 ) -> LoopResult:
     """One issue through the stages: start -> test -> build, at most
     MAX_ATTEMPTS agent runs per step. `repro_file`: a planted repro, or
@@ -633,10 +632,9 @@ def run_loop(
     `route` "feature": the agent writes the acceptance test from the spec's
     criteria instead of a repro, then builds against it (frozen like a
     repro). `prepare`: runs on the fresh worktree before install (the
-    feature eval's removal). `approve_test`: the dev's look at the test
-    diff before any code is written; False stops the run. Leaves the
-    worktree in place (the caller removes it). A caller that pauses between
-    stages (a run waiting for the dev) calls them itself."""
+    feature eval's removal). Leaves the worktree in place (the caller
+    removes it). A caller that pauses between stages (a run waiting for the
+    dev at a gate: `loop/graph.py`) calls them itself."""
     if instructions is None:
         instructions = FEATURE if route == "feature" else INSTRUCTIONS
     p = start_stage(
@@ -664,8 +662,6 @@ def run_loop(
         )
         if p.status is not None:
             return pack(p, worktree, p.status, [])
-        if approve_test is not None and not approve_test(diff(worktree, [])):
-            return pack(p, worktree, "test_rejected", [])
         attempts = build_stage(
             p,
             spec=spec,

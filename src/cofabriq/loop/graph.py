@@ -1,11 +1,18 @@
-"""`cofabriq run` as a LangGraph graph whose human gates are interrupts,
-checkpointed in Postgres, so a run can wait for the dev for hours and
-resume in another process: `flow start/resume` and the browser gate
-(`serve --write`) both drive it.
+"""The core loop for one issue as a LangGraph graph whose human gates are
+interrupts. It is the one orchestrator: `cofabriq run` drives it in one
+process (an in-memory checkpointer, the gates answered in the terminal);
+`flow start/resume` and the browser gate (`serve --write`) checkpoint it
+in Postgres, so a run can wait for the dev for hours and resume in
+another process.
 
-    refine -> plan_gate -> setup -> write_test -> test_gate -> build -> review -> END
-                 |                                  |   (feature only)
-                 +-- rejected --> END               +-- rejected --> END
+    refine -> plan_gate -> setup -> write_test -> test_gate -> build -> review
+                                                  (feature only)
+      -> record -> finish
+
+    not ready, plan rejected                 -> finish
+    any other end once setup ran (setup
+    failed, no repro, test rejected, halted,
+    a red build)                             -> record -> finish
 
 Each gate is its own node on purpose: on resume LangGraph re-runs the
 interrupted node from its start, so anything expensive before an
@@ -14,24 +21,23 @@ The nodes are `run_loop`'s own stages (`start_stage`, `test_stage`,
 `build_stage`, `pack`) and `review_gate`; the evals keep calling
 `run_loop`, which composes the same stages without pausing.
 
-The worktree lives on disk between nodes and is removed at the end (or by
-`finish` after a rejection). State is a Pydantic model; the checkpoint
+The worktree lives on disk between nodes and is removed by `finish`
+(unless `Deps.keep`). State is a Pydantic model; the checkpoint
 serializer only restores the types listed in `ALLOWED` (LangGraph's
 msgpack allow-list), so a checkpoint can't smuggle in another class.
 """
 
-import json
 import re
 import threading
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
 import psycopg
 from langchain_core.runnables import RunnableConfig
+from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.graph import END, START, StateGraph
@@ -45,8 +51,9 @@ from cofabriq.git import files_at
 from cofabriq.issues.model import Issue
 from cofabriq.loop import gate as gate_mod
 from cofabriq.loop import refine as refine_mod
-from cofabriq.loop.engine import Agent, AgentError, Guard
+from cofabriq.loop.engine import Agent, AgentError, Guard, Halted
 from cofabriq.loop.intake import not_ready
+from cofabriq.loop.lessons import log_rejection
 from cofabriq.loop.record import RunRecord, draft_for, sentinel_for, write_record
 from cofabriq.loop.run import (
     FEATURE,
@@ -79,12 +86,13 @@ class FlowState(BaseModel):
     issue: Issue
     route: refine_mod.Route
     stage: Stage = "refined"
-    note: str = ""  # why it stopped (setup failed, no repro, rejected)
-    refined: refine_mod.Refined | None = None
+    note: str = ""  # why it stopped (not ready, rejected, halted)
+    refined: refine_mod.Refined | None = None  # given: no refine run (`--spec`)
+    planted: str = ""  # a planted repro handed to the agent (`run --planted`)
     progress: Progress | None = None  # the loop between its stages
     spent_usd: float = 0.0  # all agents so far: a resumed run keeps its budget
     record: str = ""  # the finished run's file in data/runs (the viewer's Runs)
-    result: LoopResult | None = None
+    result: LoopResult | None = None  # the loop's, before the review gate
     gated: gate_mod.Gated | None = None
 
     @property
@@ -139,6 +147,11 @@ ALLOWED = [
 ]
 
 
+# the answer key on the tree the loop left (`run` on a planted bug): the
+# planted repro's verdict and the agent's repro's validity; may reset the code
+type Judge = Callable[[LoopResult, Path], tuple[CheckResult | None, CheckResult | None]]
+
+
 @dataclass(frozen=True)
 class Deps:
     """What the nodes need that isn't state (not checkpointed)."""
@@ -150,21 +163,43 @@ class Deps:
     editor: Agent
     sandbox: Sandbox
     targets_dir: Path  # risk tier and components for the PR body
-    runs_dir: Path  # where a finished flow is recorded, as `run` does
+    runs_dir: Path  # where a finished run is recorded
     lessons_dir: Path  # rejections with their reason, for `lessons`
     guard: Guard | None = None  # the run budget both agents count against
+    # run-only hooks (`flow` and `serve --write` pass none)
+    judge: Judge | None = None  # in `record`, after the evidence
+    keep: bool = False  # `finish` leaves the worktree (`run --keep`)
+    # a run and a paused flow on the same issue never share a worktree
+    prefix: str = "flow-"
 
     def worktree(self, issue: Issue) -> Path:
-        return self.work_dir / f"flow-{repo_slug(issue.repo)}-{issue.number}"
+        name = f"{self.prefix}{repo_slug(issue.repo)}-{issue.number}"
+        return self.work_dir / name
 
 
 def build_graph(deps: Deps) -> StateGraph[FlowState]:
+    def stopped(
+        s: FlowState,
+        p: Progress,
+        status: Status,
+        stage: Stage = "failed",
+        note: str = "",
+    ) -> dict[str, object]:
+        """An early end after setup, packed as `run_loop` packs it, so it
+        is recorded too."""
+        result = pack(p, deps.worktree(s.issue), status, [])
+        return {"progress": p, "stage": stage, "note": note, "result": result}
+
     def refine(s: FlowState) -> dict[str, object]:
+        refined = s.refined
         try:
-            refined = refine_mod.refine(s.issue, deps.clone, deps.reader, s.route)
+            if refined is None:
+                refined = refine_mod.refine(s.issue, deps.clone, deps.reader, s.route)
         except (AgentError, refine_mod.NoCriteria) as exc:  # back to the dev
             return {"stage": "failed", "note": f"not ready: {exc}"}
-        # the readiness check `run` does: back to the dev before any gate
+        except Halted as exc:
+            return {"stage": "failed", "note": f"halted: {exc}"}
+        # the readiness check: back to the dev before any gate
         reasons = not_ready(refined, set(files_at(deps.clone, refined.commit)))
         if reasons:
             note = f"not ready: {'; '.join(reasons)}"
@@ -177,7 +212,7 @@ def build_graph(deps: Deps) -> StateGraph[FlowState]:
             interrupt({"gate": "plan", "spec": s.refined.spec.model_dump()})
         )
         if not a.approve:
-            _log_rejection(deps, s, "plan", a.reason)
+            log_rejection(deps.lessons_dir, s.issue, s.route, "plan", a.reason)
         return {
             "stage": "approved" if a.approve else "rejected",
             "note": "" if a.approve else a.note("plan"),
@@ -191,47 +226,58 @@ def build_graph(deps: Deps) -> StateGraph[FlowState]:
             commit=s.refined.commit,
             clone=deps.clone,
             worktree=deps.worktree(s.issue),
-            repro_file=None,
+            repro_file=Path(s.planted) if s.planted else None,
             rules=deps.rules,
             sandbox=deps.sandbox,
         )
-        failed = p.status is not None
-        return {"progress": p, "stage": "failed" if failed else "set_up"}
+        if p.status is not None:
+            return stopped(s, p, p.status)
+        return {"progress": p, "stage": "set_up"}
 
     def write_test(s: FlowState) -> dict[str, object]:
         assert s.refined is not None and s.progress is not None
-        p = test_stage(
-            s.progress.model_copy(deep=True),
-            spec=s.refined.spec,
-            rules=deps.rules,
-            worktree=deps.worktree(s.issue),
-            agent=deps.editor,
-            sandbox=deps.sandbox,
-            route=s.route,
-        )
-        failed = p.status is not None
-        return {"progress": p, "stage": "failed" if failed else "tested"}
+        p = s.progress.model_copy(deep=True)
+        try:
+            p = test_stage(
+                p,
+                spec=s.refined.spec,
+                rules=deps.rules,
+                worktree=deps.worktree(s.issue),
+                agent=deps.editor,
+                sandbox=deps.sandbox,
+                route=s.route,
+            )
+        except Halted:  # the kill switch: what was done so far, no more agents
+            p.red, p.status = None, "halted"
+        if p.status is not None:
+            return stopped(s, p, p.status)
+        return {"progress": p, "stage": "tested"}
 
     def test_gate(s: FlowState) -> dict[str, object]:
+        assert s.progress is not None
         test = diff(deps.worktree(s.issue), [])
         a = GateAnswer.model_validate(interrupt({"gate": "test", "diff": test}))
         if a.approve:
             return {}
-        _log_rejection(deps, s, "test", a.reason)
-        return {"stage": "rejected", "note": a.note("test")}
+        log_rejection(deps.lessons_dir, s.issue, s.route, "test", a.reason)
+        return stopped(s, s.progress, "test_rejected", "rejected", a.note("test"))
 
     def build(s: FlowState) -> dict[str, object]:
         assert s.refined is not None and s.progress is not None
         worktree = deps.worktree(s.issue)
-        attempts = build_stage(
-            s.progress,
-            spec=s.refined.spec,
-            rules=deps.rules,
-            worktree=worktree,
-            agent=deps.editor,
-            sandbox=deps.sandbox,
-            instructions=FEATURE if s.route == "feature" else INSTRUCTIONS,
-        )
+        try:
+            attempts = build_stage(
+                s.progress,
+                spec=s.refined.spec,
+                rules=deps.rules,
+                worktree=worktree,
+                agent=deps.editor,
+                sandbox=deps.sandbox,
+                instructions=FEATURE if s.route == "feature" else INSTRUCTIONS,
+            )
+        except Halted:
+            p = s.progress.model_copy(update={"red": None})
+            return {"stage": "built", "result": pack(p, worktree, "halted", [])}
         status: Status = "green" if attempts[-1].green else "escalated"
         return {
             "stage": "built",
@@ -240,41 +286,48 @@ def build_graph(deps: Deps) -> StateGraph[FlowState]:
 
     def review(s: FlowState) -> dict[str, object]:
         assert s.refined is not None and s.result is not None
-        gated = gate_mod.review_gate(
-            spec=s.refined.spec,
-            rules=deps.rules,
-            result=s.result,
-            worktree=deps.worktree(s.issue),
-            reader=deps.reader,
-            editor=deps.editor,
-            sandbox=deps.sandbox,
-            sentinel=sentinel_for(
-                deps.targets_dir,
-                s.issue.repo,
-                deps.clone,
-                s.refined.commit,
-                deps.rules.tests,
-            ),
-        )
+        try:
+            gated = gate_mod.review_gate(
+                spec=s.refined.spec,
+                rules=deps.rules,
+                result=s.result,
+                worktree=deps.worktree(s.issue),
+                reader=deps.reader,
+                editor=deps.editor,
+                sandbox=deps.sandbox,
+                sentinel=sentinel_for(
+                    deps.targets_dir,
+                    s.issue.repo,
+                    deps.clone,
+                    s.refined.commit,
+                    deps.rules.tests,
+                ),
+            )
+        except Halted as exc:  # recorded without a gate, so no PR body either
+            note = f"halted before the review was done: {exc}"
+            return {"stage": "reviewed", "note": note}
         return {"stage": "reviewed", "gated": gated}
 
     def record(s: FlowState) -> dict[str, object]:
-        """The finished run in data/runs, the format `cofabriq run` writes
-        (result, gate, draft PR body unless blocked), so the viewer shows it."""
-        if s.gated is None or s.refined is None:
-            return {}
+        """The run in data/runs: the loop's result (before review), the
+        gate, the judge's verdicts (a hook), the draft PR body unless
+        blocked or not reviewed."""
+        assert s.refined is not None and s.result is not None
         stem = f"{repo_slug(s.issue.repo)}-{s.issue.number}-{stamp()}"
+        worktree = deps.worktree(s.issue)
+        blocked = s.gated is not None and s.gated.status == "blocked"
+        final = s.gated.result if s.gated is not None else s.result
         evidence: list[str] = []
-        if s.gated.status != "blocked":  # screenshots of the final change
+        if s.result.status == "green" and not blocked:  # the final change's
             evidence = collect_evidence(
-                deps.rules,
-                deps.worktree(s.issue),
-                s.gated.result.repro,
-                deps.sandbox,
-                deps.runs_dir / stem,
+                deps.rules, worktree, final.repro, deps.sandbox, deps.runs_dir / stem
             )
-        out = RunRecord(result=s.gated.result, gate=s.gated, evidence=evidence)
-        if s.gated.status != "blocked":
+        out = RunRecord(result=s.result, evidence=evidence)
+        if deps.judge is not None:  # last on the tree: it may reset the code
+            out.judge, out.valid = deps.judge(s.result, worktree)
+        if s.gated is not None:
+            out.gate = s.gated
+        if s.gated is not None and not blocked:
             out.draft = draft_for(
                 deps.targets_dir,
                 s.issue.repo,
@@ -291,17 +344,21 @@ def build_graph(deps: Deps) -> StateGraph[FlowState]:
         return {"record": stem}
 
     def finish(s: FlowState) -> dict[str, object]:
-        remove_worktree(deps.clone, deps.worktree(s.issue))
+        if not deps.keep:
+            remove_worktree(deps.clone, deps.worktree(s.issue))
         return {}
 
     def go_on(s: FlowState) -> str:
-        return "finish" if s.stage in ("rejected", "failed") else "next"
+        """On, or the end: recorded once the loop has a result."""
+        if s.stage not in ("rejected", "failed"):
+            return "next"
+        return "record" if s.result is not None else "finish"
 
     def after_test(s: FlowState) -> str:
-        return "finish" if go_on(s) == "finish" else s.route
+        return s.route if go_on(s) == "next" else go_on(s)
 
     def after_build(s: FlowState) -> str:
-        return "review" if s.result and s.result.status == "green" else "finish"
+        return "review" if s.result and s.result.status == "green" else "record"
 
     g = StateGraph(FlowState)
     nodes = {
@@ -330,19 +387,16 @@ def build_graph(deps: Deps) -> StateGraph[FlowState]:
     nodes = {name: counted(node) for name, node in nodes.items()}
     for name, node in nodes.items():
         g.add_node(name, node)  # pyright: ignore[reportArgumentType,reportUnknownMemberType]
+    ends = {"finish": "finish", "record": "record"}
     g.add_edge(START, "refine")
-    g.add_conditional_edges("refine", go_on, {"next": "plan_gate", "finish": "finish"})
-    g.add_conditional_edges("plan_gate", go_on, {"next": "setup", "finish": "finish"})
-    g.add_conditional_edges("setup", go_on, {"next": "write_test", "finish": "finish"})
+    g.add_conditional_edges("refine", go_on, {"next": "plan_gate", **ends})
+    g.add_conditional_edges("plan_gate", go_on, {"next": "setup", **ends})
+    g.add_conditional_edges("setup", go_on, {"next": "write_test", **ends})
     g.add_conditional_edges(
-        "write_test",
-        after_test,
-        {"finish": "finish", "feature": "test_gate", "bug": "build"},
+        "write_test", after_test, {"feature": "test_gate", "bug": "build", **ends}
     )
-    g.add_conditional_edges("test_gate", go_on, {"next": "build", "finish": "finish"})
-    g.add_conditional_edges(
-        "build", after_build, {"review": "review", "finish": "finish"}
-    )
+    g.add_conditional_edges("test_gate", go_on, {"next": "build", **ends})
+    g.add_conditional_edges("build", after_build, {"review": "review", **ends})
     g.add_edge("review", "record")
     g.add_edge("record", "finish")
     g.add_edge("finish", END)
@@ -369,21 +423,11 @@ def compiled(deps: Deps, dsn: str) -> Generator[CompiledStateGraph[FlowState]]:
         yield build_graph(deps).compile(checkpointer=saver)
 
 
-def _log_rejection(deps: Deps, s: FlowState, gate: str, reason: str) -> None:
-    """A rejected gate, kept for `cofabriq lessons` (one JSON line each)."""
-    deps.lessons_dir.mkdir(parents=True, exist_ok=True)
-    line = {
-        "at": datetime.now(UTC).isoformat(timespec="seconds"),
-        "repo": s.issue.repo,
-        "number": s.issue.number,
-        "title": s.issue.title,
-        "route": s.route,
-        "gate": gate,
-        "reason": reason,
-    }
-    path = deps.lessons_dir / f"{repo_slug(s.issue.repo)}-rejections.jsonl"
-    with path.open("a", encoding="utf-8") as out:
-        out.write(json.dumps(line) + "\n")
+def in_memory(deps: Deps) -> CompiledStateGraph[FlowState]:
+    """The graph for one process (`cofabriq run`): its checkpoints in
+    memory, under the same allow-list."""
+    saver = InMemorySaver(serde=JsonPlusSerializer(allowed_msgpack_modules=ALLOWED))
+    return build_graph(deps).compile(checkpointer=saver)
 
 
 def thread_id(issue: Issue) -> str:
