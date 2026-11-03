@@ -31,6 +31,7 @@ from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
 from cofabriq import git as git_mod
 from cofabriq.eval.loop import Judged
+from cofabriq.files import STAMP
 from cofabriq.issues.model import check_repo
 from cofabriq.loop.gate import Gated
 from cofabriq.loop.graph import FlowRunner, FlowStatus
@@ -202,11 +203,7 @@ class Answered(BaseModel):
 
 def _stamp(file: str) -> datetime | None:
     m = _STAMP.search(file)
-    return (
-        datetime.strptime(m.group(1), "%Y%m%dT%H%M%S").replace(tzinfo=UTC)
-        if m
-        else None
-    )
+    return datetime.strptime(m.group(1), STAMP).replace(tzinfo=UTC) if m else None
 
 
 def _files(folder: Path) -> list[Path]:

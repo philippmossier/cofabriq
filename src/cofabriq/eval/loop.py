@@ -17,7 +17,6 @@ in another place may be a workaround), cost, attempts and time per node.
 Rates per bug size, as for refine.
 """
 
-import json
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,6 +25,7 @@ from statistics import median
 from pydantic import BaseModel, TypeAdapter
 
 from cofabriq.eval.refine import Answer
+from cofabriq.files import newest_by_key
 from cofabriq.git import git, try_git
 from cofabriq.loop.refine import Refined
 from cofabriq.loop.run import (
@@ -37,16 +37,11 @@ from cofabriq.loop.run import (
 )
 from cofabriq.loop.sandbox import Sandbox
 
-_refined_adapter = TypeAdapter(dict[str, Refined])
-
 
 def load_specs(refine_dir: Path) -> dict[str, Refined]:
     """Bug key -> its newest stored refine result, over all `eval-*.json`
     (a run resumed with `--only` writes a second file)."""
-    specs: dict[str, Refined] = {}
-    for path in sorted(refine_dir.glob("eval-*.json")):  # names sort by time
-        specs |= _refined_adapter.validate_python(json.loads(path.read_text("utf-8")))
-    return specs
+    return newest_by_key(refine_dir, "eval-*.json", TypeAdapter(Refined))
 
 
 class Judged(BaseModel):

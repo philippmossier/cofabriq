@@ -9,7 +9,6 @@ it alone.
 """
 
 import json
-import os
 import time
 from collections.abc import Callable, Iterable, Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -20,6 +19,7 @@ from typing import Literal, Protocol
 from openai import OpenAI
 from pydantic import BaseModel, Field, TypeAdapter
 
+from cofabriq.files import write_atomic
 from cofabriq.issues.model import Comment, Issue
 
 MODEL = "gpt-6-luna"
@@ -286,10 +286,7 @@ def load(path: Path) -> list[VerdictRecord]:
 
 
 def _save(path: Path, records: list[VerdictRecord]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_bytes(_records_adapter.dump_json(records, indent=2))
-    os.replace(tmp, path)
+    write_atomic(path, _records_adapter.dump_json(records, indent=2))
 
 
 def _squash(text: str) -> str:

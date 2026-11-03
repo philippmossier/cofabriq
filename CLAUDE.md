@@ -62,6 +62,7 @@ Playground only.
 - `src/cofabriq/config.py`: typed settings from env / `.env` (pydantic-settings)
 - `src/cofabriq/targets.py`: `target_table` (one table of `targets/<owner>-<name>.toml`; each module keeps its own model for its table), `repo_slug`, `clone_dir`, `PLAYGROUND`
 - `src/cofabriq/git.py`: every git call (`git`, `try_git` for a command whose failure is an answer, `files_at`, `tracked`), each without the caller's `GIT_*` variables (`git_env`: inside a git hook they point at the wrong repo)
+- `src/cofabriq/files.py`: result files under `data/`: `stamp` (UTC, names sort by time), `write_stamped` (`<prefix>-<stamp>.json`), `newest_by_key` (the newest value per key over those files), `write_atomic` (tmp + rename, for every cache and index)
 - `src/cofabriq/cli.py`: typer CLI, entry point `cofabriq`
 - `src/cofabriq/context/`: the context layer from adrscape
   - `domain.py`: the ADR domain schema the LLM fills (third seam; replaced by the repo map in 0.2)

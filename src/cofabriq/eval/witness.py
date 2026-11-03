@@ -17,13 +17,13 @@ by a check, not by the sabotaging agent's word. The reviewer never sees
 the witness.
 """
 
-import json
 from pathlib import Path
 
 from pydantic import BaseModel, TypeAdapter
 
 from cofabriq.eval.loop import Judged, validate
 from cofabriq.eval.review import replay
+from cofabriq.files import newest_by_key
 from cofabriq.git import git
 from cofabriq.loop.engine import Agent
 from cofabriq.loop.refine import Spec
@@ -119,15 +119,9 @@ def witness(
     return Witness(attempts=attempts, tests=tests, red=red, valid=valid, files=files)
 
 
-_witness_adapter = TypeAdapter(dict[str, Witness])
-
-
 def load_witnesses(runs_dir: Path) -> dict[str, Witness]:
     """Bug key -> its newest witness (`witness-*.json`)."""
-    newest: dict[str, Witness] = {}
-    for path in sorted(runs_dir.glob("witness-*.json")):
-        newest |= _witness_adapter.validate_python(json.loads(path.read_text("utf-8")))
-    return newest
+    return newest_by_key(runs_dir, "witness-*.json", TypeAdapter(Witness))
 
 
 def load_witnessed(runs_dir: Path) -> frozenset[str]:

@@ -1,12 +1,12 @@
 """Copy issues from an IssueSource into `<issues_dir>/<owner>/<name>/`."""
 
-import os
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 
 from pydantic import TypeAdapter
 
+from cofabriq.files import write_atomic
 from cofabriq.issues.model import Issue, IssueSource, check_repo
 
 INDEX_FILE = "index.json"
@@ -154,13 +154,9 @@ def _write_issue(repo_dir: Path, issue: Issue) -> None:
 
 
 def _write_cursor(repo_dir: Path, since: datetime | None) -> None:
-    repo_dir.mkdir(parents=True, exist_ok=True)
-    tmp = repo_dir / f"{CURSOR_FILE}.tmp"
-    tmp.write_bytes(_cursor_adapter.dump_json(since))
-    os.replace(tmp, repo_dir / CURSOR_FILE)
+    write_atomic(repo_dir / CURSOR_FILE, _cursor_adapter.dump_json(since))
 
 
 def _write_index(repo_dir: Path, index: dict[int, datetime]) -> None:
-    tmp = repo_dir / f"{INDEX_FILE}.tmp"
-    tmp.write_bytes(_index_adapter.dump_json(dict(sorted(index.items())), indent=2))
-    os.replace(tmp, repo_dir / INDEX_FILE)
+    data = _index_adapter.dump_json(dict(sorted(index.items())), indent=2)
+    write_atomic(repo_dir / INDEX_FILE, data)

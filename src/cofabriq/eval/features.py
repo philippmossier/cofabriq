@@ -8,7 +8,6 @@ the set was made. The tickets live there too, not on GitHub: `ticket` turns
 one into the `Issue` the loop takes.
 """
 
-import json
 import re
 import tomllib
 from datetime import UTC, datetime
@@ -18,6 +17,7 @@ from typing import Literal
 from pydantic import BaseModel, TypeAdapter
 
 from cofabriq.eval.loop import Judged
+from cofabriq.files import newest_by_key
 from cofabriq.git import git
 from cofabriq.issues.model import Issue
 from cofabriq.loop.engine import Agent
@@ -247,13 +247,7 @@ def side_by_side(
 
 def load_specs(refine_dir: Path) -> dict[str, Refined]:
     """Feature key -> its newest stored spec, over all `features-*.json`."""
-    specs: dict[str, Refined] = {}
-    for path in sorted(refine_dir.glob("features-*.json")):  # names sort by time
-        specs |= _refined_adapter.validate_python(json.loads(path.read_text("utf-8")))
-    return specs
-
-
-_refined_adapter = TypeAdapter(dict[str, Refined])
+    return newest_by_key(refine_dir, "features-*.json", TypeAdapter(Refined))
 
 
 def on_reference(

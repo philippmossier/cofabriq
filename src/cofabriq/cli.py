@@ -60,6 +60,7 @@ from cofabriq.eval.bugs import (
     prove_bugs,
     repro_path,
 )
+from cofabriq.files import stamp, write_atomic, write_stamped
 from cofabriq.git import files_at
 from cofabriq.issues import rerank as rerank_mod
 from cofabriq.issues import triage as triage_mod
@@ -1306,8 +1307,7 @@ def lessons(repo: str = PLAYGROUND, propose: bool = False) -> None:
     clone = clone_dir(settings.clones_dir, target)
     refine_mod.update_clone(target, clone)
     draft = lessons_mod.propose(target, signals, clone, Guarded(_agent(), Guard(1.0)))
-    stamp = f"{datetime.now(UTC):%Y%m%dT%H%M%S}"
-    out = settings.lessons_dir / f"{repo_slug(target)}-{stamp}.md"
+    out = settings.lessons_dir / f"{repo_slug(target)}-{stamp()}.md"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(lessons_mod.render(draft), "utf-8")
     for n, r in enumerate(draft.rules, 1):
@@ -1468,7 +1468,7 @@ def run(
         raise typer.Exit(code=1)
     worktree = settings.work_dir / f"{repo_slug(target)}-{number}"
     sandbox = Podman(image=rules.image, setup=rules.setup)
-    stem = f"{repo_slug(target)}-{number}-{datetime.now(UTC):%Y%m%dT%H%M%S}"
+    stem = f"{repo_slug(target)}-{number}-{stamp()}"
     test_gate = refined.route == "feature" and not yes
     loop_step = (
         _plain_step(steps, "loop")  # the test gate prompts: no spinner over it
@@ -1787,11 +1787,8 @@ def eval_refine(
             f"${r.run.cost_usd:.3f} {r.run.turns:>2}t  {listed}"
         )
     _refine_summary(scores, [r.run for r in done.values()], len(results) - len(done))
-    out = settings.refine_dir / f"eval-{datetime.now(UTC):%Y%m%dT%H%M%S}.json"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_bytes(
-        TypeAdapter(dict[str, refine_mod.Refined]).dump_json(done, indent=2)
-    )
+    adapter = TypeAdapter(dict[str, refine_mod.Refined])
+    out = write_stamped(settings.refine_dir, "eval", adapter, done)
     typer.echo(f"  -> {out}")
 
 
@@ -1879,13 +1876,9 @@ def _eval_refine_features(
             "  criteria per feature: "
             f"{median(len(r.spec.criteria) for r in done.values()):.0f} median"
         )
-    stamp = f"{datetime.now(UTC):%Y%m%dT%H%M%S}"
-    out = settings.refine_dir / f"features-{stamp}.json"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_bytes(
-        TypeAdapter(dict[str, refine_mod.Refined]).dump_json(done, indent=2)
-    )
-    side = settings.refine_dir / f"features-{stamp}.md"
+    adapter = TypeAdapter(dict[str, refine_mod.Refined])
+    out = write_stamped(settings.refine_dir, "features", adapter, done)
+    side = out.with_suffix(".md")
     side.write_text(features_eval.side_by_side(path, feats, done), "utf-8")
     typer.echo(f"  -> {out}\n  -> {side}")
 
@@ -2154,11 +2147,8 @@ def eval_loop(
     if wrong:
         kept = sum(review_eval.is_case(j, "wrong") for j in results.values())
         typer.echo(f"  wrong fixes kept (green, judge red): {kept}/{len(results)}")
-    out = settings.runs_dir / f"{prefix}-{datetime.now(UTC):%Y%m%dT%H%M%S}.json"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_bytes(
-        TypeAdapter(dict[str, loop_eval.Judged]).dump_json(results, indent=2)
-    )
+    adapter = TypeAdapter(dict[str, loop_eval.Judged])
+    out = write_stamped(settings.runs_dir, prefix, adapter, results)
     typer.echo(f"  -> {out}")
 
 
@@ -2241,11 +2231,8 @@ def _eval_loop_features(repo: str, only: str | None, workers: int, path: Path) -
                 f"{t.attempts:.0f} tries and {t.seconds:.0f} s median"
             )
     typer.echo(f"  total ${sum(sc.cost_usd for sc in scores):.2f}")
-    out = settings.runs_dir / f"features-{datetime.now(UTC):%Y%m%dT%H%M%S}.json"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_bytes(
-        TypeAdapter(dict[str, loop_eval.Judged]).dump_json(results, indent=2)
-    )
+    adapter = TypeAdapter(dict[str, loop_eval.Judged])
+    out = write_stamped(settings.runs_dir, "features", adapter, results)
     typer.echo(f"  -> {out}")
 
 
@@ -2314,10 +2301,8 @@ def eval_witness(
     kept = sum(w.confirmed for w in results.values())
     total = sum(w.cost_usd for w in results.values())
     typer.echo(f"  confirmed {kept}/{len(results)}  total ${total:.2f}")
-    out = settings.runs_dir / f"witness-{datetime.now(UTC):%Y%m%dT%H%M%S}.json"
-    out.write_bytes(
-        TypeAdapter(dict[str, witness_eval.Witness]).dump_json(results, indent=2)
-    )
+    adapter = TypeAdapter(dict[str, witness_eval.Witness])
+    out = write_stamped(settings.runs_dir, "witness", adapter, results)
     typer.echo(f"  -> {out}")
 
 
@@ -2368,7 +2353,7 @@ def eval_human(
         records.append(
             human_eval.Record(url=e.url, seconds=seconds, decision=decision, note=note)
         )
-        records_path.write_bytes(adapter.dump_json(records, indent=2))
+        write_atomic(records_path, adapter.dump_json(records, indent=2))
         typer.echo(f"  {seconds / 60:.1f} min, {decision}")
     t = human_eval.summarize(hset.entries, records)
     typer.echo(
@@ -2541,8 +2526,8 @@ def eval_gate(
         f"blocked {t.blocked:.2f} fixed {t.fixed:.2f} leaked {t.leaked:.2f}  "
         f"proofs {t.proofs} valid {t.proofs_valid:.2f}  ${t.cost_usd:.3f}/case"
     )
-    out = settings.runs_dir / f"gate-{datetime.now(UTC):%Y%m%dT%H%M%S}.json"
-    out.write_bytes(TypeAdapter(list[gate_eval.GateCase]).dump_json(results, indent=2))
+    adapter = TypeAdapter(list[gate_eval.GateCase])
+    out = write_stamped(settings.runs_dir, "gate", adapter, results)
     typer.echo(f"  -> {out}")
 
 
@@ -2608,8 +2593,8 @@ def eval_review(
         f"  right n={t.right} passed {t.passed:.2f}  wrong n={t.wrong} caught "
         f"{t.caught:.2f}  failed runs {t.failed}  ${t.cost_usd:.3f}/review"
     )
-    out = settings.runs_dir / f"review-{datetime.now(UTC):%Y%m%dT%H%M%S}.json"
-    out.write_bytes(TypeAdapter(list[review_eval.Case]).dump_json(results, indent=2))
+    adapter = TypeAdapter(list[review_eval.Case])
+    out = write_stamped(settings.runs_dir, "review", adapter, results)
     typer.echo(f"  -> {out}")
 
 

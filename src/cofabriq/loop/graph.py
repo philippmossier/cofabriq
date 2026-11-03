@@ -40,6 +40,7 @@ from langgraph.types import Command, interrupt
 from psycopg.rows import DictRow, dict_row
 from pydantic import BaseModel
 
+from cofabriq.files import stamp
 from cofabriq.git import files_at
 from cofabriq.issues.model import Issue
 from cofabriq.loop import gate as gate_mod
@@ -236,8 +237,7 @@ def build_graph(deps: Deps) -> StateGraph[FlowState]:
         (result, gate, draft PR body unless blocked), so the viewer shows it."""
         if s.gated is None or s.refined is None:
             return {}
-        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
-        stem = f"{repo_slug(s.issue.repo)}-{s.issue.number}-{stamp}"
+        stem = f"{repo_slug(s.issue.repo)}-{s.issue.number}-{stamp()}"
         evidence: list[str] = []
         if s.gated.status != "blocked":  # screenshots of the final change
             evidence = collect_evidence(

@@ -1,12 +1,12 @@
 """Copy documents from a Source into `data/raw/`, skipping unchanged ones."""
 
-import os
 from dataclasses import dataclass
 from pathlib import Path
 
 from pydantic import TypeAdapter
 
 from cofabriq.context.ingest.source import DocRef, Source
+from cofabriq.files import write_atomic
 
 INDEX_FILE = "index.json"
 _index_adapter = TypeAdapter(list[DocRef])
@@ -68,10 +68,7 @@ def load_index(raw_dir: Path) -> list[DocRef]:
 
 
 def _write_index(root: Path, refs: list[DocRef]) -> None:
-    root.mkdir(parents=True, exist_ok=True)
-    tmp = root / f"{INDEX_FILE}.tmp"
-    tmp.write_bytes(_index_adapter.dump_json(refs, indent=2))
-    os.replace(tmp, root / INDEX_FILE)
+    write_atomic(root / INDEX_FILE, _index_adapter.dump_json(refs, indent=2))
 
 
 def raw_path(root: Path, ref: DocRef) -> Path:

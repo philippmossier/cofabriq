@@ -1,7 +1,6 @@
 """Fill the domain schema per document with one structured-output LLM call."""
 
 import json
-import os
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -13,6 +12,7 @@ from pydantic import BaseModel, TypeAdapter
 from cofabriq.context.domain import Extraction, Link
 from cofabriq.context.ingest.parse import ParsedDoc
 from cofabriq.context.ingest.source import DocKind, DocRef
+from cofabriq.files import write_atomic
 
 MODEL = "gpt-6-luna"
 # Stored with every record. Bump the suffix when the prompt or the schema
@@ -222,10 +222,7 @@ def load(path: Path) -> list[ExtractedDoc]:
 
 
 def _save(path: Path, records: list[ExtractedDoc]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_bytes(_records_adapter.dump_json(records, indent=2))
-    os.replace(tmp, path)
+    write_atomic(path, _records_adapter.dump_json(records, indent=2))
 
 
 def _candidates(

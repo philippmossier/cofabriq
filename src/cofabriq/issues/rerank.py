@@ -10,7 +10,6 @@ degrades to the vector ranking, it never removes a candidate.
 """
 
 import json
-import os
 import time
 from collections.abc import Callable, Iterable, Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -21,6 +20,7 @@ from typing import Protocol
 from openai import OpenAI
 from pydantic import BaseModel, Field, TypeAdapter
 
+from cofabriq.files import write_atomic
 from cofabriq.issues.model import Issue
 from cofabriq.issues.vectors import clean_issue_text
 from cofabriq.issues.verdict import MODEL, PRICE_IN, PRICE_OUT, QUERY_BODY, Usage
@@ -196,7 +196,4 @@ def load(path: Path) -> list[RerankRecord]:
 
 
 def _save(path: Path, records: list[RerankRecord]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_bytes(_records_adapter.dump_json(records, indent=2))
-    os.replace(tmp, path)
+    write_atomic(path, _records_adapter.dump_json(records, indent=2))

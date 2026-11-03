@@ -19,6 +19,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, TypeAdapter
 
+from cofabriq.files import write_atomic
 from cofabriq.issues.github import History
 from cofabriq.issues.model import Issue
 from cofabriq.issues.readiness import InfoItem, check_info
@@ -194,8 +195,7 @@ def run_fields(
                 done[record.number] = record
     finally:
         kept = sorted((stored | done).values(), key=lambda r: r.number)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(_records.dump_json(kept, indent=2))
+        write_atomic(path, _records.dump_json(kept, indent=2))
     return done
 
 
