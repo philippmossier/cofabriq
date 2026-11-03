@@ -28,7 +28,7 @@ from cofabriq.eval.refine import Answer
 from cofabriq.files import newest_by_key
 from cofabriq.git import try_git
 from cofabriq.loop.refine import Refined
-from cofabriq.loop.run import CheckResult, LoopResult, Rules, repro_command
+from cofabriq.loop.run import CheckResult, LoopResult, LoopRules, repro_command
 from cofabriq.loop.sandbox import Sandbox
 from cofabriq.loop.worktree import keep_tests_at, place_planted
 
@@ -47,7 +47,9 @@ class Judged(BaseModel):
     valid: CheckResult | None = None  # the agent's repro with the reference fix
 
 
-def judge(worktree: Path, rules: Rules, planted: Path, sandbox: Sandbox) -> CheckResult:
+def judge(
+    worktree: Path, rules: LoopRules, planted: Path, sandbox: Sandbox
+) -> CheckResult:
     """The hidden planted repro on the tree the loop left: does the fix fix
     the bug the issue is about, not only the agent's test?"""
     dest = rules.planted_path(planted.name)
@@ -59,7 +61,7 @@ def judge(worktree: Path, rules: Rules, planted: Path, sandbox: Sandbox) -> Chec
 
 def validate(
     worktree: Path,
-    rules: Rules,
+    rules: LoopRules,
     repro: list[str],
     patch: Path,
     sandbox: Sandbox,
@@ -82,7 +84,7 @@ def validate(
 def against_key(
     result: LoopResult,
     worktree: Path,
-    rules: Rules,
+    rules: LoopRules,
     planted: Path,
     patch: Path,
     sandbox: Sandbox,

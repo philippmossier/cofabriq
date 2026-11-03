@@ -13,8 +13,8 @@ from cofabriq.loop.run import (
     CheckResult,
     Implemented,
     LoopResult,
+    LoopRules,
     Reproduced,
-    Rules,
     Suite,
     is_test,
     load_rules,
@@ -29,7 +29,7 @@ from tests.test_refine import spec
 
 # The repro passes once src/a.ts says "fixed"; the "test" check fails on
 # the word "broken" anywhere in src/.
-RULES = Rules(
+RULES = LoopRules(
     image="img",
     install="true",
     repro_dir="src/repro",

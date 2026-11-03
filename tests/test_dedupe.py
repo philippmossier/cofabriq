@@ -6,8 +6,8 @@ import pytest
 
 from cofabriq.context.store import postgres
 from cofabriq.eval.dedupe import (
+    DedupeRules,
     Ranked,
-    Rules,
     build,
     load_rules,
     named_targets,
@@ -108,7 +108,7 @@ def test_named_targets(body: str, expected: set[int]) -> None:
 
 
 def test_rules_gate_comments_by_label_and_cut_the_window() -> None:
-    rules = Rules(
+    rules = DedupeRules(
         window=(date(2026, 1, 10), date(2026, 1, 20)),
         duplicate_label="*duplicate",
         negatives="closed_by_change",
@@ -139,7 +139,7 @@ def test_rules_gate_comments_by_label_and_cut_the_window() -> None:
 
 
 def test_sample_keeps_pairs_and_matches_negatives() -> None:
-    rules = Rules(sample=3)
+    rules = DedupeRules(sample=3)
     issues = [issue(1)]
     issues += [issue(n, duplicate_of=[1]) for n in range(2, 12)]
     issues += [issue(n) for n in range(12, 30)]
@@ -158,10 +158,10 @@ def test_load_rules(tmp_path: Path) -> None:
         '[dedupe]\nwindow = ["2023-01-01", "2024-12-31"]\nsample = 200\n'
     )
 
-    assert load_rules(tmp_path, REPO) == Rules(
+    assert load_rules(tmp_path, REPO) == DedupeRules(
         window=(date(2023, 1, 1), date(2024, 12, 31)), sample=200
     )
-    assert load_rules(tmp_path, "acme/none") == Rules()
+    assert load_rules(tmp_path, "acme/none") == DedupeRules()
 
 
 def test_siblings_come_from_the_whole_cluster() -> None:

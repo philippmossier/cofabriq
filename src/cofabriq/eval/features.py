@@ -22,7 +22,7 @@ from cofabriq.git import git
 from cofabriq.issues.model import Issue
 from cofabriq.loop.engine import Agent
 from cofabriq.loop.refine import Refined, Route, refine
-from cofabriq.loop.run import CheckResult, LoopResult, Rules, repro_command
+from cofabriq.loop.run import CheckResult, LoopResult, LoopRules, repro_command
 from cofabriq.loop.sandbox import Sandbox
 from cofabriq.loop.worktree import (
     add_worktree,
@@ -118,7 +118,7 @@ def remove(worktree: Path, patch: Path) -> None:
 
 
 def hidden_tests(
-    worktree: Path, commit: str, feature: Feature, rules: Rules, sandbox: Sandbox
+    worktree: Path, commit: str, feature: Feature, rules: LoopRules, sandbox: Sandbox
 ) -> CheckResult:
     """The reference test files from `commit` over the tree, run, then the
     tree's own versions put back: green = the feature is there."""
@@ -151,7 +151,7 @@ def prove(
     commit: str,
     features: list[Feature],
     features_file: Path,
-    rules: Rules,
+    rules: LoopRules,
     sandbox: Sandbox,
 ) -> list[Proof]:
     """Each removal in turn on one installed worktree at `commit` (reset in
@@ -234,7 +234,7 @@ def load_specs(refine_dir: Path) -> dict[str, Refined]:
 
 
 def on_reference(
-    worktree: Path, commit: str, tests: list[str], rules: Rules, sandbox: Sandbox
+    worktree: Path, commit: str, tests: list[str], rules: LoopRules, sandbox: Sandbox
 ) -> CheckResult:
     """The agent's acceptance test on the reference (main, the feature in):
     green = it tests the feature as it was built. Resets the worktree's
@@ -248,7 +248,7 @@ def against_reference(
     result: LoopResult,
     worktree: Path,
     feature: Feature,
-    rules: Rules,
+    rules: LoopRules,
     sandbox: Sandbox,
 ) -> Judged:
     """Judge (the hidden reference tests on the agent's code, when built)

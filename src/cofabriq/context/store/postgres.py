@@ -12,7 +12,7 @@ from psycopg.rows import TupleRow, class_row
 from psycopg.types.json import Jsonb
 
 from cofabriq.context.ingest.chunk import Chunk
-from cofabriq.context.ingest.embed import DIM, Embed, embed_input
+from cofabriq.context.ingest.embed import DIM, Embed, chunk_input
 
 type Conn = psycopg.Connection[TupleRow]
 type DocKey = tuple[str, str, str]  # (repo, path, sha)
@@ -81,7 +81,7 @@ def sync(conn: Conn, chunks: Iterable[Chunk], embed: Embed) -> SyncReport:
     new = [c for key, cs in by_doc.items() if key not in stored for c in cs]
     stale = stored - by_doc.keys()
 
-    vectors = embed([embed_input(c) for c in new]) if new else []
+    vectors = embed([chunk_input(c) for c in new]) if new else []
     if len(vectors) != len(new):
         raise RuntimeError(f"asked for {len(new)} embeddings, got {len(vectors)}")
 

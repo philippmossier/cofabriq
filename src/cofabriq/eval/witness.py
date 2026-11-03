@@ -26,7 +26,7 @@ from cofabriq.eval.review import replay
 from cofabriq.files import newest_by_key
 from cofabriq.loop.engine import Agent
 from cofabriq.loop.refine import Spec
-from cofabriq.loop.run import Attempt, CheckResult, Rules, reproduce
+from cofabriq.loop.run import Attempt, CheckResult, LoopRules, reproduce
 from cofabriq.loop.sandbox import Sandbox
 from cofabriq.loop.worktree import commit_layer
 from cofabriq.untrusted import fenced
@@ -76,7 +76,7 @@ def witness(
     *,
     judged: Judged,
     spec: Spec,
-    rules: Rules,
+    rules: LoopRules,
     clone: Path,
     worktree: Path,
     agent: Agent,

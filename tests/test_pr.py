@@ -17,8 +17,7 @@ from cofabriq.loop.pr import (
 )
 from cofabriq.loop.review import Reviewed, approves, review, split_diff
 from cofabriq.loop.run import Attempt, CheckResult, LoopResult
-from cofabriq.map.components import ComponentRules
-from cofabriq.map.components import load_rules as load_components
+from cofabriq.map.components import ComponentRules, load_rules
 from tests.gitrepo import git, init_repo
 from tests.test_loop import (
     AGENT_RULES,
@@ -141,7 +140,7 @@ def test_risk_is_the_highest_tier_tests_low_unlisted_medium() -> None:
 def test_playground_tiers_cover_every_named_component() -> None:
     targets = Path("targets")
     risk = load_risk(targets, PLAYGROUND)
-    named = load_components(targets, PLAYGROUND).named
+    named = load_rules(targets, PLAYGROUND).named
     listed = {*risk.high, *risk.medium, *risk.low}
     assert listed == set(named)
     assert tier_of("privacy", risk) == "high" and tier_of("chat", risk) == "low"

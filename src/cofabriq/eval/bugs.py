@@ -13,7 +13,7 @@ from pydantic import BaseModel, TypeAdapter
 
 from cofabriq.eval.triage import load_seed
 from cofabriq.git import try_git
-from cofabriq.loop.run import Rules, repro_command
+from cofabriq.loop.run import LoopRules, repro_command
 from cofabriq.loop.sandbox import Sandbox
 from cofabriq.loop.worktree import place_planted, reset_hard
 
@@ -85,7 +85,7 @@ def prove_bugs(
     commit: str,
     bugs: list[PlantedBug],
     bugs_file: Path,
-    rules: Rules,
+    rules: LoopRules,
     sandbox: Sandbox,
 ) -> list[BugProof]:
     """Each bug in turn on one installed worktree at `commit` (reset in

@@ -54,8 +54,8 @@ from cofabriq.loop.run import (
     Attempt,
     CheckResult,
     LoopResult,
+    LoopRules,
     Progress,
-    Rules,
     Status,
     build_stage,
     collect_evidence,
@@ -145,7 +145,7 @@ class Deps:
 
     clone: Path
     work_dir: Path
-    rules: Rules
+    rules: LoopRules
     reader: Agent
     editor: Agent
     sandbox: Sandbox

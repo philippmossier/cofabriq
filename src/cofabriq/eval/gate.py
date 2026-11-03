@@ -30,7 +30,7 @@ from cofabriq.git import git
 from cofabriq.loop.engine import Agent
 from cofabriq.loop.gate import Gated, review_gate
 from cofabriq.loop.refine import Spec
-from cofabriq.loop.run import CheckResult, Rules, repro_command
+from cofabriq.loop.run import CheckResult, LoopRules, repro_command
 from cofabriq.loop.sandbox import Sandbox
 
 type Outcome = Literal["published", "false_block", "blocked", "fixed", "leaked"]
@@ -65,7 +65,7 @@ class GateCase(BaseModel):
 
 
 def _rerun(
-    worktree: Path, rules: Rules, files: dict[str, str], sandbox: Sandbox
+    worktree: Path, rules: LoopRules, files: dict[str, str], sandbox: Sandbox
 ) -> CheckResult:
     """The witness test, as written, on the tree the gate left."""
     for p, text in files.items():
@@ -81,7 +81,7 @@ def gate_case(
     kind: Kind,
     judged: Judged,
     spec: Spec,
-    rules: Rules,
+    rules: LoopRules,
     clone: Path,
     worktree: Path,
     reader: Agent,

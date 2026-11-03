@@ -25,7 +25,7 @@ from cofabriq.issues.triage import PROMPT_VERSION, Fields, Triager, shown
 from cofabriq.targets import target_table
 
 
-class Rules(BaseModel):
+class ReadinessRules(BaseModel):
     """`[readiness]` in `targets/<owner>-<name>.toml`, fixed before scoring."""
 
     window: tuple[date, date]
@@ -37,9 +37,9 @@ class Rules(BaseModel):
     sample: int
 
 
-def load_rules(targets_dir: Path, repo: str) -> Rules | None:
+def load_rules(targets_dir: Path, repo: str) -> ReadinessRules | None:
     table = target_table(targets_dir, repo, "readiness")
-    return None if table is None else Rules.model_validate(table)
+    return None if table is None else ReadinessRules.model_validate(table)
 
 
 class InfoSet(BaseModel):
@@ -47,7 +47,7 @@ class InfoSet(BaseModel):
 
     repo: str
     frozen_at: datetime
-    rules: Rules
+    rules: ReadinessRules
     needs_info: list[int]
     complete: list[int]
 
@@ -58,7 +58,7 @@ class Pools:
     complete: list[int]
 
 
-def pools(issues: Sequence[Issue], rules: Rules) -> Pools:
+def pools(issues: Sequence[Issue], rules: ReadinessRules) -> Pools:
     """Candidates from the stored snapshot; `verify` then checks each one's
     history on GitHub (labels removed since, edited bodies)."""
     start, end = rules.window
@@ -88,7 +88,7 @@ type HistoryOf = Callable[[Sequence[int]], Mapping[int, History]]
 def build(
     repo: str,
     pool: Pools,
-    rules: Rules,
+    rules: ReadinessRules,
     history: HistoryOf,
     frozen_at: datetime,
     seed: int = 0,

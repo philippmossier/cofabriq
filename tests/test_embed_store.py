@@ -6,7 +6,7 @@ from dataclasses import replace
 import pytest
 
 from cofabriq.context.ingest.chunk import Chunk
-from cofabriq.context.ingest.embed import DIM, embed_input
+from cofabriq.context.ingest.embed import DIM, chunk_input
 from cofabriq.context.ingest.source import DocKind
 from cofabriq.context.store import postgres
 
@@ -43,7 +43,7 @@ def chunk(path: str, text: str, sha: str = "aaa", ord: int = 0) -> Chunk:
 
 
 def test_embed_input_puts_the_heading_trail_first() -> None:
-    assert embed_input(chunk("a.md", "Body")) == "Title\n\nBody"
+    assert chunk_input(chunk("a.md", "Body")) == "Title\n\nBody"
 
 
 def test_sync_embeds_only_documents_not_stored_yet(conn: postgres.Conn) -> None:

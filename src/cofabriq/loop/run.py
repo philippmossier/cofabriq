@@ -73,7 +73,7 @@ class Suite(BaseModel):
     about: str = ""
 
 
-class Evidence(BaseModel):
+class ScreenshotRule(BaseModel):
     """`[loop.evidence]`: after a green run, the agent's tests of `suite`
     run once more with `cmd` (their paths appended) and the files matching
     `glob` are kept as evidence (screenshots of a browser test)."""
@@ -83,7 +83,7 @@ class Evidence(BaseModel):
     glob: str
 
 
-class Rules(BaseModel):
+class LoopRules(BaseModel):
     """`[loop]` in `targets/<owner>-<name>.toml`: how to set up a worktree
     and what has to pass. Without `suites`, every test runs with `repro`
     and planted repros go to `repro_dir`."""
@@ -101,7 +101,7 @@ class Rules(BaseModel):
     # use what the feature adds, so a type check can't gate it
     acceptance_checks: list[str] | None = None
     suites: list[Suite] = []  # 0.4: e.g. vitest for logic, Playwright for UI
-    evidence: Evidence | None = None  # 0.6: screenshots after a green run
+    evidence: ScreenshotRule | None = None  # 0.6: screenshots after a green run
 
     def suite(self, path: str) -> Suite | None:
         return next((s for s in self.suites if path.endswith(s.suffix)), None)
@@ -117,9 +117,9 @@ class Rules(BaseModel):
         return self.repro_checks
 
 
-def load_rules(targets_dir: Path, repo: str) -> Rules | None:
+def load_rules(targets_dir: Path, repo: str) -> LoopRules | None:
     table = target_table(targets_dir, repo, "loop")
-    return None if table is None else Rules.model_validate(table)
+    return None if table is None else LoopRules.model_validate(table)
 
 
 class Reproduced(BaseModel):
@@ -309,7 +309,7 @@ def retry_parts(
 
 def prompt(
     spec: Spec,
-    rules: Rules,
+    rules: LoopRules,
     repro: list[str],
     failed: list[CheckResult],
     n: int,
@@ -330,7 +330,7 @@ def prompt(
 
 def reproduce_prompt(
     spec: Spec,
-    rules: Rules,
+    rules: LoopRules,
     failed: list[CheckResult],
     n: int,
     diff: str,
@@ -359,7 +359,7 @@ def is_test(path: str, globs: list[str]) -> bool:
     return any(PurePosixPath(path).full_match(g) for g in globs)
 
 
-def repro_command(rules: Rules, paths: list[str]) -> str:
+def repro_command(rules: LoopRules, paths: list[str]) -> str:
     """The repro command line; paths quoted (the agent names its files).
     With suites, one command per suite in use, joined with `&&` (red when
     any is red); a path no suite claims runs with `repro`."""
@@ -374,7 +374,7 @@ def repro_command(rules: Rules, paths: list[str]) -> str:
     )
 
 
-def suites_note(rules: Rules) -> str:
+def suites_note(rules: LoopRules) -> str:
     """The test kinds, for a test writer's prompt; empty without suites."""
     if not rules.suites:
         return ""
@@ -386,7 +386,7 @@ def suites_note(rules: Rules) -> str:
 
 
 def run_checks(
-    rules: Rules, repro_cmd: str, worktree: Path, sandbox: Sandbox
+    rules: LoopRules, repro_cmd: str, worktree: Path, sandbox: Sandbox
 ) -> list[CheckResult]:
     """The repro first, then every check; all run, so one attempt gets all
     the errors at once."""
@@ -396,7 +396,7 @@ def run_checks(
     ]
 
 
-def keep_only_tests(rules: Rules, worktree: Path) -> tuple[list[str], list[str]]:
+def keep_only_tests(rules: LoopRules, worktree: Path) -> tuple[list[str], list[str]]:
     """A test writer's write boundary: every changed file but its tests put
     back. (reverted paths, its test files)"""
     reverted = [p for p in changed_paths(worktree) if not is_test(p, rules.tests)]
@@ -405,7 +405,7 @@ def keep_only_tests(rules: Rules, worktree: Path) -> tuple[list[str], list[str]]
 
 
 def new_test_checks(
-    rules: Rules,
+    rules: LoopRules,
     tests: list[str],
     gate: list[str],
     not_red: str,
@@ -432,7 +432,7 @@ def new_test_checks(
 def reproduce(
     *,
     spec: Spec,
-    rules: Rules,
+    rules: LoopRules,
     worktree: Path,
     agent: Agent,
     sandbox: Sandbox,
@@ -499,7 +499,7 @@ def start_stage(
     clone: Path,
     worktree: Path,
     repro_file: Path | None,
-    rules: Rules,
+    rules: LoopRules,
     sandbox: Sandbox,
     prepare: Callable[[Path], None] | None = None,
 ) -> Progress:
@@ -533,7 +533,7 @@ def test_stage(
     p: Progress,
     *,
     spec: Spec,
-    rules: Rules,
+    rules: LoopRules,
     worktree: Path,
     agent: Agent,
     sandbox: Sandbox,
@@ -566,7 +566,7 @@ def build_stage(
     p: Progress,
     *,
     spec: Spec,
-    rules: Rules,
+    rules: LoopRules,
     worktree: Path,
     agent: Agent,
     sandbox: Sandbox,
@@ -618,7 +618,7 @@ def run_loop(
     clone: Path,
     worktree: Path,
     repro_file: Path | None,
-    rules: Rules,
+    rules: LoopRules,
     agent: Agent,
     sandbox: Sandbox,
     instructions: str | None = None,
@@ -685,7 +685,7 @@ def run_loop(
 def fix(
     *,
     spec: Spec,
-    rules: Rules,
+    rules: LoopRules,
     worktree: Path,
     agent: Agent,
     sandbox: Sandbox,
@@ -736,7 +736,7 @@ MAX_EVIDENCE = 6
 
 
 def collect_evidence(
-    rules: Rules, worktree: Path, tests: list[str], sandbox: Sandbox, dest: Path
+    rules: LoopRules, worktree: Path, tests: list[str], sandbox: Sandbox, dest: Path
 ) -> list[str]:
     """The evidence of a green run, copied to `dest`: its tests of the
     evidence suite run once more (no network), at most MAX_EVIDENCE files

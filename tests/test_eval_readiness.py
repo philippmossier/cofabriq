@@ -9,7 +9,7 @@ from cofabriq.eval.readiness import (
     FieldsRecord,
     InfoSet,
     Pools,
-    Rules,
+    ReadinessRules,
     build,
     pools,
     run_fields,
@@ -24,7 +24,7 @@ from tests.test_issues import source
 from tests.test_triage import fields
 
 TEMPLATE = "Does this issue occur when all extensions are disabled"
-RULES = Rules(
+RULES = ReadinessRules(
     window=(date(2026, 1, 3), date(2026, 1, 30)),
     template=TEMPLATE,
     needs_info_label="info-needed",

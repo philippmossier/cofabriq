@@ -110,7 +110,7 @@ def clean_issue_text(body: str) -> str:
     return _BLANKS.sub("\n\n", "\n".join(line.rstrip() for line in lines)).strip()
 
 
-def embed_input(issue: Issue) -> str:
+def issue_input(issue: Issue) -> str:
     """Title and the cleaned body. Comments are left out on purpose: on a closed
     duplicate they name the answer ("duplicate of #N"), and a new issue has
     none yet anyway.
@@ -138,7 +138,7 @@ def sync(conn: Conn, issues: Iterable[Issue], embed: Embed) -> IssueSyncReport:
         for r in conn.execute("SELECT repo, number, input_sha FROM issues")
     }
     for issue in issues:
-        text = embed_input(issue)
+        text = issue_input(issue)
         sha = hashlib.sha256(text.encode()).hexdigest()
         if stored.get((issue.repo, issue.number)) == sha:
             unchanged += 1

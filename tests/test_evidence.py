@@ -3,7 +3,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from cofabriq.loop.run import Evidence, Suite, collect_evidence
+from cofabriq.loop.run import ScreenshotRule, Suite, collect_evidence
 from cofabriq.serve import build
 from tests.test_loop import AGENT_RULES, HostSandbox
 
@@ -18,7 +18,9 @@ RULES = AGENT_RULES.model_copy(
             Suite(name="unit", suffix=".test.sh", cmd="sh", dir="src/repro"),
             Suite(name="ui", suffix=".spec.sh", cmd="sh", dir="e2e/repro"),
         ],
-        "evidence": Evidence(suite="ui", cmd=f"{SHOTS} true", glob="out/**/*.png"),
+        "evidence": ScreenshotRule(
+            suite="ui", cmd=f"{SHOTS} true", glob="out/**/*.png"
+        ),
     }
 )
 

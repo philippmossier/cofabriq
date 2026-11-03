@@ -57,7 +57,7 @@ def github(repo: str) -> GitHubIssueSource | None:
     return GitHubIssueSource(repo, token, comments=settings.issue_comments)
 
 
-def loop_rules(target: str) -> run_mod.Rules:
+def loop_rules(target: str) -> run_mod.LoopRules:
     """The target file's `[loop]`; exits when it has none."""
     rules = run_mod.load_rules(get_settings().targets_dir, target)
     if rules is None:

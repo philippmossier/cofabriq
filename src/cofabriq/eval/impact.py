@@ -24,7 +24,7 @@ from cofabriq.map.impact import Ranked, vote
 from cofabriq.targets import target_table
 
 
-class Rules(BaseModel):
+class ImpactRules(BaseModel):
     """`[impact]` in `targets/<owner>-<name>.toml`, fixed before scoring."""
 
     map_until: date  # the map's cut; before the dev window
@@ -33,9 +33,9 @@ class Rules(BaseModel):
     sample: int
 
 
-def load_rules(targets_dir: Path, repo: str) -> Rules | None:
+def load_rules(targets_dir: Path, repo: str) -> ImpactRules | None:
     table = target_table(targets_dir, repo, "impact")
-    return None if table is None else Rules.model_validate(table)
+    return None if table is None else ImpactRules.model_validate(table)
 
 
 class Case(BaseModel):
@@ -46,7 +46,7 @@ class Case(BaseModel):
 class ImpactSet(BaseModel):
     repo: str
     frozen_at: datetime
-    rules: Rules
+    rules: ImpactRules
     window: tuple[date, date]  # the split this set covers
     cases: list[Case]
 
@@ -59,7 +59,7 @@ def build(
     issues: Sequence[Issue],
     fixes: Mapping[int, list[Fix]],
     components: ComponentRules,
-    rules: Rules,
+    rules: ImpactRules,
     window: tuple[date, date],
     frozen_at: datetime,
     seed: int = 0,

@@ -17,7 +17,7 @@ type Signal = Literal["mark", "comment"]
 type Negatives = Literal["unlabelled", "closed_by_change"]
 
 
-class Rules(BaseModel):
+class DedupeRules(BaseModel):
     """How one repo's maintainers mark duplicates, written down before any
     scoring (`[dedupe]` in `targets/<owner>-<name>.toml`). The defaults are
     the open-webui set's rules.
@@ -38,8 +38,8 @@ class Rules(BaseModel):
     sample: int | None = None
 
 
-def load_rules(targets_dir: Path, repo: str) -> Rules:
-    return Rules.model_validate(target_table(targets_dir, repo, "dedupe") or {})
+def load_rules(targets_dir: Path, repo: str) -> DedupeRules:
+    return DedupeRules.model_validate(target_table(targets_dir, repo, "dedupe") or {})
 
 
 class Pair(BaseModel):
@@ -59,7 +59,7 @@ class EvalSet(BaseModel):
     repo: str
     frozen_at: datetime
     issues: int  # issues in the snapshot it was built from
-    rules: Rules = Rules()
+    rules: DedupeRules = DedupeRules()
     pairs: list[Pair]
     negatives: list[int]
 
@@ -109,7 +109,7 @@ def named_targets(body: str, repo: str) -> set[int]:
 def build(
     issues: Sequence[Issue],
     frozen_at: datetime,
-    rules: Rules | None = None,
+    rules: DedupeRules | None = None,
     seed: int = 0,
 ) -> tuple[EvalSet, BuildReport]:
     """Label pairs from GitHub's duplicate marks and human comments.
@@ -121,7 +121,7 @@ def build(
     Negatives follow `rules.negatives`; with `unlabelled`, some are
     unlabelled duplicates, a noise that costs every method the same.
     """
-    rules = rules or Rules()
+    rules = rules or DedupeRules()
     [repo] = {i.repo for i in issues}
     by_number = {i.number: i for i in issues}
 
@@ -201,13 +201,13 @@ def build(
     return evalset, report
 
 
-def _labelled_duplicate(issue: Issue, rules: Rules) -> bool:
+def _labelled_duplicate(issue: Issue, rules: DedupeRules) -> bool:
     if rules.duplicate_label is None:
         return True
     return rules.duplicate_label in issue.labels or issue.state_reason == "duplicate"
 
 
-def _in_window(issue: Issue, rules: Rules) -> bool:
+def _in_window(issue: Issue, rules: DedupeRules) -> bool:
     if rules.window is None:
         return True
     start, end = rules.window

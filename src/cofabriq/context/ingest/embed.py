@@ -15,7 +15,7 @@ BATCH = 128  # far below the API's 2048 inputs / 300k tokens per request
 type Embed = Callable[[Sequence[str]], list[list[float]]]
 
 
-def embed_input(chunk: Chunk) -> str:
+def chunk_input(chunk: Chunk) -> str:
     """The text that gets embedded: heading trail first, then the chunk.
 
     A chunk split out of a long section has lost its document title; the

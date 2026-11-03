@@ -5,7 +5,7 @@ import pytest
 
 from cofabriq.eval.impact import (
     Case,
-    Rules,
+    ImpactRules,
     build,
     fill,
     knn,
@@ -57,7 +57,7 @@ def fix(day: int, *files: str) -> Fix:
 
 
 def test_build_takes_closed_fixed_issues_in_the_window() -> None:
-    rules = Rules(
+    rules = ImpactRules(
         map_until=date(2025, 12, 31),
         window=(date(2026, 1, 3), date(2026, 1, 20)),
         test_window=(date(2026, 2, 1), date(2026, 2, 28)),

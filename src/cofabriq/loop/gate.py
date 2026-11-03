@@ -43,7 +43,7 @@ from cofabriq.loop.run import (
     Attempt,
     CheckResult,
     LoopResult,
-    Rules,
+    LoopRules,
     fix,
     keep_only_tests,
     new_test_checks,
@@ -167,7 +167,7 @@ def finding_text(f: Finding) -> str:
 
 def _prove_prompt(
     spec: Spec,
-    rules: Rules,
+    rules: LoopRules,
     finding: Finding,
     n: int,
     failed: list[CheckResult],
@@ -192,7 +192,7 @@ def prove(
     *,
     finding: Finding,
     spec: Spec,
-    rules: Rules,
+    rules: LoopRules,
     worktree: Path,
     agent: Agent,
     sandbox: Sandbox,
@@ -263,7 +263,7 @@ def to_prove(rv: Review) -> list[Finding]:
 def review_gate(
     *,
     spec: Spec,
-    rules: Rules,
+    rules: LoopRules,
     result: LoopResult,
     worktree: Path,
     reader: Agent,
@@ -297,7 +297,7 @@ def review_gate(
 def _review_gate(
     *,
     spec: Spec,
-    rules: Rules,
+    rules: LoopRules,
     result: LoopResult,
     worktree: Path,
     reader: Agent,
