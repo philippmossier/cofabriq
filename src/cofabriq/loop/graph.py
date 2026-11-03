@@ -44,11 +44,10 @@ from cofabriq.files import stamp
 from cofabriq.git import files_at
 from cofabriq.issues.model import Issue
 from cofabriq.loop import gate as gate_mod
-from cofabriq.loop import pr as pr_mod
 from cofabriq.loop import refine as refine_mod
-from cofabriq.loop import sentinel as sentinel_mod
 from cofabriq.loop.engine import Agent, AgentError, Guard
 from cofabriq.loop.intake import not_ready
+from cofabriq.loop.record import RunRecord, draft_for, sentinel_for, write_record
 from cofabriq.loop.run import (
     FEATURE,
     INSTRUCTIONS,
@@ -67,7 +66,6 @@ from cofabriq.loop.run import (
     test_stage,
 )
 from cofabriq.loop.sandbox import Sandbox
-from cofabriq.map import components as components_mod
 from cofabriq.targets import repo_slug
 
 type Node = Callable[["FlowState"], dict[str, object]]
@@ -228,7 +226,13 @@ def build_graph(deps: Deps) -> StateGraph[FlowState]:
             reader=deps.reader,
             editor=deps.editor,
             sandbox=deps.sandbox,
-            sentinel=_sentinel(deps, s.issue.repo, s.refined.commit),
+            sentinel=sentinel_for(
+                deps.targets_dir,
+                s.issue.repo,
+                deps.clone,
+                s.refined.commit,
+                deps.rules.tests,
+            ),
         )
         return {"stage": "reviewed", "gated": gated}
 
@@ -247,28 +251,21 @@ def build_graph(deps: Deps) -> StateGraph[FlowState]:
                 deps.sandbox,
                 deps.runs_dir / stem,
             )
-        out: dict[str, object] = {
-            "result": s.gated.result.model_dump(mode="json"),
-            "gate": s.gated.model_dump(mode="json"),
-            "evidence": evidence,
-        }
-        deps.runs_dir.mkdir(parents=True, exist_ok=True)
+        out = RunRecord(result=s.gated.result, gate=s.gated, evidence=evidence)
         if s.gated.status != "blocked":
-            draft = pr_mod.draft(
-                issue_title=s.issue.title,
+            out.draft = draft_for(
+                deps.targets_dir,
+                s.issue.repo,
+                title=s.issue.title,
                 spec=s.refined.spec,
                 result=s.gated.result,
                 tests=deps.rules.tests,
-                risk_rules=pr_mod.load_risk(deps.targets_dir, s.issue.repo),
-                components=components_mod.load_rules(deps.targets_dir, s.issue.repo),
                 review=s.gated.review,
                 rounds=s.gated.rounds,
                 route=s.route,
                 evidence=len(evidence),
             )
-            out["draft"] = draft.model_dump(mode="json")
-            (deps.runs_dir / f"{stem}.pr.md").write_text(draft.body, "utf-8")
-        (deps.runs_dir / f"{stem}.json").write_text(json.dumps(out, indent=2), "utf-8")
+        write_record(deps.runs_dir, stem, out)
         return {"record": stem}
 
     def finish(s: FlowState) -> dict[str, object]:
@@ -348,14 +345,6 @@ def compiled(deps: Deps, dsn: str) -> Generator[CompiledStateGraph[FlowState]]:
     """The graph with its Postgres checkpointer."""
     with checkpoints(dsn) as saver:
         yield build_graph(deps).compile(checkpointer=saver)
-
-
-def _sentinel(deps: Deps, repo: str, commit: str) -> sentinel_mod.Checker | None:
-    found = sentinel_mod.load_sentinel(deps.targets_dir, repo)
-    if found is None:
-        return None
-    policy = sentinel_mod.policy_at(deps.clone, commit, found)
-    return sentinel_mod.checker(found, policy, deps.rules.tests)
 
 
 def _answer(value: dict[str, object]) -> tuple[bool, str]:

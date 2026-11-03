@@ -36,6 +36,7 @@ from cofabriq.issues.model import check_repo
 from cofabriq.loop.gate import Gated
 from cofabriq.loop.graph import FlowRunner, FlowStatus
 from cofabriq.loop.intake import not_ready
+from cofabriq.loop.record import RunRecord
 from cofabriq.loop.refine import Refined
 from cofabriq.loop.run import Attempt, CheckResult, LoopResult
 from cofabriq.serve_guard import guard
@@ -221,7 +222,6 @@ def _file(folder: Path, name: str) -> Path:
 
 
 _object = TypeAdapter(dict[str, object])
-_names = TypeAdapter(list[str])
 _objects = TypeAdapter(list[dict[str, object]])
 
 
@@ -294,20 +294,11 @@ def _runs_in(path: Path) -> list[_Stored]:
             ]
         except ValidationError:
             return []
-    record = _as_dict(raw)
-    if "result" not in record:
-        return []
     try:
-        judged = Judged.model_validate(
-            {k: record[k] for k in ("result", "judge", "valid") if k in record}
-        )
-        gated = Gated.model_validate(record["gate"]) if record.get("gate") else None
+        record = RunRecord.model_validate(raw)
     except ValidationError:
         return []
-    try:
-        names = _names.validate_python(record.get("evidence") or [])
-    except ValidationError:
-        names = []
+    judged = Judged(result=record.result, judge=record.judge, valid=record.valid)
     body = path.with_suffix(".pr.md")
     return [
         _Stored(
@@ -315,9 +306,9 @@ def _runs_in(path: Path) -> list[_Stored]:
             key=str(judged.result.number),
             kind="run",
             judged=judged,
-            gated=gated,
+            gated=record.gate,
             pr_body=body.read_text("utf-8") if body.is_file() else None,
-            evidence=names,
+            evidence=record.evidence,
         )
     ]
 

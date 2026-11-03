@@ -54,6 +54,7 @@ features removed on purpose.
 | `sentinel.py` | the target's invariant, checked in code before review |
 | `gate.py`, `review.py` | the separate reviewer; a finding blocks only when a test proves it |
 | `pr.py`, `publish.py` | risk tier and draft PR body; `--apply` pushes a branch and opens a draft PR |
+| `record.py` | what `run` and the flow share at the end: the sentinel for the gate, the draft, the run record in `data/runs/` |
 | `lessons.py` | rules for the target's CLAUDE.md from what went wrong |
 
 ## The parts and where they keep things

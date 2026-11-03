@@ -75,6 +75,7 @@ from cofabriq.loop import intake as intake_mod
 from cofabriq.loop import lessons as lessons_mod
 from cofabriq.loop import pr as pr_mod
 from cofabriq.loop import publish as publish_mod
+from cofabriq.loop import record as record_mod
 from cofabriq.loop import refine as refine_mod
 from cofabriq.loop import run as run_mod
 from cofabriq.loop import sentinel as sentinel_mod
@@ -1355,17 +1356,6 @@ def intake(numbers: list[int], repo: str = PLAYGROUND) -> None:
         typer.echo(f"  #{sl.number:<5} {sl.state:<8}{why}  {sl.title}")
 
 
-def _sentinel(
-    target: str, clone: Path, commit: str, rules: run_mod.Rules
-) -> sentinel_mod.Checker | None:
-    """The target's invariant check, its policy read at the run's commit."""
-    found = sentinel_mod.load_sentinel(get_settings().targets_dir, target)
-    if found is None:
-        return None
-    policy = sentinel_mod.policy_at(clone, commit, found)
-    return sentinel_mod.checker(found, policy, rules.tests)
-
-
 def _route(issue_type: str) -> refine_mod.Route:
     types = typing.get_args(triage_mod.IssueType.__value__)
     if issue_type not in types:
@@ -1502,7 +1492,13 @@ def run(
                         reader=agent,
                         editor=agent.editing(budget_usd=1.0),
                         sandbox=sandbox,
-                        sentinel=_sentinel(target, clone, refined.commit, rules),
+                        sentinel=record_mod.sentinel_for(
+                            settings.targets_dir,
+                            target,
+                            clone,
+                            refined.commit,
+                            rules.tests,
+                        ),
                     )
                 except Halted as exc:  # no review, so no PR body either
                     typer.echo(f"halted before the review was done: {exc}", err=True)
@@ -1536,38 +1532,36 @@ def run(
         tries = len(result.attempts)
         done(f"{result.status}, {tries} attempts, ${result.cost_usd:.3f}")
     _show_loop(judged)
-    out = settings.runs_dir / f"{stem}.json"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    record = judged.model_dump(mode="json")
-    record["evidence"] = evidence
+    record = record_mod.RunRecord(
+        result=judged.result, judge=judged.judge, valid=judged.valid, evidence=evidence
+    )
     if gated is not None:
-        record["gate"] = gated.model_dump(mode="json")
+        record.gate = gated
         _show_gate(gated)
     if gated is not None and gated.status != "blocked":
-        draft = pr_mod.draft(
-            issue_title=issue.title,
+        draft = record_mod.draft_for(
+            settings.targets_dir,
+            target,
+            title=issue.title,
             spec=refined.spec,
             result=gated.result,
             tests=rules.tests,
-            risk_rules=pr_mod.load_risk(settings.targets_dir, target),
-            components=components_mod.load_rules(settings.targets_dir, target),
             review=gated.review,
             rounds=gated.rounds,
             route=refined.route,
             evidence=len(evidence),
         )
-        record["draft"] = draft.model_dump(mode="json")
-        body = settings.runs_dir / f"{stem}.pr.md"
-        body.write_text(draft.body, "utf-8")
+        record.draft = draft
+        body = settings.runs_dir / f"{stem}.pr.md"  # written with the record
         _show_draft(draft)
         if write_token is None:
             typer.echo(f"-> {body} (dry run: nothing sent to GitHub)")
         else:
             typer.echo(f"-> {body}")
-            record["published"] = _publish(  # a PR or the error: the run is kept
+            record.published = _publish(  # a PR or the error: the run is kept
                 target, clone, issue, gated.result, draft, write_token, steps
             )
-    out.write_text(json_mod.dumps(record, indent=2), "utf-8")
+    out = record_mod.write_record(settings.runs_dir, stem, record)
     typer.echo(f"-> {out}")
     blocked = gated is not None and gated.status == "blocked"
     judged_red = judged.judge is not None and not judged.judge.ok
@@ -2400,13 +2394,13 @@ def _publish_human_set(
             continue
         result = runs[(p.key, p.kind)].result
         review = reviews[(p.key, p.kind)]
-        draft = pr_mod.draft(
-            issue_title=titles[p.key],
+        draft = record_mod.draft_for(
+            settings.targets_dir,
+            target,
+            title=titles[p.key],
             spec=specs[p.key].spec,
             result=result,
             tests=rules.tests,
-            risk_rules=pr_mod.load_risk(settings.targets_dir, target),
-            components=components_mod.load_rules(settings.targets_dir, target),
             review=review,
         )
         entry = published.get((p.key, p.kind))

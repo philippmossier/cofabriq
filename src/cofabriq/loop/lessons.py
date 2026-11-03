@@ -18,10 +18,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 
 from cofabriq.loop.engine import Agent, AgentRun
 from cofabriq.loop.gate import Gated
+from cofabriq.loop.record import RunRecord
 from cofabriq.targets import repo_slug
 from cofabriq.untrusted import fenced
 
@@ -47,22 +48,25 @@ def _proven(gated: Gated) -> list[tuple[str, str]]:
     ]
 
 
+_cases = TypeAdapter(list[dict[str, object]])
+
+
 def _gated_in(path: Path) -> list[Gated]:
-    """The review gates stored in one runs file: `eval gate` cases and
-    single `run` / `flow` records."""
-    raw: object = json.loads(path.read_text("utf-8"))
-    found: list[Gated] = []
-    items: list[object] = raw if isinstance(raw, list) else [raw]  # pyright: ignore[reportUnknownVariableType]
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        value = item.get("gated") or item.get("gate")  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
-        if not value:
-            continue
+    """The review gates stored in one runs file: `eval gate` cases (under
+    `gated`) or a single `run` / `flow` record (under `gate`)."""
+    text = path.read_text("utf-8")
+    if not path.name.startswith("gate-"):
         try:
-            found.append(Gated.model_validate(value))
+            gate = RunRecord.model_validate_json(text).gate
         except ValidationError:
-            continue  # an older stored shape
+            return []  # an older stored shape
+        return [gate] if gate else []
+    found: list[Gated] = []
+    for case in _cases.validate_json(text):
+        try:
+            found.append(Gated.model_validate(case.get("gated")))
+        except ValidationError:
+            continue  # an older stored shape, or setup failed (no gate)
     return found
 
 
