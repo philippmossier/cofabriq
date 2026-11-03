@@ -1,4 +1,4 @@
-"""Intake: tickets in, the next one the loop may start out (0.3).
+"""Intake: tickets in, the next one the loop may start out.
 
 cofabriq does not split big features: the dev plans them in their own
 session (interview, prototype, spec, tickets) and files the tickets on

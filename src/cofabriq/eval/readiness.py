@@ -9,25 +9,23 @@ reports, not team members' notes to each other. Both bodies are unedited:
 the text scored is the text the maintainer reacted to.
 """
 
-import json
 import random
-import tomllib
 from collections.abc import Callable, Mapping, Sequence
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 
-from pydantic import BaseModel, TypeAdapter
+from pydantic import BaseModel
 
+from cofabriq import llm
 from cofabriq.issues.github import History
 from cofabriq.issues.model import Issue
 from cofabriq.issues.readiness import InfoItem, check_info
 from cofabriq.issues.triage import PROMPT_VERSION, Fields, Triager, shown
-from cofabriq.issues.verdict import PRICE_IN, PRICE_OUT
+from cofabriq.targets import target_table
 
 
-class Rules(BaseModel):
+class ReadinessRules(BaseModel):
     """`[readiness]` in `targets/<owner>-<name>.toml`, fixed before scoring."""
 
     window: tuple[date, date]
@@ -39,12 +37,9 @@ class Rules(BaseModel):
     sample: int
 
 
-def load_rules(targets_dir: Path, repo: str) -> Rules | None:
-    path = targets_dir / f"{repo.replace('/', '-')}.toml"
-    if not path.is_file():
-        return None
-    table = tomllib.loads(path.read_text("utf-8")).get("readiness")
-    return None if table is None else Rules.model_validate(table)
+def load_rules(targets_dir: Path, repo: str) -> ReadinessRules | None:
+    table = target_table(targets_dir, repo, "readiness")
+    return None if table is None else ReadinessRules.model_validate(table)
 
 
 class InfoSet(BaseModel):
@@ -52,7 +47,7 @@ class InfoSet(BaseModel):
 
     repo: str
     frozen_at: datetime
-    rules: Rules
+    rules: ReadinessRules
     needs_info: list[int]
     complete: list[int]
 
@@ -63,7 +58,7 @@ class Pools:
     complete: list[int]
 
 
-def pools(issues: Sequence[Issue], rules: Rules) -> Pools:
+def pools(issues: Sequence[Issue], rules: ReadinessRules) -> Pools:
     """Candidates from the stored snapshot; `verify` then checks each one's
     history on GitHub (labels removed since, edited bodies)."""
     start, end = rules.window
@@ -93,7 +88,7 @@ type HistoryOf = Callable[[Sequence[int]], Mapping[int, History]]
 def build(
     repo: str,
     pool: Pools,
-    rules: Rules,
+    rules: ReadinessRules,
     history: HistoryOf,
     frozen_at: datetime,
     seed: int = 0,
@@ -146,59 +141,38 @@ def score(infoset: InfoSet, asks: Mapping[int, bool]) -> Score:
     return Score(len(predicted), precision, recall, f1)
 
 
-class FieldsRecord(BaseModel):
+class FieldsRecord(llm.Record):
     """One card-fields answer, cached per issue and prompt version."""
 
-    number: int
-    version: str
     fields: Fields
     cost_usd: float
     latency_ms: int
 
 
-_records = TypeAdapter(list[FieldsRecord])  # for saving
-
-
 def run_fields(
-    issues: Sequence[Issue], triager: Triager, path: Path, workers: int = 8
+    issues: Sequence[Issue], triager: Triager, path: Path
 ) -> dict[int, FieldsRecord]:
     """The card call for every issue (no components: the eval scores info
-    only), reusing cached answers of the current prompt version. Saved even
-    if a call fails halfway, so a rerun only pays for what is missing."""
-    raw: list[dict[str, object]] = (
-        json.loads(path.read_bytes()) if path.is_file() else []
-    )
-    # Other prompt versions are skipped unvalidated: their fields may differ.
-    stored = {
-        r.number: r
-        for r in (
-            FieldsRecord.model_validate(x)
-            for x in raw
-            if x["version"] == PROMPT_VERSION
-        )
-    }
-    done = {i.number: stored[i.number] for i in issues if i.number in stored}
-    todo = [i for i in issues if i.number not in done]
+    only), reusing cached answers of the current prompt version."""
 
     def run(issue: Issue) -> FieldsRecord:
         fields, usage = triager.fields(issue, {})
-        cost = usage.input_tokens * PRICE_IN + usage.output_tokens * PRICE_OUT
         return FieldsRecord(
             number=issue.number,
             version=PROMPT_VERSION,
             fields=fields,
-            cost_usd=cost,
+            cost_usd=llm.cost(usage),
             latency_ms=usage.latency_ms,
         )
 
-    try:
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            for record in pool.map(run, todo):
-                done[record.number] = record
-    finally:
-        kept = sorted((stored | done).values(), key=lambda r: r.number)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(_records.dump_json(kept, indent=2))
+    done, _ = llm.cached_batch(
+        issues,
+        path,
+        FieldsRecord,
+        PROMPT_VERSION,
+        number=lambda i: i.number,
+        run=run,
+    )
     return done
 
 

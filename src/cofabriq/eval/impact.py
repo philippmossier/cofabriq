@@ -9,7 +9,6 @@ issue was filed.
 """
 
 import random
-import tomllib
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -22,11 +21,10 @@ from cofabriq.map.build import MAX_FILES
 from cofabriq.map.components import ComponentRules, component_of
 from cofabriq.map.fixes import Fix
 from cofabriq.map.impact import Ranked, vote
+from cofabriq.targets import target_table
 
-NEIGHBOURS = 30  # earlier issues looked at by kNN
 
-
-class Rules(BaseModel):
+class ImpactRules(BaseModel):
     """`[impact]` in `targets/<owner>-<name>.toml`, fixed before scoring."""
 
     map_until: date  # the map's cut; before the dev window
@@ -35,12 +33,9 @@ class Rules(BaseModel):
     sample: int
 
 
-def load_rules(targets_dir: Path, repo: str) -> Rules | None:
-    path = targets_dir / f"{repo.replace('/', '-')}.toml"
-    if not path.is_file():
-        return None
-    table = tomllib.loads(path.read_text("utf-8")).get("impact")
-    return None if table is None else Rules.model_validate(table)
+def load_rules(targets_dir: Path, repo: str) -> ImpactRules | None:
+    table = target_table(targets_dir, repo, "impact")
+    return None if table is None else ImpactRules.model_validate(table)
 
 
 class Case(BaseModel):
@@ -51,7 +46,7 @@ class Case(BaseModel):
 class ImpactSet(BaseModel):
     repo: str
     frozen_at: datetime
-    rules: Rules
+    rules: ImpactRules
     window: tuple[date, date]  # the split this set covers
     cases: list[Case]
 
@@ -64,7 +59,7 @@ def build(
     issues: Sequence[Issue],
     fixes: Mapping[int, list[Fix]],
     components: ComponentRules,
-    rules: Rules,
+    rules: ImpactRules,
     window: tuple[date, date],
     frozen_at: datetime,
     seed: int = 0,

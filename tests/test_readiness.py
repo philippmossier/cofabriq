@@ -12,7 +12,8 @@ from cofabriq.issues.readiness import (
 )
 from cofabriq.issues.triage import triage
 from cofabriq.issues.verdict import Answer
-from tests.test_triage import FakeJudge, FakeTriager, context, fields
+from tests.builders import context, fields
+from tests.fakes import FakeJudge, FakeTriager
 
 SHOWN = """Download restarts after reload
 

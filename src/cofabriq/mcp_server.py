@@ -1,4 +1,4 @@
-"""MCP server exposing search and graph queries as tools.
+"""MCP server exposing search, the graph queries, triage and impact as tools.
 
 Thin on purpose: each tool is one store call, so the CLI and the MCP client
 see the same answers. Connections come in from the caller (`cofabriq mcp`

@@ -1,5 +1,5 @@
 """The removed features in the playground: the answer key for the feature
-route (0.3).
+route.
 
 `playground/features.toml` says per feature which files the reference
 changes and which test files judge it; `features/remove/<key>.patch` takes
@@ -8,9 +8,7 @@ the set was made. The tickets live there too, not on GitHub: `ticket` turns
 one into the `Issue` the loop takes.
 """
 
-import json
 import re
-import subprocess
 import tomllib
 from datetime import UTC, datetime
 from pathlib import Path
@@ -19,24 +17,26 @@ from typing import Literal
 from pydantic import BaseModel, TypeAdapter
 
 from cofabriq.eval.loop import Judged
+from cofabriq.files import newest_by_key
+from cofabriq.git import git
 from cofabriq.issues.model import Issue
 from cofabriq.loop.engine import Agent
-from cofabriq.loop.refine import Refined, Route, git_env, refine
-from cofabriq.loop.run import (
-    CheckResult,
-    LoopResult,
-    Rules,
-    add_worktree,
-    remove_worktree,
-    repro_command,
-)
+from cofabriq.loop.refine import Refined, Route, refine
+from cofabriq.loop.run import CheckResult, LoopResult, LoopRules, repro_command
 from cofabriq.loop.sandbox import Sandbox
+from cofabriq.loop.worktree import (
+    add_worktree,
+    commit_layer,
+    keep_tests_at,
+    remove_worktree,
+    reset_hard,
+)
 
 _PATCHED = re.compile(r"^\+\+\+ b/(.+)$", re.MULTILINE)
 
 
 class Feature(BaseModel):
-    """One entry of a removed set: a removed feature, or (0.6, `route =
+    """One entry of a removed set: a removed feature, or (`route =
     "bug"`) a planted hard bug, the same mechanism: a patch on main, main's
     test files as the hidden judge."""
 
@@ -108,58 +108,29 @@ def ticket(feature: Feature, repo: str) -> Issue:
     )
 
 
-def _git(worktree: Path, *args: str) -> str:
-    return subprocess.run(
-        ["git", "-C", str(worktree), *args],
-        capture_output=True,
-        text=True,
-        check=True,
-        env=git_env(),
-    ).stdout
-
-
 def remove(worktree: Path, patch: Path) -> None:
     """Applies the removal and commits it in the (detached) worktree, so
     every later diff against HEAD shows only the agent's work. The commit
     stays local (the worktree is never pushed); its message says nothing
     about the feature, since the agent may read the worktree."""
-    _git(worktree, "apply", str(patch.resolve()))
-    _git(worktree, "add", "-A")
-    _git(
-        worktree,
-        "-c",
-        "user.name=cofabriq",
-        "-c",
-        "user.email=cofabriq@localhost",
-        "commit",
-        "-q",
-        "--no-verify",
-        "-m",
-        "eval base",
-    )
+    git(worktree, "apply", str(patch.resolve()))
+    commit_layer(worktree, "eval base")
 
 
 def hidden_tests(
-    worktree: Path, commit: str, feature: Feature, rules: Rules, sandbox: Sandbox
+    worktree: Path, commit: str, feature: Feature, rules: LoopRules, sandbox: Sandbox
 ) -> CheckResult:
     """The reference test files from `commit` over the tree, run, then the
     tree's own versions put back: green = the feature is there."""
     originals = {t: (worktree / t).read_bytes() for t in feature.tests}
     try:
         for t in feature.tests:
-            (worktree / t).write_text(_git(worktree, "show", f"{commit}:{t}"), "utf-8")
+            (worktree / t).write_text(git(worktree, "show", f"{commit}:{t}"), "utf-8")
         ran = sandbox(repro_command(rules, feature.tests), worktree, network=False)
     finally:
         for t, data in originals.items():
             (worktree / t).write_bytes(data)
-    return CheckResult(name="hidden", ok=ran.ok, seconds=ran.seconds, output=ran.output)
-
-
-def _check(name: str, cmd: str, worktree: Path, sandbox: Sandbox) -> CheckResult:
-    ran = sandbox(cmd, worktree, network=False)
-    return CheckResult(
-        name=name, ok=ran.ok, seconds=ran.seconds, output="" if ran.ok else ran.output
-    )
+    return CheckResult.of("hidden", ran, keep_output=True)
 
 
 class Proof(BaseModel):
@@ -180,20 +151,22 @@ def prove(
     commit: str,
     features: list[Feature],
     features_file: Path,
-    rules: Rules,
+    rules: LoopRules,
     sandbox: Sandbox,
 ) -> list[Proof]:
     """Each removal in turn on one installed worktree at `commit` (reset in
     between; ignored files such as node_modules survive the reset)."""
     proofs: list[Proof] = []
     for f in features:
-        _git(worktree, "reset", "-q", "--hard", commit)
-        _git(worktree, "clean", "-q", "-fd")
+        reset_hard(worktree, commit)
         remove(worktree, removal_path(features_file, f.key))
-        checks = [_check(c.name, c.cmd, worktree, sandbox) for c in rules.checks]
+        checks = [
+            CheckResult.of(c.name, sandbox(c.cmd, worktree, network=False))
+            for c in rules.checks
+        ]
         hidden = hidden_tests(worktree, commit, f, rules, sandbox)
         proofs.append(Proof(key=f.key, checks=checks, hidden=hidden))
-    _git(worktree, "reset", "-q", "--hard", commit)
+    reset_hard(worktree, commit)
     return proofs
 
 
@@ -257,36 +230,25 @@ def side_by_side(
 
 def load_specs(refine_dir: Path) -> dict[str, Refined]:
     """Feature key -> its newest stored spec, over all `features-*.json`."""
-    specs: dict[str, Refined] = {}
-    for path in sorted(refine_dir.glob("features-*.json")):  # names sort by time
-        specs |= _refined_adapter.validate_python(json.loads(path.read_text("utf-8")))
-    return specs
-
-
-_refined_adapter = TypeAdapter(dict[str, Refined])
+    return newest_by_key(refine_dir, "features-*.json", TypeAdapter(Refined))
 
 
 def on_reference(
-    worktree: Path, commit: str, tests: list[str], rules: Rules, sandbox: Sandbox
+    worktree: Path, commit: str, tests: list[str], rules: LoopRules, sandbox: Sandbox
 ) -> CheckResult:
     """The agent's acceptance test on the reference (main, the feature in):
     green = it tests the feature as it was built. Resets the worktree's
     code to `commit`, so it runs last."""
-    kept = {p: (worktree / p).read_bytes() for p in tests}
-    _git(worktree, "checkout", "-qf", "--detach", commit)
-    _git(worktree, "clean", "-q", "-fd")
-    for p, data in kept.items():
-        (worktree / p).parent.mkdir(parents=True, exist_ok=True)
-        (worktree / p).write_bytes(data)
+    keep_tests_at(worktree, tests, commit)
     ran = sandbox(repro_command(rules, tests), worktree, network=False)
-    return CheckResult(name="valid", ok=ran.ok, seconds=ran.seconds, output=ran.output)
+    return CheckResult.of("valid", ran, keep_output=True)
 
 
 def against_reference(
     result: LoopResult,
     worktree: Path,
     feature: Feature,
-    rules: Rules,
+    rules: LoopRules,
     sandbox: Sandbox,
 ) -> Judged:
     """Judge (the hidden reference tests on the agent's code, when built)

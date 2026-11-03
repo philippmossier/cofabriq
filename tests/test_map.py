@@ -1,17 +1,16 @@
-import os
-import subprocess
 from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
 from neo4j import Driver
 
+from cofabriq.git import files_at
 from cofabriq.map import store
 from cofabriq.map.build import MAX_FILES, build
 from cofabriq.map.components import ROOT, ComponentRules, component_of, load_rules
 from cofabriq.map.fixes import Fix
-from cofabriq.map.history import Commit, commits, files_at, rev_at
-from tests.gitrepo import init_repo
+from cofabriq.map.history import Commit, commits, rev_at
+from tests.gitrepo import dated_commit, init_repo
 
 AT = datetime(2022, 1, 1, tzinfo=UTC)
 RULES = ComponentRules(
@@ -46,35 +45,6 @@ def test_load_rules(tmp_path: Path) -> None:
         named={"ui": ["web/**"]}, patterns=["src/*"]
     )
     assert load_rules(tmp_path, "acme/none") == ComponentRules()
-
-
-def dated_commit(
-    repo: Path, day: str, files: dict[str, str], message: str = "change"
-) -> None:
-    """A commit with author and committer date on `day` (`--before` reads the
-    committer date)."""
-    for path, content in files.items():
-        (repo / path).parent.mkdir(parents=True, exist_ok=True)
-        (repo / path).write_text(content)
-    stamp = f"{day}T12:00:00+00:00"
-    env = os.environ | {"GIT_AUTHOR_DATE": stamp, "GIT_COMMITTER_DATE": stamp}
-    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
-    subprocess.run(
-        [
-            "git",
-            "-C",
-            str(repo),
-            "-c",
-            "user.name=t",
-            "-c",
-            "user.email=t@t",
-            "commit",
-            "-qm",
-            message,
-        ],
-        check=True,
-        env=env,
-    )
 
 
 def test_history_as_of_a_date(tmp_path: Path) -> None:
@@ -183,4 +153,3 @@ def test_store_keeps_fixes_and_answers_by_date(driver: Driver) -> None:
     assert store.fixed(driver, "acme/app", [8], june) == {8: ["src/vs/contrib/a"]}
     assert store.fixed_issues(driver, "acme/app", june) == [7, 8]
     assert store.rev(driver, "acme/app") == "abc"
-    assert store.cut(driver, "acme/app") is None

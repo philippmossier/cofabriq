@@ -8,30 +8,29 @@ from the triage card on purpose: one job per call, and the eval can measure
 it alone.
 """
 
-import json
-import os
-import time
 from collections.abc import Callable, Iterable, Sequence
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Protocol
 
 from openai import OpenAI
-from pydantic import BaseModel, Field, TypeAdapter
+from pydantic import BaseModel, Field
 
+from cofabriq import llm
 from cofabriq.issues.model import Comment, Issue
+from cofabriq.llm import Usage
+from cofabriq.untrusted import fenced, quote_in
 
-MODEL = "gpt-6-luna"
 # Stored with every record. Bump the suffix when the prompt or the schema
 # changes: records of another version count as missing and are judged again.
-VERSION = f"{MODEL}/2"
-PRICE_IN = 0.10 / 1_000_000  # USD per token
-PRICE_OUT = 0.50 / 1_000_000  # reasoning tokens are billed as output
-QUERY_BODY = 6000  # characters, as embedded
+VERSION = f"{llm.MODEL}/2"
+# Characters of the query issue's body an LLM call reads: the verdict and
+# the triage card cut the raw body, the rerank the cleaned one (like the
+# embedding, which cuts at `vectors.MAX_BODY`). Raw vs cleaned for the
+# verdict and the card is an open eval question.
+QUERY_BODY = 6000
 CANDIDATE_BODY = 1500
 CANDIDATE_COMMENTS = 3
-WORKERS = 8
 
 type Kind = Literal["duplicate_of", "unsure", "related", "none"]
 type Problem = Literal["bug", "request"]
@@ -72,13 +71,6 @@ class Answer(BaseModel):
 
 
 @dataclass(frozen=True)
-class Usage:
-    input_tokens: int
-    output_tokens: int
-    latency_ms: int
-
-
-@dataclass(frozen=True)
 class Candidate:
     """An earlier issue as the model sees it: no state, no labels, and only
     comments written before the query issue. Anything later could leak the
@@ -107,11 +99,9 @@ class Candidate:
         return "\n\n".join([self.title, self.body, *(c.body for c in self.comments)])
 
 
-class VerdictRecord(BaseModel):
+class VerdictRecord(llm.Record):
     """One issue's checked verdict as stored, with provenance and cost."""
 
-    number: int
-    version: str
     candidates: list[int]  # numbers offered, rank order
     verdict: Kind
     target: int | None
@@ -124,7 +114,7 @@ class VerdictRecord(BaseModel):
 
     @property
     def cost_usd(self) -> float:
-        return self.input_tokens * PRICE_IN + self.output_tokens * PRICE_OUT
+        return llm.cost(self)
 
 
 class Judge(Protocol):
@@ -142,40 +132,29 @@ class OpenAIJudge:
     def judge(
         self, query: Issue, candidates: Sequence[Candidate]
     ) -> tuple[Answer, Usage]:
-        start = time.perf_counter()
-        response = self._client.responses.parse(
-            model=MODEL,
+        return llm.structured(
+            self._client,
             instructions=INSTRUCTIONS,
             input=prompt(query, candidates),
-            text_format=Answer,
-            reasoning={"effort": "low"},
+            schema=Answer,
+            what=f"verdict for #{query.number}",
         )
-        latency_ms = round((time.perf_counter() - start) * 1000)
-        if response.output_parsed is None or response.usage is None:
-            raise RuntimeError(f"no verdict for #{query.number}")
-        usage = Usage(
-            response.usage.input_tokens, response.usage.output_tokens, latency_ms
-        )
-        return response.output_parsed, usage
 
 
 def prompt(query: Issue, candidates: Sequence[Candidate]) -> str:
     """Query first, then candidates in retrieval order, scores left out so the
     model reads the text instead of trusting the ranking."""
     shown = "\n\n".join(_candidate_block(c) for c in candidates) or "(none)"
-    return (
-        f'<issue number="{query.number}">\n{query.title}\n\n'
-        f"{query.body[:QUERY_BODY]}\n</issue>\n\n"
-        f"Candidates (earlier issues):\n\n{shown}"
+    issue = fenced(
+        "issue", f"{query.title}\n\n{query.body[:QUERY_BODY]}", number=str(query.number)
     )
+    return f"{issue}\n\nCandidates (earlier issues):\n\n{shown}"
 
 
 def _candidate_block(c: Candidate) -> str:
     comments = "".join(f"\n\n[comment]\n{x.body}" for x in c.comments)
-    return (
-        f'<candidate number="{c.number}">\n{c.title}\n\n{c.body}{comments}\n'
-        "</candidate>"
-    )
+    text = f"{c.title}\n\n{c.body}{comments}"
+    return fenced("candidate", text, number=str(c.number))
 
 
 def check(
@@ -197,7 +176,7 @@ def check(
         chosen = offered.get(target) if target is not None else None
         if chosen is None:
             dropped.append(f"{verdict} -> #{target}: not a candidate")
-        elif not evidence.strip() or _squash(evidence) not in _squash(chosen.text()):
+        elif not evidence.strip() or not quote_in(evidence, chosen.text()):
             dropped.append(f"{verdict} -> #{target}: evidence not in the candidate")
         if dropped:
             verdict = "none"
@@ -224,70 +203,29 @@ class Job:
     candidates: list[Candidate]
 
 
-@dataclass(frozen=True)
-class JudgeReport:
-    judged: int  # sent to the LLM
-    cached: int  # same version and same candidates already stored
-
-
-_records_adapter = TypeAdapter(list[VerdictRecord])
-
-
 def judge_all(
     jobs: Iterable[Job],
     path: Path,
     judge: Judge,
     on_judged: Callable[[VerdictRecord], None] = lambda _: None,
-    workers: int = WORKERS,
-) -> tuple[dict[int, VerdictRecord], JudgeReport]:
+    workers: int = llm.WORKERS,
+) -> tuple[dict[int, VerdictRecord], llm.Batch]:
     """Verdicts for all jobs, calling the LLM only where nothing is cached.
-
     A record is reused while its version and its candidate list match: a
-    re-embed that changes the candidates gets a new verdict. Records are saved
-    even if a call fails halfway, so a rerun only pays for what is missing.
-    """
-    jobs = list(jobs)
-    stored = {r.number: r for r in load(path)}
-    done = {
-        j.query.number: stored[j.query.number]
-        for j in jobs
-        if j.query.number in stored
-        and stored[j.query.number].candidates == [c.number for c in j.candidates]
-    }
-    todo = [j for j in jobs if j.query.number not in done]
+    re-embed that changes the candidates gets a new verdict."""
 
     def run(job: Job) -> VerdictRecord:
         answer, usage = judge.judge(job.query, job.candidates)
         return check(job.query, job.candidates, answer, usage)
 
-    try:
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            for record in pool.map(run, todo):
-                done[record.number] = record
-                on_judged(record)
-    finally:
-        # keep records of issues outside this run (another eval set, the CLI)
-        kept = stored | done
-        _save(path, sorted(kept.values(), key=lambda r: r.number))
-
-    return done, JudgeReport(judged=len(todo), cached=len(jobs) - len(todo))
-
-
-def load(path: Path) -> list[VerdictRecord]:
-    """Stored records of the current version; others are skipped unvalidated."""
-    if not path.is_file():
-        return []
-    raw: list[dict[str, object]] = json.loads(path.read_bytes())
-    return [VerdictRecord.model_validate(r) for r in raw if r["version"] == VERSION]
-
-
-def _save(path: Path, records: list[VerdictRecord]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_bytes(_records_adapter.dump_json(records, indent=2))
-    os.replace(tmp, path)
-
-
-def _squash(text: str) -> str:
-    """Whitespace-insensitive form, so a quote across a line break still matches."""
-    return " ".join(text.split())
+    return llm.cached_batch(
+        jobs,
+        path,
+        VerdictRecord,
+        VERSION,
+        number=lambda j: j.query.number,
+        run=run,
+        usable=lambda j, r: r.candidates == [c.number for c in j.candidates],
+        on_done=on_judged,
+        workers=workers,
+    )

@@ -13,7 +13,6 @@ the checked card: required info with verified quotes, a route, a reply draft.
 """
 
 import time
-import tomllib
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -23,17 +22,20 @@ from typing import Literal, Protocol
 from openai import OpenAI
 from pydantic import BaseModel, Field
 
+from cofabriq import llm
 from cofabriq.context.ingest.embed import Embed
 from cofabriq.context.store import postgres
 from cofabriq.issues import readiness, rerank, vectors, verdict
 from cofabriq.issues.fetch import fetch_one, load_issue
 from cofabriq.issues.model import Issue, IssueSource
 from cofabriq.issues.readiness import Evidence, InfoItem, Readiness
-from cofabriq.issues.verdict import PRICE_IN, PRICE_OUT, Candidate, Problem, Usage
+from cofabriq.issues.verdict import Candidate, Problem
+from cofabriq.llm import Usage
+from cofabriq.steps import Steps
+from cofabriq.targets import target_table
+from cofabriq.untrusted import fenced
 
-MODEL = verdict.MODEL
 PROMPT_VERSION = "triage-v3"
-QUERY_BODY = 6000  # characters, as embedded and judged
 CANDIDATE_ISSUES = 10  # vector top-k the verdict chooses from
 RELATED_ISSUES = 5
 RELATED_CHUNKS = 8  # chunks searched, folded into documents
@@ -102,21 +104,13 @@ class OpenAITriager:
         self._client = OpenAI(api_key=api_key)
 
     def fields(self, issue: Issue, components: dict[str, str]) -> tuple[Fields, Usage]:
-        start = time.perf_counter()
-        response = self._client.responses.parse(
-            model=MODEL,
+        return llm.structured(
+            self._client,
             instructions=INSTRUCTIONS,
             input=prompt(issue, components),
-            text_format=Fields,
-            reasoning={"effort": "low"},
+            schema=Fields,
+            what=f"triage for #{issue.number}",
         )
-        latency_ms = round((time.perf_counter() - start) * 1000)
-        if response.output_parsed is None or response.usage is None:
-            raise RuntimeError(f"no triage for #{issue.number}")
-        usage = Usage(
-            response.usage.input_tokens, response.usage.output_tokens, latency_ms
-        )
-        return response.output_parsed, usage
 
 
 def prompt(issue: Issue, components: dict[str, str]) -> str:
@@ -126,24 +120,19 @@ def prompt(issue: Issue, components: dict[str, str]) -> str:
     listed = "\n".join(f"- {name}: {text}" for name, text in components.items())
     return (
         f"Components of {issue.repo}:\n{listed or '(none configured)'}\n\n"
-        f'<issue number="{issue.number}">\n{shown(issue)}\n</issue>'
+        f"{fenced('issue', shown(issue), number=str(issue.number))}"
     )
 
 
 def shown(issue: Issue) -> str:
     """The issue text the card call sees; quotes are checked against it."""
-    return f"{issue.title}\n\n{issue.body[:QUERY_BODY]}"
+    return f"{issue.title}\n\n{issue.body[: verdict.QUERY_BODY]}"
 
 
 def load_components(targets_dir: Path, repo: str) -> dict[str, str]:
     """`<targets_dir>/<owner>-<name>.toml`, `[components]` table; empty if
     the file is missing (component is then always null)."""
-    path = targets_dir / f"{repo.replace('/', '-')}.toml"
-    if not path.is_file():
-        return {}
-    table: dict[str, object] = tomllib.loads(path.read_text("utf-8")).get(
-        "components", {}
-    )
+    table = target_table(targets_dir, repo, "components") or {}
     return {str(k): str(v) for k, v in table.items()}
 
 
@@ -279,11 +268,11 @@ def _shortlist(
     reranker: rerank.Reranker,
 ) -> list[vectors.Neighbour]:
     """The `CANDIDATE_ISSUES` best of a wide vector list, in the LLM's order."""
-    known = {h.number: h for h in hits if earlier[h.number] is not None}
-    seen = [rerank.Seen.of(i) for n in known if (i := earlier[n]) is not None]
-    order, _ = reranker.rerank(issue, seen)
-    ranked = rerank.merge(list(known), order.numbers[: rerank.KEEP])
-    return [known[n] for n in ranked[:CANDIDATE_ISSUES]]
+    shown = {h.number: i for h in hits if (i := earlier[h.number]) is not None}
+    order, _ = reranker.rerank(issue, [rerank.Seen.of(i) for i in shown.values()])
+    ranked = rerank.merge(list(shown), order.numbers[: rerank.KEEP])
+    hit = {h.number: h for h in hits}
+    return [hit[n] for n in ranked[:CANDIDATE_ISSUES]]
 
 
 def gather(
@@ -397,16 +386,85 @@ def triage(
         dropped=dropped + info_dropped + record.dropped,
         conflicts=found,
         run=Run(
-            model=MODEL,
+            model=llm.MODEL,
             prompt_version=f"{PROMPT_VERSION}+verdict/{verdict.VERSION}",
-            cost_usd=_cost(f_usage) + record.cost_usd,
+            cost_usd=llm.cost(f_usage) + record.cost_usd,
             latency_ms=latency_ms,
         ),
     )
 
 
-def _cost(usage: Usage) -> float:
-    return usage.input_tokens * PRICE_IN + usage.output_tokens * PRICE_OUT
+def triage_fn(
+    conn: postgres.Conn,
+    *,
+    issues_dir: Path,
+    targets_dir: Path,
+    triager: Triager,
+    judge: verdict.Judge,
+    reranker: rerank.Reranker | None,
+    embed: Embed,
+    github: Callable[[str], IssueSource | None] | None,
+    steps: Steps,
+) -> Callable[[str, int], TriageCard]:
+    """(repo, number) -> card: refresh the issue from GitHub, then gather
+    from the local stores and make both LLM calls (the CLI's `triage` and
+    the MCP tool).
+
+    `github(repo)` is the source to refresh from, None without a token (the
+    store is used as it is); `github=None` never asks (the eval scores the
+    issues as fetched). `steps` reports each stage; `Steps(None)` stays
+    silent (MCP, eval).
+    """
+
+    def run(repo: str, number: int) -> TriageCard:
+        source = github(repo) if github is not None else None
+        if source is not None:
+            with steps.step("GitHub", f"checking #{number}") as done:
+                got = refresh_issue(source, issues_dir, number)
+                done(fetched(number, got))
+            if got is not None:
+                with steps.step("embedding", f"embedding #{number}") as done:
+                    changed = refresh_vector(conn, got[0], embed)
+                    done(f"embedded #{number}" if changed else "up to date")
+        elif github is not None:
+            steps.note("GitHub", "skipped: no GITHUB_TOKEN, local copy", ok=False)
+        with steps.step("search", "nearest earlier issues and docs") as done:
+            ctx = gather(conn, issues_dir, targets_dir, repo, number, reranker)
+            done(f"{len(ctx.candidates)} earlier issues, {len(ctx.related_docs)} docs")
+        with steps.step("LLM", "card fields + duplicate verdict") as done:
+            card = triage(ctx, triager, judge)
+            seconds = card.run.latency_ms / 1000
+            done(f"card fields + duplicate verdict, 2 calls, {seconds:.1f} s")
+        steps.note("checks", _checked(card), ok=not (card.dropped or card.conflicts))
+        return card
+
+    return run
+
+
+def fetched(number: int, got: tuple[object, str] | None) -> str:
+    """The step line for `refresh_issue`'s answer."""
+    if got is None:
+        return f"#{number} not on GitHub (or a pull request), local copy"
+    return {
+        "new": f"fetched #{number} (new)",
+        "changed": f"fetched #{number} (changed on GitHub)",
+    }.get(got[1], f"#{number} unchanged since the last fetch")
+
+
+def _checked(card: TriageCard) -> str:
+    """What the plain-code checks after the calls let through or dropped."""
+    parts: list[str] = []
+    if card.component:
+        parts.append("component on the list")
+    if card.duplicate.target is not None:
+        parts.append(f"quote found in #{card.duplicate.target}")
+    if card.dropped:
+        parts.append(f"dropped {len(card.dropped)}")
+    if card.conflicts:
+        parts.append(f"{len(card.conflicts)} conflict")
+    if card.missing:
+        parts.append(f"{len(card.missing)} info missing")
+    return ", ".join(parts) or "nothing to check"
 
 
 def related_docs(hits: Sequence[tuple[str, str, str, float]]) -> list[RelatedDoc]:

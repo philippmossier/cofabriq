@@ -9,9 +9,19 @@ radius: on vscode, mixing it into the ranking did not help. Measured by
 """
 
 from collections.abc import Callable, Mapping, Sequence
+from pathlib import Path
 
+from neo4j import Driver
 from pydantic import BaseModel
 
+from cofabriq.context.ingest.embed import Embed
+from cofabriq.context.store import postgres
+from cofabriq.issues import vectors
+from cofabriq.issues.fetch import load_issue
+from cofabriq.issues.triage import NotReady
+from cofabriq.map import store as map_store
+
+NEIGHBOURS = 30  # earlier fixed issues that vote (kNN), as measured
 SPREAD = 3  # top components whose co-change partners are added
 
 type Ranked = list[tuple[str, float]]  # component, score; best first
@@ -77,3 +87,43 @@ def assemble(
         blast=[Touch(component=c, score=round(s, 3), via=[]) for c, s in blast[:k]],
         neighbours=[(n, round(s, 3)) for n, s in neighbours],
     )
+
+
+def impact_fn(
+    conn: postgres.Conn, driver: Driver, embed: Embed, issues_dir: Path
+) -> Callable[[str, int | None, str | None, int], Impact]:
+    """(repo, issue number or None, plan text or None, k) -> Impact from the
+    stores (the CLI's `impact` and the MCP tool). An issue must be fetched
+    and embedded; it only sees fixes committed before it was filed. A plan
+    sees everything on the map."""
+
+    def run(repo: str, number: int | None, plan: str | None, k: int) -> Impact:
+        rev = map_store.rev(driver, repo)
+        if rev is None:
+            raise NotReady(f"no map for {repo}: run map build")
+        if number is not None:
+            issue = load_issue(issues_dir, repo, number)
+            if issue is None or vectors.embedding(conn, repo, number) is None:
+                raise NotReady(
+                    f"{repo}#{number} is not fetched and embedded: run triage first"
+                )
+            before = issue.created_at
+            among = map_store.fixed_issues(driver, repo, before)
+            hits = vectors.nearest(conn, repo, number, NEIGHBOURS, before, among)
+        elif plan is not None:
+            before = None
+            among = map_store.fixed_issues(driver, repo, None)
+            [vector] = embed([plan[: vectors.MAX_BODY]])
+            hits = vectors.nearest_to(conn, repo, vector, NEIGHBOURS, among)
+        else:
+            raise ValueError("an issue number or a plan")
+        neighbours = [(h.number, h.score) for h in hits]
+        fixed = map_store.fixed(driver, repo, [n for n, _ in neighbours], before)
+
+        def partners(component: str) -> list[tuple[str, float]]:
+            found = map_store.changes_with(driver, repo, component, 10)
+            return [(p.name, p.share) for p in found]
+
+        return assemble(repo, rev, neighbours, fixed, partners, k)
+
+    return run

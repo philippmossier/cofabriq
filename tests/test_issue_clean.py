@@ -1,6 +1,6 @@
 from cofabriq.issues import vectors
 from cofabriq.issues.vectors import clean_issue_text
-from tests.test_dedupe import issue
+from tests.builders import issue
 
 VSCODE_REPORT = """Type: <b>Bug</b>
 
@@ -135,7 +135,7 @@ def test_ansi_escapes_and_windows_line_endings_go() -> None:
 def test_embed_input_is_the_title_and_the_cleaned_body() -> None:
     item = issue(1, title="Freeze on paste", body=VSCODE_REPORT)
 
-    text = vectors.embed_input(item)
+    text = vectors.issue_input(item)
 
     assert text.startswith("Freeze on paste\n\nType: <b>Bug</b>")
     assert "System Info" not in text and "bug_report" not in text
@@ -144,12 +144,12 @@ def test_embed_input_is_the_title_and_the_cleaned_body() -> None:
 def test_a_body_with_nothing_but_template_embeds_the_title_alone() -> None:
     item = issue(1, title="Crash", body="<!-- fill this in -->\n![shot](a.png)")
 
-    assert vectors.embed_input(item) == "Crash\n\nshot"
-    assert vectors.embed_input(issue(2, title="Crash", body="<!-- x -->")) == "Crash"
+    assert vectors.issue_input(item) == "Crash\n\nshot"
+    assert vectors.issue_input(issue(2, title="Crash", body="<!-- x -->")) == "Crash"
 
 
 def test_the_cap_counts_cleaned_characters() -> None:
     boilerplate = "<!-- " + "x" * 8000 + " -->\n"
     item = issue(1, title="t", body=boilerplate + "real " * 100)
 
-    assert vectors.embed_input(item).endswith("real")
+    assert vectors.issue_input(item).endswith("real")

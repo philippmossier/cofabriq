@@ -3,9 +3,10 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from cofabriq.loop.run import Evidence, Suite, collect_evidence
+from cofabriq.loop.run import ScreenshotRule, Suite, collect_evidence
 from cofabriq.serve import build
-from tests.test_loop import AGENT_RULES, HostSandbox
+from tests.builders import AGENT_RULES
+from tests.fakes import HostSandbox
 
 # the "browser test" writes two screenshots, the way Playwright's outputDir does
 SHOTS = (
@@ -18,7 +19,9 @@ RULES = AGENT_RULES.model_copy(
             Suite(name="unit", suffix=".test.sh", cmd="sh", dir="src/repro"),
             Suite(name="ui", suffix=".spec.sh", cmd="sh", dir="e2e/repro"),
         ],
-        "evidence": Evidence(suite="ui", cmd=f"{SHOTS} true", glob="out/**/*.png"),
+        "evidence": ScreenshotRule(
+            suite="ui", cmd=f"{SHOTS} true", glob="out/**/*.png"
+        ),
     }
 )
 
@@ -58,13 +61,12 @@ def test_the_viewer_serves_a_runs_screenshots_only(tmp_path: Path) -> None:
 def test_the_pr_body_says_where_the_screenshots_are() -> None:
     from cofabriq.loop.pr import RiskRules, draft
     from cofabriq.map.components import ComponentRules
-    from tests.test_loop import _result  # pyright: ignore[reportPrivateUsage]
-    from tests.test_refine import spec
+    from tests.builders import loop_result, spec
 
     pr = draft(
         issue_title="t",
         spec=spec("src/a.ts"),
-        result=_result("green", 1, ["src/a.ts"]),
+        result=loop_result("green", 1, ["src/a.ts"]),
         tests=AGENT_RULES.tests,
         risk_rules=RiskRules(),
         components=ComponentRules(),

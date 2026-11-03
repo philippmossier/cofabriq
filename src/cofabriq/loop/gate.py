@@ -4,7 +4,7 @@ A reviewer's blocker is a claim; a dev can't verify it without running the
 code, and in the human round green checks won over it. So a blocker
 blocks only once a test proves it. The reviewer's severity is a label, not
 a verdict: when it asks for changes, its concerns are proven the same way
-(0.3: a wrong fix leaked as an unproven concern whose text named the
+(measured: a wrong fix leaked as an unproven concern whose text named the
 defect, 3 runs of 3). Nits never are.
 
     the green loop's change, committed in the worktree (each step below is
@@ -30,7 +30,6 @@ spec the dev approved, and the proof test ships in the PR for the dev to
 read.
 """
 
-import re
 from pathlib import Path
 from typing import Literal
 
@@ -44,22 +43,18 @@ from cofabriq.loop.run import (
     Attempt,
     CheckResult,
     LoopResult,
-    Rules,
-    changed_paths,
-    changed_since,
-    diff,
-    fenced,
+    LoopRules,
     fix,
-    git,
-    is_test,
+    keep_only_tests,
+    new_test_checks,
     render_spec,
-    repro_command,
-    reset,
-    restore,
+    retry_parts,
     suites_note,
 )
 from cofabriq.loop.sandbox import Sandbox
 from cofabriq.loop.sentinel import Checker
+from cofabriq.loop.worktree import changed_since, commit_layer, diff, reset
+from cofabriq.untrusted import fenced, quote_in
 
 MAX_ROUNDS = 2  # reviews: the first, and one after fixing proven claims
 
@@ -141,7 +136,7 @@ class Gated(BaseModel):
     result: LoopResult  # the final change: diff and files against the spec's commit
     rounds: list[Round]
     error: str = ""  # a review run failed: status unproven, no verdict
-    sentinel: list[str] = []  # the target's invariant broken (0.6): blocked
+    sentinel: list[str] = []  # the target's invariant broken: blocked
 
     @property
     def review(self) -> Review | None:
@@ -158,22 +153,11 @@ class Gated(BaseModel):
         return sum(r.cost_usd for r in runs)
 
 
-def _flat(text: str) -> str:
-    return re.sub(r"\s+", " ", text).strip().strip(".").lower()
-
-
 def quoted(quote: str, spec: Spec) -> bool:
-    """`quote` is in the spec the agents saw (whitespace and case loose)."""
-    q = _flat(quote)
-    return len(q) >= 10 and q in _flat(render_spec(spec, tests=True))
-
-
-def commit(worktree: Path, message: str) -> None:
-    """A layer in the throwaway worktree (never pushed): the next step's
-    write boundary is measured against it."""
-    git(worktree, "add", "-A")
-    who = ["-c", "user.name=cofabriq", "-c", "user.email=cofabriq@localhost"]
-    git(worktree, *who, "commit", "-q", "--allow-empty", "-m", message)
+    """`quote` is in the spec the agents saw (whitespace and case loose), at
+    least 10 characters without its end dots."""
+    q = " ".join(quote.split()).strip(".")
+    return len(q) >= 10 and quote_in(q, render_spec(spec, tests=True), fold_case=True)
 
 
 def finding_text(f: Finding) -> str:
@@ -183,7 +167,7 @@ def finding_text(f: Finding) -> str:
 
 def _prove_prompt(
     spec: Spec,
-    rules: Rules,
+    rules: LoopRules,
     finding: Finding,
     n: int,
     failed: list[CheckResult],
@@ -193,56 +177,22 @@ def _prove_prompt(
         tests=", ".join(rules.tests),
         checks=", ".join(rules.repro_checks) or "no other checks",
     )
-    parts = [
-        text,
-        *([suites_note(rules)] if rules.suites else []),
-        fenced("spec", render_spec(spec)),
-        fenced("finding", finding_text(finding)),
-    ]
-    if n > 1:
-        parts.append(f"Attempt {n} of {MAX_ATTEMPTS}. Your test is in the tree.")
-        parts.append(fenced("diff", tree or "(no changes)"))
-    parts += [fenced("failed", c.output, check=c.name) for c in failed]
-    return "\n\n".join(parts)
-
-
-def _check(name: str, ok: bool, seconds: float, output: str) -> CheckResult:
-    return CheckResult(name=name, ok=ok, seconds=seconds, output="" if ok else output)
-
-
-def _proof_checks(
-    rules: Rules,
-    spec: Spec,
-    quote: str,
-    tests: list[str],
-    worktree: Path,
-    sandbox: Sandbox,
-) -> tuple[list[CheckResult], CheckResult | None]:
-    """The proof's gate (quote in the spec, red, types/lint green) and its
-    red run."""
-    checks = [_check("quote", quoted(quote, spec), 0, BAD_QUOTE)]
-    proof = None
-    if tests:
-        ran = sandbox(repro_command(rules, tests), worktree, network=False)
-        checks.append(_check("red", not ran.ok, ran.seconds, PASSES))
-        proof = CheckResult(
-            name="proof", ok=ran.ok, seconds=ran.seconds, output=ran.output
-        )
-    else:
-        written = f"No test file written ({', '.join(rules.tests)})."
-        checks.append(_check("red", False, 0, written))
-    for c in rules.checks:
-        if c.name in rules.repro_checks:
-            r = sandbox(c.cmd, worktree, network=False)
-            checks.append(_check(c.name, r.ok, r.seconds, r.output))
-    return checks, proof
+    return "\n\n".join(
+        [
+            text,
+            *([suites_note(rules)] if rules.suites else []),
+            fenced("spec", render_spec(spec)),
+            fenced("finding", finding_text(finding)),
+            *retry_parts(n, tree, failed, retry="Your test is in the tree."),
+        ]
+    )
 
 
 def prove(
     *,
     finding: Finding,
     spec: Spec,
-    rules: Rules,
+    rules: LoopRules,
     worktree: Path,
     agent: Agent,
     sandbox: Sandbox,
@@ -253,7 +203,8 @@ def prove(
     attempts: list[Attempt] = []
     failed: list[CheckResult] = []
     for n in range(1, MAX_ATTEMPTS + 1):
-        text = _prove_prompt(spec, rules, finding, n, failed, diff(worktree, []))
+        current = diff(worktree, []) if n > 1 else ""
+        text = _prove_prompt(spec, rules, finding, n, failed, current)
         quote, error = "", ""
         try:
             run = agent(text, Proved.model_json_schema(), worktree)
@@ -261,25 +212,28 @@ def prove(
             summary, quote = got.summary, got.spec_quote.strip()
         except AgentError as exc:
             run, summary, error = None, "", str(exc)
-        reverted = [p for p in changed_paths(worktree) if not is_test(p, rules.tests)]
-        restore(worktree, reverted, {})
-        tests = changed_paths(worktree)
+        reverted, tests = keep_only_tests(rules, worktree)
         declined = run is not None and not quote
-        checks, proof = (
-            ([], None)
-            if declined
-            else _proof_checks(rules, spec, quote, tests, worktree, sandbox)
-        )
+        checks: list[CheckResult] = []
+        ran = None
+        if not declined:
+            # the quote in the spec, the test red on the change, types/lint green
+            checks, ran = new_test_checks(
+                rules, tests, rules.repro_checks, PASSES, worktree, sandbox
+            )
+            quote_ok = CheckResult.verdict("quote", quoted(quote, spec), BAD_QUOTE)
+            checks = [quote_ok, *checks]
         attempt = Attempt(
             n=n, summary=summary, run=run, error=error, reverted=reverted, checks=checks
         )
         attempts.append(attempt)
         if declined:
             break
-        if attempt.green and proof is not None:
-            commit(worktree, f"proof: {finding.path}")
+        if attempt.green and ran is not None:
+            commit_layer(worktree, f"proof: {finding.path}")
+            red = CheckResult.of("proof", ran, keep_output=True)
             return Proof(
-                finding=finding, attempts=attempts, quote=quote, tests=tests, red=proof
+                finding=finding, attempts=attempts, quote=quote, tests=tests, red=red
             )
         failed = [c for c in checks if not c.ok]
     reset(worktree)
@@ -309,7 +263,7 @@ def to_prove(rv: Review) -> list[Finding]:
 def review_gate(
     *,
     spec: Spec,
-    rules: Rules,
+    rules: LoopRules,
     result: LoopResult,
     worktree: Path,
     reader: Agent,
@@ -343,7 +297,7 @@ def review_gate(
 def _review_gate(
     *,
     spec: Spec,
-    rules: Rules,
+    rules: LoopRules,
     result: LoopResult,
     worktree: Path,
     reader: Agent,
@@ -354,7 +308,7 @@ def _review_gate(
     repro = list(result.repro)
     current = result
     rounds: list[Round] = []
-    commit(worktree, "the change")
+    commit_layer(worktree, "the change")
     for n in range(1, MAX_ROUNDS + 1):
         try:
             rv = review(
@@ -402,5 +356,5 @@ def _review_gate(
         current = _current(result, worktree, repro)
         if not attempts[-1].green:
             break
-        commit(worktree, f"fix round {n}")
+        commit_layer(worktree, f"fix round {n}")
     return Gated(status="blocked", result=current, rounds=rounds)

@@ -5,7 +5,6 @@ test reproduces it; the issue a user would file is the seed entry with the
 same key. See the header of bugs.toml for how the bugs were planted.
 """
 
-import subprocess
 import tomllib
 from pathlib import Path
 from typing import Literal
@@ -13,9 +12,10 @@ from typing import Literal
 from pydantic import BaseModel, TypeAdapter
 
 from cofabriq.eval.triage import load_seed
-from cofabriq.loop.refine import git_env
-from cofabriq.loop.run import Rules, git, repro_command
+from cofabriq.git import try_git
+from cofabriq.loop.run import LoopRules, repro_command
 from cofabriq.loop.sandbox import Sandbox
+from cofabriq.loop.worktree import place_planted, reset_hard
 
 
 class PlantedBug(BaseModel):
@@ -85,35 +85,20 @@ def prove_bugs(
     commit: str,
     bugs: list[PlantedBug],
     bugs_file: Path,
-    rules: Rules,
+    rules: LoopRules,
     sandbox: Sandbox,
 ) -> list[BugProof]:
     """Each bug in turn on one installed worktree at `commit` (reset in
     between; ignored files such as node_modules survive the reset)."""
     proofs: list[BugProof] = []
     for b in bugs:
-        git(worktree, "reset", "-q", "--hard", commit)
-        git(worktree, "clean", "-q", "-fd")
+        reset_hard(worktree, commit)
         dest = rules.planted_path(b.repro)
-        (worktree / dest).parent.mkdir(parents=True, exist_ok=True)
-        (worktree / dest).write_bytes(repro_path(bugs_file, b).read_bytes())
+        place_planted(worktree, dest, repro_path(bugs_file, b))
         cmd = repro_command(rules, [dest])
         red = not sandbox(cmd, worktree, network=False).ok
-        applied = subprocess.run(
-            [
-                "git",
-                "-C",
-                str(worktree),
-                "apply",
-                str(fix_path(bugs_file, b).resolve()),
-            ],
-            capture_output=True,
-            check=False,
-            env=git_env(),
-        )
-        applies = applied.returncode == 0
+        applies, _ = try_git(worktree, "apply", str(fix_path(bugs_file, b).resolve()))
         green = applies and sandbox(cmd, worktree, network=False).ok
         proofs.append(BugProof(key=b.key, applies=applies, red=red, green=green))
-    git(worktree, "reset", "-q", "--hard", commit)
-    git(worktree, "clean", "-q", "-fd")
+    reset_hard(worktree, commit)
     return proofs

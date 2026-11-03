@@ -7,14 +7,17 @@ in the text the model was shown, so neither a hallucination nor an injected
 a rule over the checked card, never an LLM answer: every rule that fires is
 listed as a reason.
 
-Size and blast radius are not judged here: they need the repo map (0.2) and
-become part of the autopilot gate (0.3). `ready` means complete and
-unambiguous, not small.
+Size and blast radius are not judged here: the spec's readiness check
+(`loop/intake.py`) refuses size L, and the risk tier (`loop/pr.py`) reads
+the components from the repo map. `ready` means complete and unambiguous,
+not small.
 """
 
 from typing import Literal
 
 from pydantic import BaseModel, Field
+
+from cofabriq.untrusted import quote_in
 
 type InfoItem = Literal["steps", "actual", "version", "environment"]
 type Route = Literal["ready", "needs_info", "dev"]
@@ -57,16 +60,16 @@ def check_info(
     issue_type: str, evidence: list[Evidence], shown: str
 ) -> tuple[list[InfoItem], list[str]]:
     """Required items of this type without a verified quote, and the quotes
-    that were rejected. `shown` is the issue text the model saw."""
+    that were rejected. `shown` is the issue text the model saw. Case is
+    folded: a quote with different capitalisation still matches."""
     quotes = {e.item: e.quote for e in evidence}
-    text = _squash(shown)
     missing: list[InfoItem] = []
     dropped: list[str] = []
     for item in REQUIRED.get(issue_type, []):
         quote = quotes.get(item)
         if quote is None or not quote.strip():
             missing.append(item)
-        elif _squash(quote) not in text:
+        elif not quote_in(quote, shown, fold_case=True):
             missing.append(item)
             dropped.append(f"{item} quote {quote[:60]!r}: not in the issue")
     return missing, dropped
@@ -126,9 +129,3 @@ def reply(missing: list[InfoItem], questions: list[str], blocking: bool) -> str 
     asks += [q for q in questions if q not in asks]
     lines = "\n".join(f"- {a}" for a in asks)
     return f"Thanks for the report! To look into it, we need:\n\n{lines}"
-
-
-def _squash(text: str) -> str:
-    """Whitespace- and case-insensitive form: a quote across a line break or
-    with different capitalisation still matches."""
-    return " ".join(text.split()).casefold()

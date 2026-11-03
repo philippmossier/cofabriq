@@ -1,10 +1,9 @@
-"""The browser gate's trust boundary (0.5): who may change anything through
+"""The browser gate's trust boundary: who may change anything through
 `cofabriq serve`.
 
-The API is read-only today. Once a route can approve a plan or a test, a
-click starts paid agent runs and writes worktrees, and any page open in the
-same browser can send requests to localhost. So, before any such route
-exists:
+The answer route approves a plan or a test: a click starts paid agent runs
+and writes worktrees, and any page open in the same browser can send
+requests to localhost. So:
 
     every request    Host must be 127.0.0.1:<port> or localhost:<port>
                      (a site that points its own name at 127.0.0.1, DNS

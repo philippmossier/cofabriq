@@ -9,7 +9,7 @@ in 0.1.2) filled in as closed by a person (`closer: null`).
 
 import json
 import re
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
@@ -24,42 +24,9 @@ from cofabriq.issues.fetch import (
     load_index,
     load_issues,
 )
-from cofabriq.issues.github import GitHubError, GitHubIssueSource
+from cofabriq.issues.github import GitHubError
 from cofabriq.issues.model import Issue, IssueRef, check_repo
-
-FIXTURES = Path(__file__).parent / "fixtures"
-REPO = "open-webui/open-webui"
-NOW = datetime(2026, 10, 13, 10, 0, tzinfo=UTC)
-
-type Handler = Callable[[httpx.Request], httpx.Response]
-
-
-def page(n: int) -> dict[str, Any]:
-    return json.loads((FIXTURES / f"issues_page{n}.json").read_text())
-
-
-def replay(*responses: httpx.Response) -> tuple[Handler, list[dict[str, Any]]]:
-    """A handler answering with `responses` in order; records request bodies."""
-    queue = list(responses)
-    sent: list[dict[str, Any]] = []
-
-    def handle(request: httpx.Request) -> httpx.Response:
-        sent.append(json.loads(request.content))
-        return queue.pop(0)
-
-    return handle, sent
-
-
-def source(handler: Handler, sleeps: list[float]) -> GitHubIssueSource:
-    return GitHubIssueSource(
-        REPO,
-        "token",
-        comments=2,
-        page_size=2,
-        transport=httpx.MockTransport(handler),
-        sleep=sleeps.append,
-        now=lambda: NOW,
-    )
+from tests.fakes import RECORDED, one, page, replay, source
 
 
 def test_pages_through_and_parses_issues() -> None:
@@ -92,7 +59,7 @@ def test_duplicate_mark_is_kept_in_both_directions() -> None:
     issues = {i.number: i for i in source(handler, []).issues()}
 
     # the event sits on the canonical's timeline only (29290)
-    assert issues[29290].duplicates == [IssueRef(repo=REPO, number=29291)]
+    assert issues[29290].duplicates == [IssueRef(repo=RECORDED, number=29291)]
     assert issues[29290].duplicate_of == []
     assert issues[29291].duplicate_of == []
 
@@ -102,7 +69,7 @@ def test_unmark_cancels_a_mark() -> None:
     node = body["data"]["repository"]["issues"]["nodes"][0]
     # mixed case on purpose: GitHub names are case-insensitive
     target = {"number": 29290, "repository": {"nameWithOwner": "Open-WebUI/open-webui"}}
-    me = {"number": node["number"], "repository": {"nameWithOwner": REPO}}
+    me = {"number": node["number"], "repository": {"nameWithOwner": RECORDED}}
     event = {"canonical": target, "duplicate": me}
     node["timelineItems"]["nodes"] = [
         {"__typename": "MarkedAsDuplicateEvent", **event},
@@ -113,7 +80,7 @@ def test_unmark_cancels_a_mark() -> None:
 
     [issue, _] = source(handler, []).issues()
 
-    assert issue.duplicate_of == [IssueRef(repo=REPO, number=29290)]
+    assert issue.duplicate_of == [IssueRef(repo=RECORDED, number=29290)]
 
 
 @pytest.mark.parametrize(
@@ -162,7 +129,7 @@ def test_created_cuts_the_range_below_the_search_cap() -> None:
     issues = list(src.created(date(2023, 1, 1), date(2023, 1, 3)))
 
     assert searched == [
-        f"repo:{REPO} is:issue created:2023-01-0{d}..2023-01-0{d} sort:created-asc"
+        f"repo:{RECORDED} is:issue created:2023-01-0{d}..2023-01-0{d} sort:created-asc"
         for d in (1, 2, 3)
     ]
     assert [i.number for i in issues] == [node["number"]] * 3
@@ -249,7 +216,7 @@ class ListSource:
     """IssueSource over a fixed list; records the `since` it was asked for."""
 
     def __init__(self, issues: list[Issue]) -> None:
-        self.repo = REPO
+        self.repo = RECORDED
         self._issues = issues
         self.asked: list[datetime | None] = []
 
@@ -279,7 +246,7 @@ def test_fetch_writes_issues_and_index(tmp_path: Path) -> None:
     assert (report.written, report.unchanged, report.since) == (4, 0, None)
     repo_dir = tmp_path / "open-webui" / "open-webui"
     assert sorted(load_index(repo_dir)) == [21315, 29290, 29291, 29292]
-    assert load_issues(tmp_path, REPO) == sorted(issues, key=lambda i: i.number)
+    assert load_issues(tmp_path, RECORDED) == sorted(issues, key=lambda i: i.number)
 
 
 def test_second_fetch_asks_since_newest_and_skips_unchanged(tmp_path: Path) -> None:
@@ -295,14 +262,8 @@ def test_second_fetch_asks_since_newest_and_skips_unchanged(tmp_path: Path) -> N
 
     assert again.asked == [newest]
     assert (report.written, report.unchanged) == (1, 1)
-    [stored] = [i for i in load_issues(tmp_path, REPO) if i.number == edited.number]
+    [stored] = [i for i in load_issues(tmp_path, RECORDED) if i.number == edited.number]
     assert stored.title == "edited"
-
-
-def one(node: dict[str, Any] | None) -> httpx.Response:
-    """A recorded page node as the answer to `ISSUE_QUERY`."""
-    data = {"rateLimit": page(1)["data"]["rateLimit"], "repository": {"issue": node}}
-    return httpx.Response(200, json={"data": data})
 
 
 def test_fetches_one_issue_by_number() -> None:

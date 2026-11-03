@@ -69,7 +69,7 @@ class Issue(BaseModel):
     comments: list[Comment]
     duplicate_of: list[IssueRef]  # this issue is a duplicate of these
     duplicates: list[IssueRef]  # these were marked as duplicates of this one
-    blocked_by: list[IssueRef] = []  # GitHub's native dependencies (0.3)
+    blocked_by: list[IssueRef] = []  # GitHub's native dependencies
 
 
 class IssueSource(Protocol):

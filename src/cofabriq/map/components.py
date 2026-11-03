@@ -14,11 +14,12 @@ Rules live in `[map]` of `targets/<owner>-<name>.toml`, checked in order:
   `(root)` for files at the top.
 """
 
-import tomllib
 from fnmatch import fnmatchcase
 from pathlib import Path, PurePosixPath
 
 from pydantic import BaseModel
+
+from cofabriq.targets import target_table
 
 ROOT = "(root)"
 
@@ -29,11 +30,7 @@ class ComponentRules(BaseModel):
 
 
 def load_rules(targets_dir: Path, repo: str) -> ComponentRules:
-    path = targets_dir / f"{repo.replace('/', '-')}.toml"
-    if not path.is_file():
-        return ComponentRules()
-    table = tomllib.loads(path.read_text("utf-8")).get("map", {})
-    return ComponentRules.model_validate(table)
+    return ComponentRules.model_validate(target_table(targets_dir, repo, "map") or {})
 
 
 def component_of(path: str, rules: ComponentRules) -> str:

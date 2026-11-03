@@ -4,8 +4,9 @@
     uv run python playground/playground.py reset --yes   # wipe, then seed
 
 Writes to GitHub through the `gh` CLI with the caller's own login, not
-through cofabriq (which stays read-only towards GitHub through v2). The repo
-is fixed below on purpose: this script can't be pointed at anything else.
+through cofabriq (whose only write is `run --apply`: one branch and one
+draft PR). The repo is fixed below on purpose: this script can't be
+pointed at anything else.
 
 reset: deletes every issue, closes open pull requests, deletes every branch
 but main, moves main back to the `baseline` tag, then seeds.
@@ -18,8 +19,9 @@ import time
 from pathlib import Path
 
 from cofabriq.eval.triage import load_seed
+from cofabriq.targets import PLAYGROUND
 
-REPO = "philippmossier/local-ai-chat-playground"
+REPO = PLAYGROUND
 SEED = Path(__file__).with_name("seed.toml")
 PAUSE = 2.0  # seconds between creates: distinct created_at, kinder to the API
 

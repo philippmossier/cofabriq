@@ -24,15 +24,15 @@ Flags that make a run reproducible and contained:
 - `--max-budget-usd`: the run stops at the cap.
 - `--max-turns`: and at a turn cap far above a normal run's (5-13), so a
   stuck agent ends before the budget does.
-
-The kill switch (0.4): a stop file or `COFABRIQ_STOP` halts every agent
-call before it starts (`Halted`, not an `AgentError`: the loop doesn't
-spend its next attempt on it), and a `Guard` gives one run a budget across
-all its agents.
 - `--permission-mode acceptEdits`, only with a writing tool: a headless run
   has nobody to ask. `--restricted` still keeps edits in the working
   directory and refuses git and settings files. No tool runs code: what the
   agent writes is only executed by cofabriq, in the sandbox (`sandbox.py`).
+
+The kill switch: a stop file or `COFABRIQ_STOP` halts every agent call
+before it starts (`Halted`, not an `AgentError`: the loop doesn't spend its
+next attempt on it), and a `Guard` gives one run a budget across all its
+agents.
 """
 
 import json

@@ -2,46 +2,9 @@ from typing import LiteralString
 
 from neo4j import Driver
 
-from cofabriq.context.domain import AdrStatus, Extraction, Link
-from cofabriq.context.ingest.extract import VERSION, ExtractedDoc
-from cofabriq.context.ingest.parse import MarkdownParser, ParsedDoc
-from cofabriq.context.ingest.source import DocKind, DocRef
+from cofabriq.context.domain import AdrStatus
 from cofabriq.context.store import graph
-
-
-def adr(
-    repo: str,
-    n: int,
-    sha: str = "aaa",
-    date: str = "2026-10-05",
-    status: AdrStatus | None = AdrStatus.ACCEPTED,
-    **links: object,
-) -> tuple[ParsedDoc, ExtractedDoc]:
-    """A parsed ADR and its extraction record, linked as given."""
-    ref = DocRef(repo, f"docs/adr/000{n}.md", sha, DocKind.ADR)
-    doc = MarkdownParser().parse(ref, f"# {n}. Decision\n\nDate: {date}\n")
-    fields: dict[str, object] = {
-        "status": status,
-        "technologies": [],
-        "teams": [],
-        "revises": [],
-        "revisits": [],
-        "depends_on": [],
-        "affects": [repo],
-    }
-    extraction = Extraction.model_validate(fields | links)
-    record = ExtractedDoc(
-        ref=ref, version=VERSION, candidates=[], extraction=extraction, dropped=[]
-    )
-    return doc, record
-
-
-def sync(driver: Driver, *pairs: tuple[ParsedDoc, ExtractedDoc]) -> graph.GraphReport:
-    return graph.sync(driver, [d for d, _ in pairs], [r for _, r in pairs])
-
-
-def link(target: str) -> Link:
-    return Link(target=target, evidence="quote")
+from tests.builders import adr, link, sync
 
 
 def count(driver: Driver, pattern: LiteralString) -> int:

@@ -26,10 +26,11 @@ from pydantic import BaseModel
 from cofabriq.eval.loop import Judged, judge, validate
 from cofabriq.eval.review import Kind, replay
 from cofabriq.eval.witness import Witness
+from cofabriq.git import git
 from cofabriq.loop.engine import Agent
 from cofabriq.loop.gate import Gated, review_gate
 from cofabriq.loop.refine import Spec
-from cofabriq.loop.run import CheckResult, Rules, git, repro_command
+from cofabriq.loop.run import CheckResult, LoopRules, repro_command
 from cofabriq.loop.sandbox import Sandbox
 
 type Outcome = Literal["published", "false_block", "blocked", "fixed", "leaked"]
@@ -64,16 +65,14 @@ class GateCase(BaseModel):
 
 
 def _rerun(
-    worktree: Path, rules: Rules, files: dict[str, str], sandbox: Sandbox
+    worktree: Path, rules: LoopRules, files: dict[str, str], sandbox: Sandbox
 ) -> CheckResult:
     """The witness test, as written, on the tree the gate left."""
     for p, text in files.items():
         (worktree / p).parent.mkdir(parents=True, exist_ok=True)
         (worktree / p).write_text(text, "utf-8")
     ran = sandbox(repro_command(rules, list(files)), worktree, network=False)
-    return CheckResult(
-        name="witness", ok=ran.ok, seconds=ran.seconds, output=ran.output
-    )
+    return CheckResult.of("witness", ran, keep_output=True)
 
 
 def gate_case(
@@ -82,7 +81,7 @@ def gate_case(
     kind: Kind,
     judged: Judged,
     spec: Spec,
-    rules: Rules,
+    rules: LoopRules,
     clone: Path,
     worktree: Path,
     reader: Agent,

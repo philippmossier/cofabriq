@@ -7,8 +7,7 @@ from cofabriq.eval.loop import Judged
 from cofabriq.loop.graph import FlowRunner
 from cofabriq.loop.run import CheckResult
 from cofabriq.serve import build
-from tests.test_intake import refined
-from tests.test_loop import _result  # pyright: ignore[reportPrivateUsage]
+from tests.builders import loop_result, refined
 
 
 def client(tmp_path: Path, ui: Path | None = None) -> TestClient:
@@ -20,7 +19,7 @@ def client(tmp_path: Path, ui: Path | None = None) -> TestClient:
         json.dumps({"k": spec.model_dump(mode="json"), "old": {"shape": 1}})
     )
     judged = Judged(
-        result=_result("green", 2, ["src/a.ts"]),
+        result=loop_result("green", 2, ["src/a.ts"]),
         judge=CheckResult(name="judge", ok=True, seconds=1, output=""),
     )
     (runs / "eval-20261018T010203.json").write_text(
@@ -79,7 +78,7 @@ def test_the_built_ui_answers_every_other_path(tmp_path: Path) -> None:
     assert c.get("/../secret.json").text == "<div id=root></div>"
 
 
-def test_no_route_changes_anything(tmp_path: Path) -> None:
+def test_the_gate_answer_is_the_only_write_route(tmp_path: Path) -> None:
     app = build(tmp_path, tmp_path, tmp_path, None)
     paths: dict[str, dict[str, object]] = app.openapi()["paths"]
     assert {m for ops in paths.values() for m in ops} == {"get"}

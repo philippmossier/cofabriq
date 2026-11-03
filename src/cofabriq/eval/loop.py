@@ -1,7 +1,7 @@
 """The core loop against the planted bugs: how many go from red to green?
 
-Each bug runs `run_loop` on the spec refine already wrote for it (step 5's
-eval, `data/refine/`), so this measures reproduce and fix, not the spec
+Each bug runs `run_loop` on the spec refine already wrote for it (`eval
+refine`, `data/refine/`), so this measures reproduce and fix, not the spec
 again, and costs only those agents' runs.
 
 With the agent's own repro (the default) the planted repro is the hidden
@@ -10,15 +10,13 @@ repro passes on the final tree. The agent's test is also checked against
 the reference fix (valid = it was red on the planted code and is green with
 the reference patch: it tests this bug, not something else). With
 `planted` the planted repro is handed to the agent and green is resolved
-(the step 6 baseline).
+(the given-repro baseline).
 
 Also kept: whether the fix touched the reference fix's files (a green fix
 in another place may be a workaround), cost, attempts and time per node.
 Rates per bug size, as for refine.
 """
 
-import json
-import subprocess
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -27,27 +25,18 @@ from statistics import median
 from pydantic import BaseModel, TypeAdapter
 
 from cofabriq.eval.refine import Answer
-from cofabriq.loop.refine import Refined, git_env
-from cofabriq.loop.run import (
-    CheckResult,
-    LoopResult,
-    Rules,
-    git,
-    repro_command,
-    reset,
-)
+from cofabriq.files import newest_by_key
+from cofabriq.git import try_git
+from cofabriq.loop.refine import Refined
+from cofabriq.loop.run import CheckResult, LoopResult, LoopRules, repro_command
 from cofabriq.loop.sandbox import Sandbox
-
-_refined_adapter = TypeAdapter(dict[str, Refined])
+from cofabriq.loop.worktree import keep_tests_at, place_planted
 
 
 def load_specs(refine_dir: Path) -> dict[str, Refined]:
     """Bug key -> its newest stored refine result, over all `eval-*.json`
     (a run resumed with `--only` writes a second file)."""
-    specs: dict[str, Refined] = {}
-    for path in sorted(refine_dir.glob("eval-*.json")):  # names sort by time
-        specs |= _refined_adapter.validate_python(json.loads(path.read_text("utf-8")))
-    return specs
+    return newest_by_key(refine_dir, "eval-*.json", TypeAdapter(Refined))
 
 
 class Judged(BaseModel):
@@ -58,20 +47,21 @@ class Judged(BaseModel):
     valid: CheckResult | None = None  # the agent's repro with the reference fix
 
 
-def judge(worktree: Path, rules: Rules, planted: Path, sandbox: Sandbox) -> CheckResult:
+def judge(
+    worktree: Path, rules: LoopRules, planted: Path, sandbox: Sandbox
+) -> CheckResult:
     """The hidden planted repro on the tree the loop left: does the fix fix
     the bug the issue is about, not only the agent's test?"""
     dest = rules.planted_path(planted.name)
-    (worktree / dest).parent.mkdir(parents=True, exist_ok=True)
-    (worktree / dest).write_bytes(planted.read_bytes())
+    place_planted(worktree, dest, planted)
     ran = sandbox(repro_command(rules, [dest]), worktree, network=False)
     (worktree / dest).unlink()
-    return CheckResult(name="judge", ok=ran.ok, seconds=ran.seconds, output=ran.output)
+    return CheckResult.of("judge", ran, keep_output=True)
 
 
 def validate(
     worktree: Path,
-    rules: Rules,
+    rules: LoopRules,
     repro: list[str],
     patch: Path,
     sandbox: Sandbox,
@@ -82,31 +72,19 @@ def validate(
     worktree's code, so it runs last. `base`: the planted code's commit,
     when the worktree has commits on top (the review gate's layers)."""
     # 1. keep the agent's test, drop everything else it or the fix changed
-    tests = {p: (worktree / p).read_bytes() for p in repro}
-    if base is not None:
-        git(worktree, "checkout", "-qf", "--detach", base)
-    reset(worktree)
-    for p, data in tests.items():
-        (worktree / p).parent.mkdir(parents=True, exist_ok=True)
-        (worktree / p).write_bytes(data)
+    keep_tests_at(worktree, repro, base)
     # 2. the reference fix on top, then the agent's test
-    applied = subprocess.run(
-        ["git", "-C", str(worktree), "apply", str(patch.resolve())],
-        capture_output=True,
-        text=True,
-        check=False,
-        env=git_env(),
-    )
-    if applied.returncode != 0:
-        return CheckResult(name="valid", ok=False, seconds=0, output=applied.stderr)
+    applied, err = try_git(worktree, "apply", str(patch.resolve()))
+    if not applied:
+        return CheckResult(name="valid", ok=False, seconds=0, output=err)
     ran = sandbox(repro_command(rules, repro), worktree, network=False)
-    return CheckResult(name="valid", ok=ran.ok, seconds=ran.seconds, output=ran.output)
+    return CheckResult.of("valid", ran, keep_output=True)
 
 
 def against_key(
     result: LoopResult,
     worktree: Path,
-    rules: Rules,
+    rules: LoopRules,
     planted: Path,
     patch: Path,
     sandbox: Sandbox,

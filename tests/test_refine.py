@@ -7,7 +7,6 @@ from cofabriq.eval.bugs import PlantedBug
 from cofabriq.eval.refine import score_bug, summarize
 from cofabriq.loop.engine import (
     AgentError,
-    AgentRun,
     ApiKey,
     ClaudeCode,
     Subscription,
@@ -22,39 +21,9 @@ from cofabriq.loop.refine import (
     refine,
     route_for,
 )
+from tests.builders import issue, spec
+from tests.fakes import FakeAgent
 from tests.gitrepo import init_repo
-from tests.test_dedupe import issue
-
-
-def spec(*paths: str, size: str = "S", tests: tuple[str, ...] = ()) -> Spec:
-    return Spec.model_validate(
-        {
-            "problem": "p",
-            "files": [{"path": p, "why": "w"} for p in paths],
-            "tests": [{"path": p, "why": "w"} for p in tests],
-            "plan": [],
-            "assumptions": [],
-            "open_questions": [],
-            "size": size,
-        }
-    )
-
-
-class FakeAgent:
-    def __init__(self, output: Spec) -> None:
-        self.output = output
-        self.calls: list[tuple[str, Path]] = []
-
-    def __call__(self, prompt: str, schema: dict[str, object], cwd: Path) -> AgentRun:
-        self.calls.append((prompt, cwd))
-        assert schema["additionalProperties"] is False
-        return AgentRun(
-            output=self.output.model_dump(),
-            model="fake",
-            cost_usd=0.01,
-            turns=3,
-            latency_ms=10,
-        )
 
 
 def test_prompt_fences_issue_and_drops_bot_comments() -> None:

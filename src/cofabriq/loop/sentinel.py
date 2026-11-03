@@ -1,4 +1,4 @@
-"""The sentinel (0.6): an invariant a target declares as its contract,
+"""The sentinel: an invariant a target declares as its contract,
 checked in code on every change, before any reviewer is paid for.
 
 The playground's contract is "nothing typed leaves the device", and its
@@ -16,8 +16,6 @@ check, like ADR-008's red test, not an agent's opinion.
 """
 
 import re
-import subprocess
-import tomllib
 from collections.abc import Callable
 from fnmatch import fnmatch
 from pathlib import Path
@@ -25,8 +23,9 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from cofabriq.loop.refine import git_env
+from cofabriq.git import git
 from cofabriq.loop.run import is_test
+from cofabriq.targets import target_table
 
 _URL = re.compile(r"""https?://([A-Za-z0-9.-]+)""")
 _COMMENT = re.compile(r"^\s*(//|\*|/\*|#|<!--)")
@@ -48,10 +47,7 @@ class Violation(BaseModel):
 
 
 def load_sentinel(targets_dir: Path, repo: str) -> Sentinel | None:
-    path = targets_dir / f"{repo.replace('/', '-')}.toml"
-    if not path.is_file():
-        return None
-    table = tomllib.loads(path.read_text("utf-8")).get("sentinel")
+    table = target_table(targets_dir, repo, "sentinel")
     return None if table is None else Sentinel.model_validate(table)
 
 
@@ -106,14 +102,7 @@ def explain(v: Violation, sentinel: Sentinel) -> str:
 def policy_at(clone: Path, commit: str, sentinel: Sentinel) -> str:
     """The policy file as of the run's commit: what the change may not
     widen (the agent's own edits to it don't count)."""
-    out = subprocess.run(
-        ["git", "-C", str(clone), "show", f"{commit}:{sentinel.policy_file}"],
-        capture_output=True,
-        text=True,
-        check=True,
-        env=git_env(),
-    )
-    return out.stdout
+    return git(clone, "show", f"{commit}:{sentinel.policy_file}")
 
 
 type Checker = Callable[[str], list[str]]

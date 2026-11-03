@@ -1,5 +1,5 @@
-"""`cofabriq serve`: a read-only HTTP API over what refine and the loop
-stored, plus the built UI (0.3).
+"""`cofabriq serve`: an HTTP API over what refine and the loop stored, plus
+the built UI.
 
     data/refine/*.json   specs: {key: Refined}
     data/runs/*.json     runs:  {key: Judged} (eval-, features-, wrong-),
@@ -8,14 +8,17 @@ stored, plus the built UI (0.3).
 
 The API returns its own response models, not the stored ones: a stored
 shape can change without changing the UI's contract (ADR-009). Everything
-is read per request from the files, nothing is cached or written. Read-only
-by design: no route changes anything, so it binds to 127.0.0.1 and needs no
-token yet (the browser gate in 0.5 adds one). File names in URLs must be
-files in the folder (no paths, no `..`).
+is read per request from the files, nothing is cached. It binds to
+127.0.0.1 only. Every route reads, except one: with `--write`, the browser
+gate answers a paused flow's gate (`_flow_routes`), behind the token and
+the checks in `serve_guard`. File names in URLs must be files in the
+folder (no paths, no `..`).
 """
 
+import importlib.metadata
 import json
 import re
+import subprocess
 from datetime import UTC, datetime
 from functools import cache
 from pathlib import Path
@@ -26,14 +29,18 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
+from cofabriq import git as git_mod
 from cofabriq.eval.loop import Judged
+from cofabriq.files import STAMP
 from cofabriq.issues.model import check_repo
 from cofabriq.loop.gate import Gated
-from cofabriq.loop.graph import FlowRunner, FlowStatus
+from cofabriq.loop.graph import FlowRunner, FlowStatus, GateAnswer
 from cofabriq.loop.intake import not_ready
-from cofabriq.loop.refine import Refined, tracked
+from cofabriq.loop.record import RunRecord
+from cofabriq.loop.refine import Refined
 from cofabriq.loop.run import Attempt, CheckResult, LoopResult
 from cofabriq.serve_guard import guard
+from cofabriq.targets import clone_dir
 
 _NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 _STAMP = re.compile(r"(\d{8}T\d{6})")
@@ -183,9 +190,9 @@ class FlowView(FlowSummary):
     diff: str  # the frozen test, at the test gate
 
 
-class Answer(BaseModel):
-    approve: bool
-    reason: str = Field(default="", max_length=500)  # why, when rejecting
+class Answer(GateAnswer):
+    # the gate's answer under the API's name; a longer reason is a 422 here
+    reason: str = Field(default="", max_length=500)
 
 
 class Answered(BaseModel):
@@ -197,11 +204,7 @@ class Answered(BaseModel):
 
 def _stamp(file: str) -> datetime | None:
     m = _STAMP.search(file)
-    return (
-        datetime.strptime(m.group(1), "%Y%m%dT%H%M%S").replace(tzinfo=UTC)
-        if m
-        else None
-    )
+    return datetime.strptime(m.group(1), STAMP).replace(tzinfo=UTC) if m else None
 
 
 def _files(folder: Path) -> list[Path]:
@@ -219,7 +222,6 @@ def _file(folder: Path, name: str) -> Path:
 
 
 _object = TypeAdapter(dict[str, object])
-_names = TypeAdapter(list[str])
 _objects = TypeAdapter(list[dict[str, object]])
 
 
@@ -292,20 +294,11 @@ def _runs_in(path: Path) -> list[_Stored]:
             ]
         except ValidationError:
             return []
-    record = _as_dict(raw)
-    if "result" not in record:
-        return []
     try:
-        judged = Judged.model_validate(
-            {k: record[k] for k in ("result", "judge", "valid") if k in record}
-        )
-        gated = Gated.model_validate(record["gate"]) if record.get("gate") else None
+        record = RunRecord.model_validate(raw)
     except ValidationError:
         return []
-    try:
-        names = _names.validate_python(record.get("evidence") or [])
-    except ValidationError:
-        names = []
+    judged = Judged(result=record.result, judge=record.judge, valid=record.valid)
     body = path.with_suffix(".pr.md")
     return [
         _Stored(
@@ -313,9 +306,9 @@ def _runs_in(path: Path) -> list[_Stored]:
             key=str(judged.result.number),
             kind="run",
             judged=judged,
-            gated=gated,
+            gated=record.gate,
             pr_body=body.read_text("utf-8") if body.is_file() else None,
-            evidence=names,
+            evidence=record.evidence,
         )
     ]
 
@@ -427,7 +420,7 @@ def build(
     `write_token` on anything that isn't a read) is installed."""
     app = FastAPI(
         title="cofabriq",
-        version="0.3",
+        version=importlib.metadata.version("cofabriq"),
         docs_url="/api/docs",
         openapi_url="/api/openapi.json",
         # operation ids = the route function names: the UI's generated hooks
@@ -437,12 +430,12 @@ def build(
 
     @cache
     def files_at(repo: str, commit: str) -> frozenset[str] | None:
-        clone = clones_dir / repo.replace("/", "-")
+        clone = clone_dir(clones_dir, repo)
         if not (clone / ".git").exists():
             return None
         try:
-            return frozenset(tracked(clone, commit))
-        except Exception:  # the commit isn't in the clone (any more)
+            return frozenset(git_mod.files_at(clone, commit))
+        except subprocess.CalledProcessError:  # the commit isn't in the clone
             return None
 
     def readiness(r: Refined) -> list[str] | None:
@@ -546,11 +539,7 @@ def build(
 
 def _flow_summary(f: FlowStatus) -> FlowSummary:
     st = f.state
-    outcome = (
-        st.gated.status if st.gated else st.result.status if st.result else st.stage
-    )
-    if st.note:
-        outcome = f"{outcome}: {st.note}"
+    outcome = f"{st.outcome}: {st.note}" if st.note else st.outcome
     return FlowSummary(
         thread=f.thread,
         repo=st.issue.repo,
@@ -602,9 +591,6 @@ def _flow_routes(app: FastAPI, flows: FlowRunner) -> None:
 
     @app.post("/api/flows/{owner}/{name}/{number}/answer", response_model=Answered)
     def flow_answer(owner: str, name: str, number: int, answer: Answer) -> Answered:
-        started = flows.answer(
-            thread(owner, name, number), answer.approve, answer.reason
-        )
-        if not started:
+        if not flows.answer(thread(owner, name, number), answer):
             raise HTTPException(status_code=409, detail="not waiting at a gate")
         return Answered(started=True)

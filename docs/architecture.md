@@ -17,7 +17,7 @@ features removed on purpose.
 | `targets/` | one TOML file per repository cofabriq works on: its components, how to install and test it, its risk tiers, its invariant (`[sentinel]`) |
 | `playground/` | the demo app's answer keys: `seed.toml` (issues with expected labels), `bugs.toml` + `bugs/` (22 planted bugs, their repros and reference fixes), `features.toml` + `features/` (9 removed features), `hard.toml` + `hard/` (5 harder bugs), `playground.py` (seed or reset the demo repo) |
 | `evals/` | frozen eval sets from real repos (issue numbers only): duplicates, missing info, impact |
-| `tests/` | pytest, one file per module; fakes for the agent and the sandbox, no network |
+| `tests/` | pytest, one file per module, no network; what several modules share lives apart: `builders.py` (the smallest valid issue, spec, loop result, review), `fakes.py` (agents, the host sandbox, the embedder, recorded GitHub pages), `gitrepo.py` (throwaway git repos) |
 | `docs/` | `adr/` (10 decisions), `evals.md` (every number), `how-it-works.md`, `intake.md`, this file, `demo/` (screenshots) |
 | `skills/ticket/` | the `/ticket` Claude Code skill: a rough note into a ticket |
 | `data/` | not in git: everything cofabriq fetches and produces (below) |
@@ -26,8 +26,13 @@ features removed on purpose.
 
 | Module | Role |
 | --- | --- |
-| `cli.py` | every command (`triage`, `refine`, `run`, `flow`, `intake`, `serve`, `lessons`, `stop`, `eval ...`) |
+| `cli/` | every command, one module per layer: `context.py` (documents, the decision graph, MCP, the repo map), `issues.py` (`fetch-issues`, `triage`, `impact`), `loop.py` (`refine`, `run`, `flow`, `intake`, `serve`, `lessons`, `stop`), `evals.py` (`eval ...`); `common.py` holds the typer apps and the helpers they share, `render.py` the terminal output |
 | `config.py` | settings from `.env` |
+| `targets.py` | the per-repo target file (`targets/<owner>-<name>.toml`, one table per concern), the repo slug and the clone folder, the playground's name |
+| `git.py` | every git call on a target repo, a clone or a worktree, without the caller's `GIT_*` variables (inside a git hook they point at the wrong repo) |
+| `files.py` | result files under `data/`: the time stamp in their names, the stamped writes of runs and evals, the newest record per key over them, the atomic write every cache and index goes through |
+| `untrusted.py` | untrusted text in prompts: issues, documents, check output and findings go in a tag they can't close early, and a quote a model gives back counts only if it is in the text it saw |
+| `llm.py` | the OpenAI side: the model, its price, one structured call behind every step (verdict, rerank, card, extraction), and the cached batch the evals run (one stored record per issue and prompt version, saved even when a call fails) |
 | `context/` | the docs layer from the project's first version: fetch, parse, chunk, embed docs into Postgres, extract decisions into Neo4j; behind the MCP tools `search`, `decisions`, `affected` |
 | `issues/` | GitHub issues in: the GraphQL source, the local store, vectors for duplicates (the text cleaned first, an optional rerank of the top 50), the triage card, the readiness check for missing info |
 | `map/` | the repo map from git history: files to components, co-change, which commit fixed which issue; behind `impact` |
@@ -44,11 +49,13 @@ features removed on purpose.
 | `refine.py` | issue -> spec (problem, files, criteria, plan, open questions, size), read-only agent |
 | `graph.py` | the run as a LangGraph graph with pauses at the plan and test gates (`cofabriq flow`) |
 | `run.py` | the stages: start (worktree, install), test (written first, must fail), build (fix attempts); write boundaries; screenshots |
+| `worktree.py` | the throwaway worktree the stages and the evals work in: what changed, files put back, local layer commits |
 | `engine.py` | the coding agent (`claude -p`, no shell), the kill switch, the run budget |
 | `sandbox.py` | the target's commands in podman, network only for the install |
 | `sentinel.py` | the target's invariant, checked in code before review |
 | `gate.py`, `review.py` | the separate reviewer; a finding blocks only when a test proves it |
 | `pr.py`, `publish.py` | risk tier and draft PR body; `--apply` pushes a branch and opens a draft PR |
+| `record.py` | what `run` and the flow share at the end: the sentinel for the gate, the draft, the run record in `data/runs/` |
 | `lessons.py` | rules for the target's CLAUDE.md from what went wrong |
 
 ## The parts and where they keep things
@@ -65,7 +72,7 @@ graph LR
     PODMAN(["podman<br/>the target's commands"]):::ext
 
     subgraph cofabriq
-        CLI["cli.py<br/>run, flow, intake, eval..."]
+        CLI["cli/<br/>run, flow, intake, eval..."]
         SERVE["serve.py<br/>API + viewer"]
         ISSUES["issues/<br/>fetch, triage"]
         MAP["map/<br/>repo history"]

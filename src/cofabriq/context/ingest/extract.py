@@ -1,7 +1,6 @@
 """Fill the domain schema per document with one structured-output LLM call."""
 
 import json
-import os
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,14 +9,16 @@ from typing import Protocol
 from openai import OpenAI
 from pydantic import BaseModel, TypeAdapter
 
+from cofabriq import llm
 from cofabriq.context.domain import Extraction, Link
 from cofabriq.context.ingest.parse import ParsedDoc
 from cofabriq.context.ingest.source import DocKind, DocRef
+from cofabriq.files import write_atomic
+from cofabriq.untrusted import fenced, quote_in
 
-MODEL = "gpt-6-luna"
 # Stored with every record. Bump the suffix when the prompt or the schema
 # changes: records of another version count as missing and are re-extracted.
-VERSION = f"{MODEL}/3"
+VERSION = f"{llm.MODEL}/3"
 CANDIDATES = 8  # similar ADRs offered as `revises` / `revisits` targets
 # Manifests are structured already: their dependencies come from the parser.
 KINDS = {DocKind.ADR, DocKind.README, DocKind.DOC}
@@ -75,16 +76,14 @@ class OpenAIExtractor:
     def extract(
         self, doc: ParsedDoc, candidates: Sequence[Candidate], projects: Sequence[str]
     ) -> Extraction:
-        response = self._client.responses.parse(
-            model=MODEL,
+        extraction, _ = llm.structured(
+            self._client,
             instructions=INSTRUCTIONS,
             input=prompt(doc, candidates, projects),
-            text_format=Extraction,
-            reasoning={"effort": "low"},
+            schema=Extraction,
+            what=f"extraction for {doc.ref.repo}/{doc.ref.path}",
         )
-        if response.output_parsed is None:
-            raise RuntimeError(f"no extraction for {doc.ref.repo}/{doc.ref.path}")
-        return response.output_parsed
+        return extraction
 
 
 _records_adapter = TypeAdapter(list[ExtractedDoc])
@@ -105,11 +104,13 @@ def prompt(
         "\n".join(f"- {c.id} ({c.date or 'undated'}): {c.title}" for c in candidates)
         or "(none)"
     )
+    ref = doc.ref
+    document = fenced(
+        "document", doc_text(doc), project=ref.repo, path=ref.path, kind=ref.kind
+    )
     return (
         f"Projects: {', '.join(projects)}\n\n"
-        f"Candidate ADRs (id (date): title):\n{listed}\n\n"
-        f'<document project="{doc.ref.repo}" path="{doc.ref.path}" '
-        f'kind="{doc.ref.kind}">\n{doc_text(doc)}\n</document>'
+        f"Candidate ADRs (id (date): title):\n{listed}\n\n{document}"
     )
 
 
@@ -166,7 +167,7 @@ def check(
     quote from the document; everything else is dropped and recorded.
     """
     dropped: list[str] = []
-    text = _squash(doc_text(doc))
+    text = doc_text(doc)
     is_adr = doc.ref.kind is DocKind.ADR
     date = doc.meta.get("date")
     offered = {c.id: c.date for c in candidates}
@@ -182,7 +183,7 @@ def check(
                 dropped.append(f"{field} -> {link.target}: not on the list")
             elif _newer(allowed[link.target], than=date):
                 dropped.append(f"{field} -> {link.target}: newer than this ADR")
-            elif _squash(link.evidence) not in text:
+            elif not quote_in(link.evidence, text):
                 dropped.append(f"{field} -> {link.target}: evidence not in document")
             else:
                 kept.append(link)
@@ -222,10 +223,7 @@ def load(path: Path) -> list[ExtractedDoc]:
 
 
 def _save(path: Path, records: list[ExtractedDoc]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_bytes(_records_adapter.dump_json(records, indent=2))
-    os.replace(tmp, path)
+    write_atomic(path, _records_adapter.dump_json(records, indent=2))
 
 
 def _candidates(
@@ -253,8 +251,3 @@ def _newer(target: str | None, than: str | None) -> bool:
 
 def _key(ref: DocRef) -> DocKey:
     return (ref.repo, ref.path, ref.sha)
-
-
-def _squash(text: str) -> str:
-    """Whitespace-insensitive form, so a quote across a line break still matches."""
-    return " ".join(text.split())

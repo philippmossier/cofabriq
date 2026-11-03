@@ -8,7 +8,8 @@ from cofabriq.context.ingest.parse import ParsedDoc, Section
 from cofabriq.context.ingest.source import DocKind
 
 # ~600 tokens. Every ADR in the dev fixture (max 2103 chars) fits whole, so
-# Context and Decision are never embedded apart. Step 4's model must take it.
+# Context and Decision are never embedded apart. The embedding model
+# (`embed.MODEL`) takes a whole chunk.
 MAX_CHARS = 2400
 PARAGRAPH = re.compile(r"\n\s*\n")
 
