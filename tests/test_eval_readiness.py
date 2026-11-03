@@ -19,9 +19,8 @@ from cofabriq.issues.github import History
 from cofabriq.issues.model import Issue
 from cofabriq.issues.triage import PROMPT_VERSION, Fields
 from cofabriq.llm import Usage
-from tests.test_dedupe import T0, issue
-from tests.test_issues import source
-from tests.test_triage import fields
+from tests.builders import T0, fields, issue
+from tests.fakes import source
 
 TEMPLATE = "Does this issue occur when all extensions are disabled"
 RULES = ReadinessRules(

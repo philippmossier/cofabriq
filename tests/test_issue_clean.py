@@ -1,6 +1,6 @@
 from cofabriq.issues import vectors
 from cofabriq.issues.vectors import clean_issue_text
-from tests.test_dedupe import issue
+from tests.builders import issue
 
 VSCODE_REPORT = """Type: <b>Bug</b>
 

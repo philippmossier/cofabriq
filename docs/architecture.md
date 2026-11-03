@@ -17,7 +17,7 @@ features removed on purpose.
 | `targets/` | one TOML file per repository cofabriq works on: its components, how to install and test it, its risk tiers, its invariant (`[sentinel]`) |
 | `playground/` | the demo app's answer keys: `seed.toml` (issues with expected labels), `bugs.toml` + `bugs/` (22 planted bugs, their repros and reference fixes), `features.toml` + `features/` (9 removed features), `hard.toml` + `hard/` (5 harder bugs), `playground.py` (seed or reset the demo repo) |
 | `evals/` | frozen eval sets from real repos (issue numbers only): duplicates, missing info, impact |
-| `tests/` | pytest, one file per module; fakes for the agent and the sandbox, no network |
+| `tests/` | pytest, one file per module, no network; what several modules share lives apart: `builders.py` (the smallest valid issue, spec, loop result, review), `fakes.py` (agents, the host sandbox, the embedder, recorded GitHub pages), `gitrepo.py` (throwaway git repos) |
 | `docs/` | `adr/` (10 decisions), `evals.md` (every number), `how-it-works.md`, `intake.md`, this file, `demo/` (screenshots) |
 | `skills/ticket/` | the `/ticket` Claude Code skill: a rough note into a ticket |
 | `data/` | not in git: everything cofabriq fetches and produces (below) |

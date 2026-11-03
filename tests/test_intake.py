@@ -1,12 +1,9 @@
 import httpx
 
 from cofabriq.issues.model import Issue, IssueRef
-from cofabriq.loop.engine import AgentRun
 from cofabriq.loop.intake import blockers, not_ready, slices
-from cofabriq.loop.refine import Refined
-from tests.test_dedupe import REPO, issue
-from tests.test_issues import one, page, replay, source
-from tests.test_refine import spec
+from tests.builders import REPO, issue, refined
+from tests.fakes import one, page, replay, source
 
 
 def ref(n: int, repo: str = REPO) -> IssueRef:
@@ -54,22 +51,6 @@ def test_not_planned_blocker_does_not_count_as_done() -> None:
     dropped = issue(2, reason="not_planned")
     (s,) = slices([blocked(3, native=[2])], issues_by_ref(dropped), [])
     assert s.state == "blocked"
-
-
-def refined(route: str = "feature", **update: object) -> Refined:
-    s = spec("src/a.ts", "src/new.ts").model_copy(update=update)
-    run = AgentRun(output={}, model="m", cost_usd=0, turns=1, latency_ms=1)
-    return Refined.model_validate(
-        {
-            "repo": REPO,
-            "number": 1,
-            "commit": "c" * 40,
-            "route": route,
-            "spec": s.model_dump(),
-            "unknown_paths": [],
-            "run": run.model_dump(),
-        }
-    )
 
 
 def test_readiness_reasons() -> None:

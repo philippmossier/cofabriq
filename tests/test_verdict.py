@@ -15,7 +15,7 @@ from cofabriq.issues.verdict import (
     prompt,
 )
 from cofabriq.llm import Usage
-from tests.test_dedupe import issue
+from tests.builders import issue
 
 USAGE = Usage(input_tokens=1000, output_tokens=200, latency_ms=1500)
 

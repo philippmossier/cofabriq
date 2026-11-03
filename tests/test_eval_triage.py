@@ -11,7 +11,7 @@ from cofabriq.issues.triage import (
     TriageCard,
     load_components,
 )
-from tests.test_dedupe import issue
+from tests.builders import issue
 
 SEED = Path("playground/seed.toml")
 

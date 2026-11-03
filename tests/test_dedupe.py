@@ -1,6 +1,5 @@
-from datetime import UTC, date, datetime, timedelta
+from datetime import date
 from pathlib import Path
-from typing import Literal
 
 import pytest
 
@@ -15,48 +14,11 @@ from cofabriq.eval.dedupe import (
     score_verdicts,
 )
 from cofabriq.issues import vectors
-from cofabriq.issues.model import Comment, Issue, IssueRef
-from tests.test_embed_store import FakeEmbedder
+from tests.builders import REPO, T0, issue
+from tests.fakes import FakeEmbedder
 
-REPO = "acme/app"
-T0 = datetime(2026, 1, 1, tzinfo=UTC)
 URL = f"https://github.com/{REPO}/issues"
 OTHER = "https://github.com/acme/other/issues"
-
-
-def issue(
-    number: int,
-    title: str = "t",
-    body: str = "",
-    comments: list[tuple[str, bool]] | None = None,
-    reason: str | None = None,
-    duplicate_of: list[int] | None = None,
-    duplicates: list[int] | None = None,
-    labels: list[str] | None = None,
-    closed_by: Literal["pull_request", "commit"] | None = None,
-) -> Issue:
-    created = T0 + timedelta(days=number)
-    return Issue(
-        repo=REPO,
-        number=number,
-        title=title,
-        body=body,
-        state="closed" if reason else "open",
-        state_reason=reason,
-        author="someone",
-        labels=labels or [],
-        created_at=created,
-        updated_at=created,
-        closed_at=None,
-        closed_by=closed_by,
-        comment_count=len(comments or []),
-        comments=[
-            Comment(author="x", bot=bot, body=text, created_at=created)
-            for text, bot in comments or []
-        ],
-        duplicate_of=[IssueRef(repo=REPO, number=n) for n in duplicate_of or []],
-        duplicates=[IssueRef(repo=REPO, number=n) for n in duplicates or []],
-    )
 
 
 def test_build_labels_pairs_from_marks_and_human_comments() -> None:

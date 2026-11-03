@@ -3,24 +3,10 @@ from dataclasses import replace
 from pathlib import Path
 
 from cofabriq.loop.engine import AgentRun
-from cofabriq.loop.gate import Gated, Proof, Round
 from cofabriq.loop.lessons import Proposed, Rule, Signal, collect, propose, render
-from cofabriq.loop.review import Finding, Review
-from cofabriq.loop.run import CheckResult
-from tests.test_loop import _result  # pyright: ignore[reportPrivateUsage]
-from tests.test_pr import reviewed
+from tests.builders import gated
 
 REPO = "o/r"
-
-
-def gated(text: str) -> Gated:
-    finding = Finding(path="src/a.ts", line=1, severity="concern", text=text)
-    red = CheckResult(name="proof", ok=False, seconds=1, output="")
-    proof = Proof(finding=finding, attempts=[], quote="q", tests=["p.test.sh"], red=red)
-    run = AgentRun(output={}, model="m", cost_usd=0, turns=1, latency_ms=1)
-    review = Review(reviewed=reviewed(), approved=False, unknown_paths=[], run=run)
-    rounds = [Round(review=review, proofs=[proof], attempts=[])]
-    return Gated(status="approved", result=_result("green", 1, []), rounds=rounds)
 
 
 def test_collect_dedupes_findings_and_reads_rejections(tmp_path: Path) -> None:
@@ -81,9 +67,8 @@ def test_a_rejection_reason_reaches_the_lessons_file(tmp_path: Path) -> None:
     from langgraph.types import Command
 
     from cofabriq.loop.graph import FlowState, build_graph
-    from tests.test_dedupe import issue
-    from tests.test_flow_graph import deps
-    from tests.test_loop import EditingAgent
+    from tests.builders import issue
+    from tests.fakes import EditingAgent, deps
 
     d = deps(tmp_path, EditingAgent(), [])
     graph = build_graph(replace(d, lessons_dir=tmp_path / "l"))

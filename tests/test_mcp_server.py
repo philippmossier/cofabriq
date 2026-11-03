@@ -7,8 +7,8 @@ from neo4j import Driver
 from cofabriq.context.store import postgres
 from cofabriq.map.impact import Impact, Touch
 from cofabriq.mcp_server import build
-from tests.test_embed_store import FakeEmbedder, chunk
-from tests.test_graph import adr, link, sync
+from tests.builders import adr, chunk, link, sync
+from tests.fakes import FakeEmbedder
 
 
 def call(conn: postgres.Conn, driver: Driver, tool: str, args: dict[str, Any]) -> Any:

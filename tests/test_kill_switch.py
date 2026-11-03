@@ -14,8 +14,8 @@ from cofabriq.loop.engine import (
     stop_reason,
 )
 from cofabriq.loop.run import run_loop
-from tests.test_loop import AGENT_RULES, REPRO, EditingAgent, HostSandbox, setup, write
-from tests.test_refine import spec
+from tests.builders import AGENT_RULES, REPRO, setup, spec
+from tests.fakes import EditingAgent, HostSandbox, write
 
 SCHEMA: dict[str, object] = {"type": "object"}
 
@@ -123,10 +123,10 @@ def test_a_failed_run_still_counts_against_the_budget(tmp_path: Path) -> None:
 def test_a_halted_run_never_shadows_an_older_result(tmp_path: Path) -> None:
     from cofabriq.eval.loop import Judged
     from cofabriq.eval.review import load_runs
-    from tests.test_loop import _result  # pyright: ignore[reportPrivateUsage]
+    from tests.builders import loop_result
 
-    old = Judged(result=_result("green", 1, ["src/a.ts"]))
-    new = Judged(result=_result("halted", 0, []))
+    old = Judged(result=loop_result("green", 1, ["src/a.ts"]))
+    new = Judged(result=loop_result("halted", 0, []))
     (tmp_path / "eval-20261018T100000.json").write_text(
         json.dumps({"bug": old.model_dump(mode="json")})
     )

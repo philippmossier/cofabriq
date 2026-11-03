@@ -16,9 +16,8 @@ from cofabriq.map.components import ComponentRules
 from cofabriq.map.fixes import Fix, closing_pattern, fixes
 from cofabriq.map.history import rev_at
 from cofabriq.map.impact import assemble, spread
-from tests.gitrepo import init_repo
-from tests.test_dedupe import REPO, T0, issue
-from tests.test_map import dated_commit
+from tests.builders import REPO, T0, issue
+from tests.gitrepo import dated_commit, init_repo
 
 RULES = ComponentRules(patterns=["src/*"])
 URL = f"https://github.com/{REPO}/issues"

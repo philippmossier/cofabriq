@@ -4,8 +4,7 @@ from pathlib import Path
 from cofabriq.loop.lessons import collect
 from cofabriq.loop.pr import Draft, Risk
 from cofabriq.loop.record import RunRecord, write_record
-from tests.test_lessons import gated
-from tests.test_loop import _result  # pyright: ignore[reportPrivateUsage]
+from tests.builders import gated, loop_result
 
 
 def test_a_flow_record_keeps_the_keys_it_set_and_its_pr_body(tmp_path: Path) -> None:
@@ -21,7 +20,7 @@ def test_a_flow_record_keeps_the_keys_it_set_and_its_pr_body(tmp_path: Path) -> 
 
 
 def test_a_run_record_without_a_review_has_no_pr_body(tmp_path: Path) -> None:
-    record = RunRecord(result=_result("escalated", 3, []), judge=None, valid=None)
+    record = RunRecord(result=loop_result("escalated", 3, []), judge=None, valid=None)
     out = write_record(tmp_path, "o-r-1-stamp", record)
     stored = json.loads(out.read_text("utf-8"))
     assert stored["judge"] is None and "gate" not in stored

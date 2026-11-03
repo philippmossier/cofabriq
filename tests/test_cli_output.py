@@ -10,7 +10,8 @@ from cofabriq.cli.render import show_card
 from cofabriq.issues.triage import RelatedDoc, triage
 from cofabriq.issues.verdict import Answer
 from cofabriq.steps import Steps
-from tests.test_triage import FakeJudge, FakeTriager, context, fields
+from tests.builders import context, fields
+from tests.fakes import FakeJudge, FakeTriager
 
 
 def plain() -> tuple[Steps, io.StringIO]:

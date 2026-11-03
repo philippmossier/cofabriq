@@ -12,45 +12,18 @@ from langgraph.types import Command
 from cofabriq.loop.engine import AgentRun
 from cofabriq.loop.graph import (
     ALLOWED,
-    Deps,
     FlowState,
     GateAnswer,
     build_graph,
     read_status,
 )
-from cofabriq.loop.refine import Spec
-from tests.test_dedupe import issue
-from tests.test_loop import AGENT_RULES, REPRO, EditingAgent, HostSandbox, setup, write
-from tests.test_pr import Reviewer, reviewed
-from tests.test_refine import FakeAgent, spec
-
-
-class Reader:
-    """The read-only agent: a spec when asked to refine, else a review."""
-
-    def __init__(self, s: Spec) -> None:
-        self.refiner, self.reviewer = FakeAgent(s), Reviewer(reviewed())
-
-    def __call__(self, prompt: str, schema: dict[str, object], cwd: Path) -> AgentRun:
-        if schema == Spec.model_json_schema():
-            return self.refiner(prompt, schema, cwd)
-        return self.reviewer(prompt, schema, cwd)
-
-
-def deps(tmp_path: Path, editor: EditingAgent, criteria: list[str]) -> Deps:
-    clone, _, _ = setup(tmp_path)
-    s: Spec = spec("src/a.ts").model_copy(update={"criteria": criteria})
-    return Deps(
-        clone=clone,
-        work_dir=tmp_path / "work",
-        rules=AGENT_RULES,
-        reader=Reader(s),
-        editor=editor,
-        sandbox=HostSandbox(),
-        targets_dir=tmp_path / "targets",
-        runs_dir=tmp_path / "runs",
-        lessons_dir=tmp_path / "lessons",
-    )
+from tests.builders import REPRO, issue, spec
+from tests.fakes import (
+    EditingAgent,
+    Reader,
+    deps,
+    write,
+)
 
 
 def test_feature_flow_pauses_twice_and_resumes_in_a_new_graph(tmp_path: Path) -> None:

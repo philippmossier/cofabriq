@@ -6,8 +6,9 @@ import pytest
 
 from cofabriq.context.domain import AdrStatus, Extraction, Link
 from cofabriq.context.ingest.extract import VERSION, Candidate, check, load, sync
-from cofabriq.context.ingest.parse import MarkdownParser, ParsedDoc
-from cofabriq.context.ingest.source import DocKind, DocRef
+from cofabriq.context.ingest.parse import ParsedDoc
+from cofabriq.context.ingest.source import DocRef
+from tests.builders import parse
 
 FANOUT_TS = """# 3. Fan-out in the browser
 
@@ -39,11 +40,6 @@ points at a server-side variant.
 
 TS_ID = "repo-ts:docs/adr/0003-fan-out.md"
 PY_ID = "repo-py:docs/adr/0002-fan-out.md"
-
-
-def parse(repo: str, path: str, content: str, sha: str = "aaa") -> ParsedDoc:
-    kind = DocKind.ADR if "/adr/" in path else DocKind.README
-    return MarkdownParser().parse(DocRef(repo, path, sha, kind), content)
 
 
 def ts_adr(sha: str = "aaa") -> ParsedDoc:

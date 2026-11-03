@@ -1,5 +1,3 @@
-import os
-import subprocess
 from datetime import UTC, date, datetime
 from pathlib import Path
 
@@ -12,7 +10,7 @@ from cofabriq.map.build import MAX_FILES, build
 from cofabriq.map.components import ROOT, ComponentRules, component_of, load_rules
 from cofabriq.map.fixes import Fix
 from cofabriq.map.history import Commit, commits, rev_at
-from tests.gitrepo import init_repo
+from tests.gitrepo import dated_commit, init_repo
 
 AT = datetime(2022, 1, 1, tzinfo=UTC)
 RULES = ComponentRules(
@@ -47,35 +45,6 @@ def test_load_rules(tmp_path: Path) -> None:
         named={"ui": ["web/**"]}, patterns=["src/*"]
     )
     assert load_rules(tmp_path, "acme/none") == ComponentRules()
-
-
-def dated_commit(
-    repo: Path, day: str, files: dict[str, str], message: str = "change"
-) -> None:
-    """A commit with author and committer date on `day` (`--before` reads the
-    committer date)."""
-    for path, content in files.items():
-        (repo / path).parent.mkdir(parents=True, exist_ok=True)
-        (repo / path).write_text(content)
-    stamp = f"{day}T12:00:00+00:00"
-    env = os.environ | {"GIT_AUTHOR_DATE": stamp, "GIT_COMMITTER_DATE": stamp}
-    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
-    subprocess.run(
-        [
-            "git",
-            "-C",
-            str(repo),
-            "-c",
-            "user.name=t",
-            "-c",
-            "user.email=t@t",
-            "commit",
-            "-qm",
-            message,
-        ],
-        check=True,
-        env=env,
-    )
 
 
 def test_history_as_of_a_date(tmp_path: Path) -> None:

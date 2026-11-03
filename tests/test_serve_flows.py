@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 
 from cofabriq.loop.graph import FlowRunner, FlowState, FlowStatus, GateAnswer
 from cofabriq.serve import build
-from tests.test_dedupe import REPO, issue
+from tests.builders import REPO, issue
 
 THREAD = f"{REPO}#3"
 UI = "http://127.0.0.1:8765"

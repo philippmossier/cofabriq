@@ -8,13 +8,8 @@ from cofabriq.eval.triage import load_seed
 from cofabriq.loop.engine import AgentRun, ApiKey, ClaudeCode
 from cofabriq.loop.run import (
     NOT_RED,
-    Attempt,
-    Check,
     CheckResult,
-    Implemented,
     LoopResult,
-    LoopRules,
-    Reproduced,
     Suite,
     is_test,
     load_rules,
@@ -22,121 +17,10 @@ from cofabriq.loop.run import (
     reproduce_prompt,
     run_loop,
 )
-from cofabriq.loop.sandbox import Podman, Ran, run_command, tail
+from cofabriq.loop.sandbox import Podman, Ran, tail
 from cofabriq.loop.worktree import remove_worktree
-from tests.gitrepo import git, init_repo
-from tests.test_refine import spec
-
-# The repro passes once src/a.ts says "fixed"; the "test" check fails on
-# the word "broken" anywhere in src/.
-RULES = LoopRules(
-    image="img",
-    install="true",
-    repro_dir="src/repro",
-    repro="sh",
-    checks=[Check(name="test", cmd="! grep -rq broken src/a.ts")],
-    protected=["package.json"],
-)
-
-# The agent writes the repro: test files only, and "types" (no word TYPEERR
-# in src/) has to pass before the fix.
-AGENT_RULES = RULES.model_copy(
-    update={
-        "tests": ["src/**/*.test.sh"],
-        "repro_checks": ["types"],
-        "checks": [Check(name="types", cmd="! grep -rq TYPEERR src"), *RULES.checks],
-    }
-)
-REPRO = 'grep -q fixed "$(dirname "$0")/a.ts"\n'  # as src/a.test.sh
-
-
-class HostSandbox:
-    """Runs the shell line in the worktree on the host: tests only, where
-    every command is the test's own."""
-
-    def __init__(self) -> None:
-        self.calls: list[tuple[str, bool]] = []
-
-    def __call__(self, cmd: str, worktree: Path, *, network: bool) -> Ran:
-        self.calls.append((cmd, network))
-        return run_command(["sh", "-c", cmd], worktree, 30)
-
-
-type Edit = Callable[[Path], None]
-
-
-class EditingAgent:
-    """Applies one scripted edit per call."""
-
-    def __init__(self, *edits: Edit) -> None:
-        self.edits = list(edits)
-        self.prompts: list[str] = []
-        self.roles: list[str] = []
-
-    def __call__(self, prompt: str, schema: dict[str, object], cwd: Path) -> AgentRun:
-        roles = {
-            "reproduce": Reproduced.model_json_schema(),
-            "implement": Implemented.model_json_schema(),
-        }
-        self.roles.append(next(r for r, s in roles.items() if s == schema))
-        self.prompts.append(prompt)
-        self.edits.pop(0)(cwd)
-        return AgentRun(
-            output={"summary": f"try {len(self.prompts)}"},
-            model="fake",
-            cost_usd=0.1,
-            turns=2,
-            latency_ms=5,
-        )
-
-
-def write(path: str, text: str) -> Edit:
-    def edit(cwd: Path) -> None:
-        (cwd / path).parent.mkdir(parents=True, exist_ok=True)
-        (cwd / path).write_text(text)
-
-    return edit
-
-
-def both(*edits: Edit) -> Edit:
-    def edit(cwd: Path) -> None:
-        for e in edits:
-            e(cwd)
-
-    return edit
-
-
-def setup(tmp_path: Path) -> tuple[Path, Path, str]:
-    clone = init_repo(
-        tmp_path / "clone",
-        {"src/a.ts": "bug\n", "package.json": "{}\n", ".gitignore": "node_modules\n"},
-    )
-    repro = tmp_path / "bug.test.sh"
-    repro.write_text('grep -q fixed "$(dirname "$0")/../a.ts"\n')
-    return clone, repro, git(clone, "rev-parse", "HEAD")
-
-
-def loop(
-    tmp_path: Path,
-    agent: EditingAgent,
-    sandbox: HostSandbox | None = None,
-    planted: bool = True,
-) -> tuple[LoopResult, Path, Path]:
-    clone, repro, commit = setup(tmp_path)
-    worktree = tmp_path / "work" / "w"
-    result = run_loop(
-        repo="o/r",
-        number=1,
-        commit=commit,
-        spec=spec("src/a.ts", tests=("src/a.test.sh",)),
-        clone=clone,
-        worktree=worktree,
-        repro_file=repro if planted else None,
-        rules=RULES if planted else AGENT_RULES,
-        agent=agent,
-        sandbox=sandbox or HostSandbox(),
-    )
-    return result, worktree, clone
+from tests.builders import AGENT_RULES, REPRO, RULES, loop_result, setup, spec
+from tests.fakes import Edit, EditingAgent, HostSandbox, both, loop, write
 
 
 def test_green_on_the_second_try_with_errors_fed_back(tmp_path: Path) -> None:
@@ -270,28 +154,6 @@ def test_untouched_repro_is_not_reported_as_reverted(tmp_path: Path) -> None:
     assert result.attempts[0].reverted == []
 
 
-def _result(status: str, tries: int, changed: list[str]) -> LoopResult:
-    run = AgentRun(output={}, model="m", cost_usd=0.05, turns=3, latency_ms=2000)
-    attempts = [
-        Attempt(n=n, summary="", run=run, reverted=[], checks=[])
-        for n in range(1, tries + 1)
-    ]
-    return LoopResult(
-        repo="o/r",
-        number=1,
-        commit="c",
-        status=status,  # type: ignore[arg-type]
-        setup_s=10,
-        repro=["src/a.test.sh"],
-        planted=False,
-        reproduce=[],
-        red=None,
-        attempts=attempts,
-        changed=changed,
-        diff="",
-    )
-
-
 def test_eval_scores_resolved_first_try_and_target() -> None:
     bug = PlantedBug(
         key="b", kind="logic", size="S", files=["src/a.ts"], repro="b.test.ts"
@@ -308,10 +170,14 @@ def test_eval_scores_resolved_first_try_and_target() -> None:
         )
 
     files = ["src/a.ts", "src/a.test.ts"]
-    first = score_bug(bug, judged(_result("green", 1, files), True, True))
-    later = score_bug(bug, judged(_result("green", 2, ["src/other.ts"]), True, True))
-    failed = score_bug(bug, judged(_result("escalated", 3, ["src/a.ts"]), None, False))
-    fooled = score_bug(bug, judged(_result("green", 1, ["src/a.ts"]), False, False))
+    first = score_bug(bug, judged(loop_result("green", 1, files), True, True))
+    later = score_bug(
+        bug, judged(loop_result("green", 2, ["src/other.ts"]), True, True)
+    )
+    failed = score_bug(
+        bug, judged(loop_result("escalated", 3, ["src/a.ts"]), None, False)
+    )
+    fooled = score_bug(bug, judged(loop_result("green", 1, ["src/a.ts"]), False, False))
     assert first.on_target and not later.on_target
     assert first.agent_s == 2 and later.cost_usd == 0.1
     assert fooled.status == "green" and not fooled.resolved

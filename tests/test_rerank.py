@@ -5,7 +5,7 @@ from cofabriq.issues import rerank
 from cofabriq.issues.model import Issue
 from cofabriq.issues.rerank import Job, Order, Seen
 from cofabriq.llm import Usage
-from tests.test_dedupe import issue
+from tests.builders import issue
 
 USAGE = Usage(input_tokens=1000, output_tokens=50, latency_ms=900)
 

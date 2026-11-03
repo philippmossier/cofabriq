@@ -18,17 +18,9 @@ from cofabriq.loop.pr import (
 from cofabriq.loop.review import Reviewed, approves, review, split_diff
 from cofabriq.loop.run import Attempt, CheckResult, LoopResult
 from cofabriq.map.components import ComponentRules, load_rules
+from tests.builders import AGENT_RULES, REPRO, reviewed, spec
+from tests.fakes import EditingAgent, HostSandbox, Reviewer, both, loop, write
 from tests.gitrepo import git, init_repo
-from tests.test_loop import (
-    AGENT_RULES,
-    REPRO,
-    EditingAgent,
-    HostSandbox,
-    both,
-    loop,
-    write,
-)
-from tests.test_refine import spec
 
 PLAYGROUND = "philippmossier/local-ai-chat-playground"
 
@@ -40,38 +32,6 @@ diff --git a/src/a.ts b/src/a.ts
 -bug
 +fixed
 """
-
-
-def reviewed(**changes: object) -> Reviewed:
-    fields: dict[str, object] = {
-        "test_matches_spec": True,
-        "test_note": "checks the fixed word",
-        "fixes_cause": True,
-        "cause_note": "replaces the bug",
-        "findings": [],
-        "verdict": "approve",
-        "summary": "Looks right.",
-    }
-    return Reviewed.model_validate(fields | changes)
-
-
-class Reviewer:
-    """Answers with a fixed review and keeps the prompt."""
-
-    def __init__(self, answer: Reviewed) -> None:
-        self.answer = answer
-        self.prompts: list[str] = []
-
-    def __call__(self, prompt: str, schema: dict[str, object], cwd: Path) -> AgentRun:
-        assert schema["additionalProperties"] is False
-        self.prompts.append(prompt)
-        return AgentRun(
-            output=self.answer.model_dump(),
-            model="fake",
-            cost_usd=0.03,
-            turns=4,
-            latency_ms=3000,
-        )
 
 
 def green(tmp_path: Path) -> tuple[LoopResult, Path]:

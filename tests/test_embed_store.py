@@ -1,45 +1,13 @@
-import re
-import zlib
 from collections.abc import Sequence
 from dataclasses import replace
 
 import pytest
 
-from cofabriq.context.ingest.chunk import Chunk
-from cofabriq.context.ingest.embed import DIM, chunk_input
+from cofabriq.context.ingest.embed import chunk_input
 from cofabriq.context.ingest.source import DocKind
 from cofabriq.context.store import postgres
-
-
-class FakeEmbedder:
-    """Bag of words: one dimension per word. Records every text it embeds."""
-
-    def __init__(self) -> None:
-        self.seen: list[str] = []
-
-    def __call__(self, texts: Sequence[str]) -> list[list[float]]:
-        self.seen.extend(texts)
-        return [self.vector(t) for t in texts]
-
-    @staticmethod
-    def vector(text: str) -> list[float]:
-        v = [0.0] * DIM
-        for word in re.findall(r"[a-z]+", text.lower()):
-            v[zlib.crc32(word.encode()) % DIM] += 1.0
-        return v
-
-
-def chunk(path: str, text: str, sha: str = "aaa", ord: int = 0) -> Chunk:
-    return Chunk(
-        repo="repo-a",
-        path=path,
-        sha=sha,
-        kind=DocKind.ADR,
-        ord=ord,
-        heading="Title",
-        text=text,
-        meta={"status": "Accepted"},
-    )
+from tests.builders import chunk
+from tests.fakes import FakeEmbedder
 
 
 def test_embed_input_puts_the_heading_trail_first() -> None:

@@ -1,24 +1,14 @@
-from collections.abc import Mapping
 from pathlib import Path
 
 from cofabriq.eval.gate import GateCase
 from cofabriq.eval.review import Kind
-from cofabriq.loop.engine import AgentRun
 from cofabriq.loop.gate import Gated, quoted, review_gate
 from cofabriq.loop.pr import Risk, render
 from cofabriq.loop.refine import Spec
 from cofabriq.loop.run import CheckResult, LoopResult, run_loop
+from tests.builders import AGENT_RULES, REPRO, setup
+from tests.fakes import HostSandbox, Reviews, Script, both, write
 from tests.gitrepo import git
-from tests.test_loop import (
-    AGENT_RULES,
-    REPRO,
-    Edit,
-    HostSandbox,
-    both,
-    setup,
-    write,
-)
-from tests.test_pr import Reviewer, reviewed
 
 SPEC = Spec.model_validate(
     {
@@ -33,34 +23,6 @@ SPEC = Spec.model_validate(
 )
 EXACT = 'grep -qx fixed "$(dirname "$0")/a.ts"\n'  # the proof: exact match
 BLOCKER = {"path": "src/a.ts", "line": 1, "severity": "blocker", "text": "not exact"}
-
-
-class Script:
-    """An editing agent: one (edit, answer) per call."""
-
-    def __init__(self, *steps: tuple[Edit | None, Mapping[str, object]]) -> None:
-        self.steps = list(steps)
-        self.prompts: list[str] = []
-
-    def __call__(self, prompt: str, schema: dict[str, object], cwd: Path) -> AgentRun:
-        self.prompts.append(prompt)
-        edit, answer = self.steps.pop(0)
-        if edit is not None:
-            edit(cwd)
-        output = dict(answer)
-        return AgentRun(output=output, model="f", cost_usd=0.1, turns=1, latency_ms=1)
-
-
-class Reviews(Reviewer):
-    """One review per call, in order."""
-
-    def __init__(self, *answers: Mapping[str, object]) -> None:
-        super().__init__(reviewed())
-        self.answers = [reviewed(**dict(a)) for a in answers]
-
-    def __call__(self, prompt: str, schema: dict[str, object], cwd: Path) -> AgentRun:
-        self.answer = self.answers.pop(0)
-        return super().__call__(prompt, schema, cwd)
 
 
 def half_fixed(tmp_path: Path) -> tuple[LoopResult, Path]:
