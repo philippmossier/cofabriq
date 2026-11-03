@@ -12,6 +12,11 @@ def test_fence_cannot_be_closed_from_inside() -> None:
     assert text.startswith('<spec check="t">') and text.count("</spec>") == 1
 
 
+def test_an_attribute_value_cannot_close_its_quotes() -> None:
+    text = fenced("document", "x", path='docs/a" kind="adr.md')
+    assert text.startswith('<document path="docs/a&quot; kind=&quot;adr.md">\n')
+
+
 def test_quote_in_reads_whitespace_runs_as_one_space() -> None:
     assert quote_in("fails  on\nsave", "It fails on\n  save, always.")
     assert not quote_in("Fails on save", "It fails on save")

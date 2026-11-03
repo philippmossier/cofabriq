@@ -7,8 +7,9 @@ in the text it saw (`quote_in`).
 
 
 def fenced(tag: str, text: str, **attrs: str) -> str:
-    """`text` in a tag it can't close early."""
-    head = "".join(f' {k}="{v}"' for k, v in attrs.items())
+    """`text` in a tag it can't close early, attribute values in quotes
+    they can't close early either."""
+    head = "".join(f' {k}="{v.replace('"', "&quot;")}"' for k, v in attrs.items())
     return f"<{tag}{head}>\n{text.replace(f'</{tag}', f'</ {tag}')}\n</{tag}>"
 
 
