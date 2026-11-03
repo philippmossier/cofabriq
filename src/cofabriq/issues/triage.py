@@ -31,6 +31,7 @@ from cofabriq.issues.model import Issue, IssueSource
 from cofabriq.issues.readiness import Evidence, InfoItem, Readiness
 from cofabriq.issues.verdict import Candidate, Problem
 from cofabriq.llm import Usage
+from cofabriq.steps import Steps
 from cofabriq.targets import target_table
 from cofabriq.untrusted import fenced
 
@@ -391,6 +392,79 @@ def triage(
             latency_ms=latency_ms,
         ),
     )
+
+
+def triage_fn(
+    conn: postgres.Conn,
+    *,
+    issues_dir: Path,
+    targets_dir: Path,
+    triager: Triager,
+    judge: verdict.Judge,
+    reranker: rerank.Reranker | None,
+    embed: Embed,
+    github: Callable[[str], IssueSource | None] | None,
+    steps: Steps,
+) -> Callable[[str, int], TriageCard]:
+    """(repo, number) -> card: refresh the issue from GitHub, then gather
+    from the local stores and make both LLM calls (the CLI's `triage` and
+    the MCP tool).
+
+    `github(repo)` is the source to refresh from, None without a token (the
+    store is used as it is); `github=None` never asks (the eval scores the
+    issues as fetched). `steps` reports each stage; `Steps(None)` stays
+    silent (MCP, eval).
+    """
+
+    def run(repo: str, number: int) -> TriageCard:
+        source = github(repo) if github is not None else None
+        if source is not None:
+            with steps.step("GitHub", f"checking #{number}") as done:
+                got = refresh_issue(source, issues_dir, number)
+                done(fetched(number, got))
+            if got is not None:
+                with steps.step("embedding", f"embedding #{number}") as done:
+                    changed = refresh_vector(conn, got[0], embed)
+                    done(f"embedded #{number}" if changed else "up to date")
+        elif github is not None:
+            steps.note("GitHub", "skipped: no GITHUB_TOKEN, local copy", ok=False)
+        with steps.step("search", "nearest earlier issues and docs") as done:
+            ctx = gather(conn, issues_dir, targets_dir, repo, number, reranker)
+            done(f"{len(ctx.candidates)} earlier issues, {len(ctx.related_docs)} docs")
+        with steps.step("LLM", "card fields + duplicate verdict") as done:
+            card = triage(ctx, triager, judge)
+            seconds = card.run.latency_ms / 1000
+            done(f"card fields + duplicate verdict, 2 calls, {seconds:.1f} s")
+        steps.note("checks", _checked(card), ok=not (card.dropped or card.conflicts))
+        return card
+
+    return run
+
+
+def fetched(number: int, got: tuple[object, str] | None) -> str:
+    """The step line for `refresh_issue`'s answer."""
+    if got is None:
+        return f"#{number} not on GitHub (or a pull request), local copy"
+    return {
+        "new": f"fetched #{number} (new)",
+        "changed": f"fetched #{number} (changed on GitHub)",
+    }.get(got[1], f"#{number} unchanged since the last fetch")
+
+
+def _checked(card: TriageCard) -> str:
+    """What the plain-code checks after the calls let through or dropped."""
+    parts: list[str] = []
+    if card.component:
+        parts.append("component on the list")
+    if card.duplicate.target is not None:
+        parts.append(f"quote found in #{card.duplicate.target}")
+    if card.dropped:
+        parts.append(f"dropped {len(card.dropped)}")
+    if card.conflicts:
+        parts.append(f"{len(card.conflicts)} conflict")
+    if card.missing:
+        parts.append(f"{len(card.missing)} info missing")
+    return ", ".join(parts) or "nothing to check"
 
 
 def related_docs(hits: Sequence[tuple[str, str, str, float]]) -> list[RelatedDoc]:

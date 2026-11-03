@@ -1,5 +1,5 @@
 import dataclasses
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
 
 import pytest
@@ -17,6 +17,7 @@ from cofabriq.issues.triage import (
     IssueType,
     NotReady,
     RelatedDoc,
+    TriageCard,
     check,
     conflicts,
     gather,
@@ -26,9 +27,11 @@ from cofabriq.issues.triage import (
     refresh_vector,
     related_docs,
     triage,
+    triage_fn,
 )
 from cofabriq.issues.verdict import Answer, Candidate, Kind, Problem
 from cofabriq.llm import Usage
+from cofabriq.steps import Steps
 from tests.test_dedupe import REPO, issue
 from tests.test_embed_store import FakeEmbedder, chunk
 
@@ -286,6 +289,41 @@ def test_refresh_reembeds_an_edited_issue(conn: postgres.Conn, tmp_path: Path) -
     assert refresh_issue(OneSource(edited), tmp_path, 9) == (edited, "changed")
     assert refresh_vector(conn, edited, embed)
     assert gather(conn, tmp_path, tmp_path, REPO, 9).issue.body == "Edited on GitHub."
+
+
+def test_triage_fn_refreshes_only_when_asked_and_a_source_exists(
+    conn: postgres.Conn, tmp_path: Path
+) -> None:
+    embed = FakeEmbedder()
+    _store(tmp_path, OLD)
+    vectors.sync(conn, [OLD], embed)
+    asked: list[str] = []
+
+    def github(repo: str) -> OneSource | None:
+        asked.append(repo)
+        return OneSource(NEW) if len(asked) == 1 else None
+
+    def run(
+        github: Callable[[str], OneSource | None] | None,
+    ) -> Callable[[str, int], TriageCard]:
+        none = Answer(verdict="none", target=None, evidence="", problem=None)
+        return triage_fn(
+            conn,
+            issues_dir=tmp_path,
+            targets_dir=tmp_path,
+            triager=FakeTriager(fields()),
+            judge=FakeJudge(none),
+            reranker=None,
+            embed=embed,
+            github=github,
+            steps=Steps(None),
+        )
+
+    with pytest.raises(NotReady, match="not fetched"):
+        run(None)(REPO, 9)  # the eval's way: the store as it is
+    assert run(github)(REPO, 9).issue.number == 9  # fetched and embedded first
+    run(github)(REPO, 9)  # no token: the stored copy
+    assert asked == [REPO, REPO]
 
 
 def test_refresh_leaves_the_store_alone_if_the_source_lacks_the_issue(

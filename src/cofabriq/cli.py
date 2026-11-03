@@ -192,6 +192,24 @@ def _target_repo(repo: str | None) -> str:
     return check_repo(target)
 
 
+def _github(repo: str) -> GitHubIssueSource | None:
+    """The read-only GitHub source for `repo`; None without GITHUB_TOKEN."""
+    settings = get_settings()
+    if settings.github_token is None:
+        return None
+    token = settings.github_token.get_secret_value()
+    return GitHubIssueSource(repo, token, comments=settings.issue_comments)
+
+
+def _loop_rules(target: str) -> run_mod.Rules:
+    """The target file's `[loop]`; exits when it has none."""
+    rules = run_mod.load_rules(get_settings().targets_dir, target)
+    if rules is None:
+        typer.echo(f"no [loop] in the target file of {target}", err=True)
+        raise typer.Exit(code=1)
+    return rules
+
+
 def _date_range(value: str) -> tuple[date, date]:
     """`2022-01-01..2024-12-31`, GitHub search syntax."""
     try:
@@ -212,15 +230,10 @@ def fetch_issues_cmd(repo: str | None = None, created: str | None = None) -> Non
     window instead (eval sets on large repos); the update cursor is untouched.
     """
     settings = get_settings()
-    target = _target_repo(repo)
-    if settings.github_token is None:
+    source = _github(_target_repo(repo))
+    if source is None:
         typer.echo("GITHUB_TOKEN is not set (.env.example)", err=True)
         raise typer.Exit(code=1)
-    source = GitHubIssueSource(
-        target,
-        settings.github_token.get_secret_value(),
-        comments=settings.issue_comments,
-    )
     if created is not None:
         start, end = _date_range(created)
         report = fetch_created(source, settings.issues_dir, start, end)
@@ -361,7 +374,8 @@ def readiness_set(
         typer.echo(f"{path} is frozen; --force to rebuild it", err=True)
         raise typer.Exit(code=1)
     rules = readiness_eval.load_rules(settings.targets_dir, target)
-    if rules is None or settings.github_token is None:
+    source = _github(target)
+    if rules is None or source is None:
         typer.echo("needs [readiness] in the target file and GITHUB_TOKEN", err=True)
         raise typer.Exit(code=1)
     if test:
@@ -370,7 +384,6 @@ def readiness_set(
             raise typer.Exit(code=1)
         rules = rules.model_copy(update={"window": rules.test_window})
     pool = readiness_eval.pools(load_issues(settings.issues_dir, target), rules)
-    source = GitHubIssueSource(target, settings.github_token.get_secret_value())
     infoset = readiness_eval.build(
         target, pool, rules, source.history, frozen_at=datetime.now(UTC)
     )
@@ -685,78 +698,23 @@ def _verdicts(
 def _triage_fn(
     conn: postgres.Conn, *, refresh: bool, steps: Steps | None = None
 ) -> Callable[[str, int], triage_mod.TriageCard]:
-    """(repo, number) -> card: optionally refresh the issue from GitHub, then
-    gather from the local stores and make both LLM calls.
-
+    """`triage_mod.triage_fn` with the OpenAI clients and the settings.
     `refresh` needs `GITHUB_TOKEN`; without one the store is used as it is.
-    The eval passes False: it scores the issues as fetched. `steps` reports
-    each stage (CLI); None stays silent (MCP, eval).
-    """
+    The eval passes False: it scores the issues as fetched. `steps` None
+    stays silent (MCP, eval)."""
     settings = get_settings()
     key = _openai_key()
-    triager, judge = triage_mod.OpenAITriager(key), verdict_mod.OpenAIJudge(key)
-    reranker = rerank_mod.OpenAIReranker(key) if settings.rerank_candidates else None
-    embed = openai_embedder(key)
-    token = settings.github_token if refresh else None
-    show = steps or Steps(None)
-
-    def run(repo: str, number: int) -> triage_mod.TriageCard:
-        if token is not None:
-            source = GitHubIssueSource(
-                repo, token.get_secret_value(), comments=settings.issue_comments
-            )
-            with show.step("GitHub", f"checking #{number}") as done:
-                got = triage_mod.refresh_issue(source, settings.issues_dir, number)
-                done(_fetched(number, got))
-            if got is not None:
-                with show.step("embedding", f"embedding #{number}") as done:
-                    changed = triage_mod.refresh_vector(conn, got[0], embed)
-                    done(f"embedded #{number}" if changed else "up to date")
-        elif refresh:
-            show.note("GitHub", "skipped: no GITHUB_TOKEN, local copy", ok=False)
-        with show.step("search", "nearest earlier issues and docs") as done:
-            ctx = triage_mod.gather(
-                conn,
-                settings.issues_dir,
-                settings.targets_dir,
-                repo,
-                number,
-                reranker,
-            )
-            done(f"{len(ctx.candidates)} earlier issues, {len(ctx.related_docs)} docs")
-        with show.step("LLM", "card fields + duplicate verdict") as done:
-            card = triage_mod.triage(ctx, triager, judge)
-            seconds = card.run.latency_ms / 1000
-            done(f"card fields + duplicate verdict, 2 calls, {seconds:.1f} s")
-        show.note("checks", _checks(card), ok=not (card.dropped or card.conflicts))
-        return card
-
-    return run
-
-
-def _fetched(number: int, got: tuple[object, str] | None) -> str:
-    if got is None:
-        return f"#{number} not on GitHub (or a pull request), local copy"
-    return {
-        "new": f"fetched #{number} (new)",
-        "changed": f"fetched #{number} (changed on GitHub)",
-    }.get(got[1], f"#{number} unchanged since the last fetch")
-
-
-def _checks(card: triage_mod.TriageCard) -> str:
-    """What the plain-code checks after the calls let through or dropped."""
-    parts: list[str] = []
-    if card.component:
-        parts.append("component on the list")
-    if card.duplicate.target is not None:
-        parts.append(f"quote found in #{card.duplicate.target}")
-    if card.dropped:
-        parts.append(f"dropped {len(card.dropped)}")
-    if card.conflicts:
-        parts.append(f"{len(card.conflicts)} conflict")
-    if card.missing:
-        parts.append(f"{len(card.missing)} info missing")
-    return ", ".join(parts) or "nothing to check"
+    return triage_mod.triage_fn(
+        conn,
+        issues_dir=settings.issues_dir,
+        targets_dir=settings.targets_dir,
+        triager=triage_mod.OpenAITriager(key),
+        judge=verdict_mod.OpenAIJudge(key),
+        reranker=rerank_mod.OpenAIReranker(key) if settings.rerank_candidates else None,
+        embed=openai_embedder(key),
+        github=_github if refresh else None,
+        steps=steps or Steps(None),
+    )
 
 
 @app.command()
@@ -867,49 +825,6 @@ def _render_card(out: Console, card: triage_mod.TriageCard) -> None:
     flush()
 
 
-def _impact_fn(
-    conn: postgres.Conn, driver: Driver, embed: Embed
-) -> Callable[[str, int | None, str | None, int], impact_mod.Impact]:
-    """(repo, issue number or None, plan text or None, k) -> Impact. An issue
-    must be fetched and embedded; it only sees fixes committed before it was
-    filed. A plan sees everything on the map."""
-
-    def run(
-        repo: str, number: int | None, plan: str | None, k: int
-    ) -> impact_mod.Impact:
-        rev = map_store.rev(driver, repo)
-        if rev is None:
-            raise triage_mod.NotReady(f"no map for {repo}: run map build")
-        if number is not None:
-            issue = load_issue(get_settings().issues_dir, repo, number)
-            if issue is None or vectors.embedding(conn, repo, number) is None:
-                raise triage_mod.NotReady(
-                    f"{repo}#{number} is not fetched and embedded: run triage first"
-                )
-            before = issue.created_at
-            among = map_store.fixed_issues(driver, repo, before)
-            hits = vectors.nearest(
-                conn, repo, number, impact_mod.NEIGHBOURS, before, among
-            )
-        elif plan is not None:
-            before = None
-            among = map_store.fixed_issues(driver, repo, None)
-            [vector] = embed([plan[: vectors.MAX_BODY]])
-            hits = vectors.nearest_to(conn, repo, vector, impact_mod.NEIGHBOURS, among)
-        else:
-            raise ValueError("an issue number or a plan")
-        neighbours = [(h.number, h.score) for h in hits]
-        fixed = map_store.fixed(driver, repo, [n for n, _ in neighbours], before)
-
-        def partners(component: str) -> list[tuple[str, float]]:
-            found = map_store.changes_with(driver, repo, component, 10)
-            return [(p.name, p.share) for p in found]
-
-        return impact_mod.assemble(repo, rev, neighbours, fixed, partners, k)
-
-    return run
-
-
 @app.command()
 def impact(
     number: int | None = typer.Argument(None),
@@ -926,9 +841,11 @@ def impact(
         raise typer.Exit(code=1)
     target = _target_repo(repo)
     text = plan.read_text("utf-8") if plan else None
-    with _graph() as driver, postgres.connect(get_settings().postgres_dsn) as conn:
+    settings = get_settings()
+    with _graph() as driver, postgres.connect(settings.postgres_dsn) as conn:
         try:
-            result = _impact_fn(conn, driver, _embedder())(target, number, text, k)
+            run = impact_mod.impact_fn(conn, driver, _embedder(), settings.issues_dir)
+            result = run(target, number, text, k)
         except triage_mod.NotReady as exc:
             typer.echo(str(exc), err=True)
             raise typer.Exit(code=1) from exc
@@ -1014,16 +931,13 @@ def refine(number: int, repo: str | None = None, json: bool = False) -> None:
 def _refresh_issue(repo: str, number: int, steps: Steps) -> Issue | None:
     """The stored issue, refreshed from GitHub first if there is a token."""
     settings = get_settings()
-    token = settings.github_token
-    if token is None:
+    source = _github(repo)
+    if source is None:
         steps.note("GitHub", "skipped: no GITHUB_TOKEN, local copy", ok=False)
         return load_issue(settings.issues_dir, repo, number)
-    source = GitHubIssueSource(
-        repo, token.get_secret_value(), comments=settings.issue_comments
-    )
     with steps.step("GitHub", f"checking #{number}") as done:
         got = triage_mod.refresh_issue(source, settings.issues_dir, number)
-        done(_fetched(number, got))
+        done(triage_mod.fetched(number, got))
     return got[0] if got is not None else load_issue(settings.issues_dir, repo, number)
 
 
@@ -1083,16 +997,12 @@ def _blocker_issues(tickets: list[Issue]) -> dict[IssueRef, Issue]:
     """The tickets' blockers as GitHub has them now (read-only; the local
     store without a token). A blocker that can't be read stays out: it then
     counts as open."""
-    settings = get_settings()
-    token = settings.github_token
     known: dict[IssueRef, Issue] = {}
     for ref in dict.fromkeys(b for t in tickets for b in intake_mod.blockers(t)):
-        if token is None:
-            got = load_issue(settings.issues_dir, ref.repo, ref.number)
+        source = _github(ref.repo)
+        if source is None:
+            got = load_issue(get_settings().issues_dir, ref.repo, ref.number)
         else:
-            source = GitHubIssueSource(
-                ref.repo, token.get_secret_value(), comments=settings.issue_comments
-            )
             got = source.issue(ref.number)
         if got is not None:
             known[ref] = got
@@ -1101,11 +1011,8 @@ def _blocker_issues(tickets: list[Issue]) -> dict[IssueRef, Issue]:
 
 def _open_prs(repo: str) -> list[int] | None:
     """cofabriq's open PRs in `repo`; None without a token (unknown)."""
-    token = get_settings().github_token
-    if token is None:
-        return None
-    source = GitHubIssueSource(repo, token.get_secret_value())
-    return source.open_pulls(publish_mod.BRANCH_PREFIX)
+    source = _github(repo)
+    return None if source is None else source.open_pulls(publish_mod.BRANCH_PREFIX)
 
 
 def _api(
@@ -1173,10 +1080,7 @@ app.add_typer(flow_app, name="flow")
 
 def _flow_deps(target: str, spent_usd: float = 0.0) -> tuple[graph_mod.Deps, str]:
     settings = get_settings()
-    rules = run_mod.load_rules(settings.targets_dir, target)
-    if rules is None:
-        typer.echo(f"no [loop] in the target file of {target}", err=True)
-        raise typer.Exit(code=1)
+    rules = _loop_rules(target)
     clone = clone_dir(settings.clones_dir, target)
     guard = Guard(settings.run_budget_usd, spent_usd)
     reader = Guarded(_agent(), guard)
@@ -1389,10 +1293,7 @@ def run(
     route = _route(issue_type)
     settings = get_settings()
     target = check_repo(repo)
-    rules = run_mod.load_rules(settings.targets_dir, target)
-    if rules is None:
-        typer.echo(f"no [loop] in the target file of {target}", err=True)
-        raise typer.Exit(code=1)
+    rules = _loop_rules(target)
     write_token = _write_token(target) if apply else None  # before paying
     # every agent of this run (refine, test, build, review, proofs) shares
     # one budget: the kill switch's run cap
@@ -1881,10 +1782,7 @@ def eval_bug_set(
     (which must apply). Free (no agent), needs podman."""
     settings = get_settings()
     target = check_repo(repo)
-    rules = run_mod.load_rules(settings.targets_dir, target)
-    if rules is None:
-        typer.echo(f"no [loop] in the target file of {target}", err=True)
-        raise typer.Exit(code=1)
+    rules = _loop_rules(target)
     planted = load_bugs(bugs, seed)
     if only is not None:
         planted = [b for b in planted if b.key in only.split(",")]
@@ -1967,10 +1865,7 @@ def eval_feature_set(
     needs podman; one install, then each removal in turn."""
     settings = get_settings()
     target = check_repo(repo)
-    rules = run_mod.load_rules(settings.targets_dir, target)
-    if rules is None:
-        typer.echo(f"no [loop] in the target file of {target}", err=True)
-        raise typer.Exit(code=1)
+    rules = _loop_rules(target)
     feats = features_eval.load_features(features)
     clone = clone_dir(settings.clones_dir, target)
     commit = refine_mod.update_clone(target, clone)
@@ -2043,10 +1938,7 @@ def eval_loop(
         raise typer.Exit(code=1)
     settings = get_settings()
     target = check_repo(repo)
-    rules = run_mod.load_rules(settings.targets_dir, target)
-    if rules is None:
-        typer.echo(f"no [loop] in the target file of {target}", err=True)
-        raise typer.Exit(code=1)
+    rules = _loop_rules(target)
     agent = _agent().editing(budget_usd=1.0)
     if kind not in ("logic", "ui", "all"):
         typer.echo("--kind must be logic, ui or all", err=True)
@@ -2141,10 +2033,7 @@ def eval_loop(
 def _eval_loop_features(repo: str, only: str | None, workers: int, path: Path) -> None:
     settings = get_settings()
     target = check_repo(repo)
-    rules = run_mod.load_rules(settings.targets_dir, target)
-    if rules is None:
-        typer.echo(f"no [loop] in the target file of {target}", err=True)
-        raise typer.Exit(code=1)
+    rules = _loop_rules(target)
     agent = _agent().editing(budget_usd=1.0)
     feats = features_eval.load_features(path)
     if only is not None:
@@ -2237,10 +2126,7 @@ def eval_witness(
     Results to data/runs/witness-*.json, read by `eval review`."""
     settings = get_settings()
     target = check_repo(repo)
-    rules = run_mod.load_rules(settings.targets_dir, target)
-    if rules is None:
-        typer.echo(f"no [loop] in the target file of {target}", err=True)
-        raise typer.Exit(code=1)
+    rules = _loop_rules(target)
     agent = _agent().editing(budget_usd=1.0)
     by_key = {b.key: b for b in load_bugs(bugs, seed)}
     clone = clone_dir(settings.clones_dir, target)
@@ -2357,10 +2243,7 @@ def _publish_human_set(
     get the current body with `update`)."""
     settings = get_settings()
     token = _write_token(target)
-    rules = run_mod.load_rules(settings.targets_dir, target)
-    if rules is None:
-        typer.echo(f"no [loop] in the target file of {target}", err=True)
-        raise typer.Exit(code=1)
+    rules = _loop_rules(target)
     found = review_eval.cases(
         settings.runs_dir, witness_eval.load_witnessed(settings.runs_dir)
     )
@@ -2450,10 +2333,7 @@ def eval_gate(
     paid (reviews, proofs and fix rounds; about $0.15-0.40 per case)."""
     settings = get_settings()
     target = check_repo(repo)
-    rules = run_mod.load_rules(settings.targets_dir, target)
-    if rules is None:
-        typer.echo(f"no [loop] in the target file of {target}", err=True)
-        raise typer.Exit(code=1)
+    rules = _loop_rules(target)
     reader = _agent()
     editor = reader.editing(budget_usd=1.0)
     by_key = {b.key: b for b in load_bugs(bugs, seed)}
@@ -2529,10 +2409,7 @@ def eval_review(
     pays for reviewer runs only (about $0.04 each). Results to data/runs/."""
     settings = get_settings()
     target = check_repo(repo)
-    rules = run_mod.load_rules(settings.targets_dir, target)
-    if rules is None:
-        typer.echo(f"no [loop] in the target file of {target}", err=True)
-        raise typer.Exit(code=1)
+    rules = _loop_rules(target)
     agent = _agent()
     clone = clone_dir(settings.clones_dir, target)
     specs = loop_eval.load_specs(settings.refine_dir)
@@ -2746,7 +2623,9 @@ def mcp() -> None:
         conn.autocommit = True
         target = get_settings().target_repo
         run = _triage_fn(conn, refresh=True)
-        impact_run = _impact_fn(conn, driver, embed)
+        impact_run = impact_mod.impact_fn(
+            conn, driver, embed, get_settings().issues_dir
+        )
         build_mcp(
             embed, conn, driver, run, default_repo=target, impact_fn=impact_run
         ).run("stdio")
