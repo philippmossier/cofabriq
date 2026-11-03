@@ -18,7 +18,7 @@ from cofabriq.eval.readiness import (
 from cofabriq.issues.github import History
 from cofabriq.issues.model import Issue
 from cofabriq.issues.triage import PROMPT_VERSION, Fields
-from cofabriq.issues.verdict import Usage
+from cofabriq.llm import Usage
 from tests.test_dedupe import T0, issue
 from tests.test_issues import source
 from tests.test_triage import fields

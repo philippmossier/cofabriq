@@ -641,12 +641,10 @@ def _reranked(
         for r in ranked
     ]
     path = get_settings().rerank_dir / f"{repo_slug(repo)}.json"
-    records, report = rerank_mod.rerank_all(
+    records, batch = rerank_mod.rerank_all(
         jobs, path, rerank_mod.OpenAIReranker(_openai_key())
     )
-    typer.echo(
-        f"  rerank: {report.reranked} reranked, {report.cached} cached -> {path}"
-    )
+    typer.echo(f"  rerank: {batch.sent} reranked, {batch.cached} cached -> {path}")
     rows = list(records.values())
     typer.echo(
         f"  per issue: ${fmean(x.cost_usd for x in rows):.5f} mean, "
@@ -677,8 +675,8 @@ def _verdicts(
     ]
     path = get_settings().verdicts_dir / f"{repo_slug(repo)}.json"
     judge = verdict_mod.OpenAIJudge(_openai_key())
-    records, report = verdict_mod.judge_all(jobs, path, judge)
-    typer.echo(f"  verdicts: {report.judged} judged, {report.cached} cached -> {path}")
+    records, batch = verdict_mod.judge_all(jobs, path, judge)
+    typer.echo(f"  verdicts: {batch.sent} judged, {batch.cached} cached -> {path}")
     return records
 
 

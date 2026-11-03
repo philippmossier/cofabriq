@@ -9,28 +9,25 @@ whatever the model leaves out keeps its vector order behind it. A bad answer
 degrades to the vector ranking, it never removes a candidate.
 """
 
-import json
-import time
 from collections.abc import Callable, Iterable, Sequence
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
 from openai import OpenAI
-from pydantic import BaseModel, Field, TypeAdapter
+from pydantic import BaseModel, Field
 
-from cofabriq.files import write_atomic
+from cofabriq import llm
 from cofabriq.issues.model import Issue
 from cofabriq.issues.vectors import clean_issue_text
-from cofabriq.issues.verdict import MODEL, PRICE_IN, PRICE_OUT, QUERY_BODY, Usage
+from cofabriq.issues.verdict import QUERY_BODY
+from cofabriq.llm import Usage
 from cofabriq.untrusted import fenced
 
-VERSION = f"{MODEL}/rerank-1"
+VERSION = f"{llm.MODEL}/rerank-1"
 WIDE = 50  # vector candidates the reranker reads
 KEEP = 10  # the short list it returns for the verdict
 SNIPPET = 400  # characters of a candidate's cleaned body
-WORKERS = 8
 
 INSTRUCTIONS = f"""\
 You rank earlier GitHub issues by how likely each reports the same problem as
@@ -62,11 +59,9 @@ class Seen:
         return cls(issue.number, issue.title, clean_issue_text(issue.body)[:SNIPPET])
 
 
-class RerankRecord(BaseModel):
+class RerankRecord(llm.Record):
     """One issue's reranked short list as stored, with provenance and cost."""
 
-    number: int
-    version: str
     candidates: list[int]  # numbers offered, vector order
     order: list[int]  # all offered numbers, reranked first, the rest after
     input_tokens: int
@@ -75,7 +70,7 @@ class RerankRecord(BaseModel):
 
     @property
     def cost_usd(self) -> float:
-        return self.input_tokens * PRICE_IN + self.output_tokens * PRICE_OUT
+        return llm.cost(self)
 
 
 class Reranker(Protocol):
@@ -89,21 +84,13 @@ class OpenAIReranker:
         self._client = OpenAI(api_key=api_key)
 
     def rerank(self, query: Issue, candidates: Sequence[Seen]) -> tuple[Order, Usage]:
-        start = time.perf_counter()
-        response = self._client.responses.parse(
-            model=MODEL,
+        return llm.structured(
+            self._client,
             instructions=INSTRUCTIONS,
             input=prompt(query, candidates),
-            text_format=Order,
-            reasoning={"effort": "low"},
+            schema=Order,
+            what=f"ranking for #{query.number}",
         )
-        latency_ms = round((time.perf_counter() - start) * 1000)
-        if response.output_parsed is None or response.usage is None:
-            raise RuntimeError(f"no ranking for #{query.number}")
-        usage = Usage(
-            response.usage.input_tokens, response.usage.output_tokens, latency_ms
-        )
-        return response.output_parsed, usage
 
 
 def prompt(query: Issue, candidates: Sequence[Seen]) -> str:
@@ -131,35 +118,15 @@ class Job:
     candidates: list[Seen]  # vector order
 
 
-@dataclass(frozen=True)
-class RerankReport:
-    reranked: int  # sent to the LLM
-    cached: int  # same version and same candidates already stored
-
-
-_records_adapter = TypeAdapter(list[RerankRecord])
-
-
 def rerank_all(
     jobs: Iterable[Job],
     path: Path,
     reranker: Reranker,
     on_done: Callable[[RerankRecord], None] = lambda _: None,
-    workers: int = WORKERS,
-) -> tuple[dict[int, RerankRecord], RerankReport]:
+    workers: int = llm.WORKERS,
+) -> tuple[dict[int, RerankRecord], llm.Batch]:
     """Reranked orders for all jobs, calling the LLM only where nothing is
-    cached. A record is reused while its version and candidate list match, and
-    records are saved even if a call fails halfway (see `verdict.judge_all`).
-    """
-    jobs = list(jobs)
-    stored = {r.number: r for r in load(path)}
-    done = {
-        j.query.number: stored[j.query.number]
-        for j in jobs
-        if j.query.number in stored
-        and stored[j.query.number].candidates == [c.number for c in j.candidates]
-    }
-    todo = [j for j in jobs if j.query.number not in done]
+    cached. A record is reused while its version and candidate list match."""
 
     def run(job: Job) -> RerankRecord:
         answer, usage = reranker.rerank(job.query, job.candidates)
@@ -174,25 +141,14 @@ def rerank_all(
             latency_ms=usage.latency_ms,
         )
 
-    try:
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            for record in pool.map(run, todo):
-                done[record.number] = record
-                on_done(record)
-    finally:
-        kept = stored | done
-        _save(path, sorted(kept.values(), key=lambda r: r.number))
-
-    return done, RerankReport(reranked=len(todo), cached=len(jobs) - len(todo))
-
-
-def load(path: Path) -> list[RerankRecord]:
-    """Stored records of the current version; others are skipped unvalidated."""
-    if not path.is_file():
-        return []
-    raw: list[dict[str, object]] = json.loads(path.read_bytes())
-    return [RerankRecord.model_validate(r) for r in raw if r["version"] == VERSION]
-
-
-def _save(path: Path, records: list[RerankRecord]) -> None:
-    write_atomic(path, _records_adapter.dump_json(records, indent=2))
+    return llm.cached_batch(
+        jobs,
+        path,
+        RerankRecord,
+        VERSION,
+        number=lambda j: j.query.number,
+        run=run,
+        usable=lambda j, r: r.candidates == [c.number for c in j.candidates],
+        on_done=on_done,
+        workers=workers,
+    )

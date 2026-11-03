@@ -27,7 +27,8 @@ from cofabriq.issues.triage import (
     related_docs,
     triage,
 )
-from cofabriq.issues.verdict import Answer, Candidate, Kind, Problem, Usage
+from cofabriq.issues.verdict import Answer, Candidate, Kind, Problem
+from cofabriq.llm import Usage
 from tests.test_dedupe import REPO, issue
 from tests.test_embed_store import FakeEmbedder, chunk
 

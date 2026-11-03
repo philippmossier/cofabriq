@@ -32,6 +32,7 @@ features removed on purpose.
 | `git.py` | every git call on a target repo, a clone or a worktree, without the caller's `GIT_*` variables (inside a git hook they point at the wrong repo) |
 | `files.py` | result files under `data/`: the time stamp in their names, the stamped writes of runs and evals, the newest record per key over them, the atomic write every cache and index goes through |
 | `untrusted.py` | untrusted text in prompts: issues, documents, check output and findings go in a tag they can't close early, and a quote a model gives back counts only if it is in the text it saw |
+| `llm.py` | the OpenAI side: the model, its price, one structured call behind every step (verdict, rerank, card, extraction), and the cached batch the evals run (one stored record per issue and prompt version, saved even when a call fails) |
 | `context/` | the docs layer from the project's first version: fetch, parse, chunk, embed docs into Postgres, extract decisions into Neo4j; behind the MCP tools `search`, `decisions`, `affected` |
 | `issues/` | GitHub issues in: the GraphQL source, the local store, vectors for duplicates (the text cleaned first, an optional rerank of the top 50), the triage card, the readiness check for missing info |
 | `map/` | the repo map from git history: files to components, co-change, which commit fixed which issue; behind `impact` |

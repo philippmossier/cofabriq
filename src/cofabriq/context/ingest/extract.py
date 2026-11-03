@@ -9,16 +9,16 @@ from typing import Protocol
 from openai import OpenAI
 from pydantic import BaseModel, TypeAdapter
 
+from cofabriq import llm
 from cofabriq.context.domain import Extraction, Link
 from cofabriq.context.ingest.parse import ParsedDoc
 from cofabriq.context.ingest.source import DocKind, DocRef
 from cofabriq.files import write_atomic
 from cofabriq.untrusted import fenced, quote_in
 
-MODEL = "gpt-6-luna"
 # Stored with every record. Bump the suffix when the prompt or the schema
 # changes: records of another version count as missing and are re-extracted.
-VERSION = f"{MODEL}/3"
+VERSION = f"{llm.MODEL}/3"
 CANDIDATES = 8  # similar ADRs offered as `revises` / `revisits` targets
 # Manifests are structured already: their dependencies come from the parser.
 KINDS = {DocKind.ADR, DocKind.README, DocKind.DOC}
@@ -76,16 +76,14 @@ class OpenAIExtractor:
     def extract(
         self, doc: ParsedDoc, candidates: Sequence[Candidate], projects: Sequence[str]
     ) -> Extraction:
-        response = self._client.responses.parse(
-            model=MODEL,
+        extraction, _ = llm.structured(
+            self._client,
             instructions=INSTRUCTIONS,
             input=prompt(doc, candidates, projects),
-            text_format=Extraction,
-            reasoning={"effort": "low"},
+            schema=Extraction,
+            what=f"extraction for {doc.ref.repo}/{doc.ref.path}",
         )
-        if response.output_parsed is None:
-            raise RuntimeError(f"no extraction for {doc.ref.repo}/{doc.ref.path}")
-        return response.output_parsed
+        return extraction
 
 
 _records_adapter = TypeAdapter(list[ExtractedDoc])

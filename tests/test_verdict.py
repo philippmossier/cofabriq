@@ -10,11 +10,11 @@ from cofabriq.issues.verdict import (
     Answer,
     Candidate,
     Job,
-    Usage,
     check,
     judge_all,
     prompt,
 )
+from cofabriq.llm import Usage
 from tests.test_dedupe import issue
 
 USAGE = Usage(input_tokens=1000, output_tokens=200, latency_ms=1500)
@@ -145,7 +145,9 @@ class FakeJudge:
         return answer, USAGE
 
 
-def test_judge_all_caches_by_version_and_candidates(tmp_path: Path) -> None:
+def test_a_verdict_is_reused_until_a_re_embed_changes_the_candidates(
+    tmp_path: Path,
+) -> None:
     path = tmp_path / "verdicts.json"
     third = issue(10, "Download again", "Still restarts.")
     jobs = [
@@ -154,16 +156,12 @@ def test_judge_all_caches_by_version_and_candidates(tmp_path: Path) -> None:
     ]
     judge = FakeJudge()
 
-    records, report = judge_all(jobs, path, judge, workers=2)
-    assert (report.judged, report.cached) == (2, 0)
+    records, _ = judge_all(jobs, path, judge, workers=2)
     assert records[9].target == 1 and records[9].version == VERSION
-
-    _, report = judge_all(jobs, path, judge)
-    assert (report.judged, report.cached) == (0, 2)
 
     # new candidates for #9 (a re-embed): judged again, #10 still cached
     changed = [Job(NEW, candidates()[::-1]), jobs[1]]
-    records, report = judge_all(changed, path, judge)
-    assert (report.judged, report.cached) == (1, 1)
+    records, batch = judge_all(changed, path, judge)
+    assert (batch.sent, batch.cached) == (1, 1)
     assert records[9].target == 2
     assert sorted(judge.calls) == [9, 9, 10]

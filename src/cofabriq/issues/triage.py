@@ -22,17 +22,18 @@ from typing import Literal, Protocol
 from openai import OpenAI
 from pydantic import BaseModel, Field
 
+from cofabriq import llm
 from cofabriq.context.ingest.embed import Embed
 from cofabriq.context.store import postgres
 from cofabriq.issues import readiness, rerank, vectors, verdict
 from cofabriq.issues.fetch import fetch_one, load_issue
 from cofabriq.issues.model import Issue, IssueSource
 from cofabriq.issues.readiness import Evidence, InfoItem, Readiness
-from cofabriq.issues.verdict import PRICE_IN, PRICE_OUT, Candidate, Problem, Usage
+from cofabriq.issues.verdict import Candidate, Problem
+from cofabriq.llm import Usage
 from cofabriq.targets import target_table
 from cofabriq.untrusted import fenced
 
-MODEL = verdict.MODEL
 PROMPT_VERSION = "triage-v3"
 CANDIDATE_ISSUES = 10  # vector top-k the verdict chooses from
 RELATED_ISSUES = 5
@@ -102,21 +103,13 @@ class OpenAITriager:
         self._client = OpenAI(api_key=api_key)
 
     def fields(self, issue: Issue, components: dict[str, str]) -> tuple[Fields, Usage]:
-        start = time.perf_counter()
-        response = self._client.responses.parse(
-            model=MODEL,
+        return llm.structured(
+            self._client,
             instructions=INSTRUCTIONS,
             input=prompt(issue, components),
-            text_format=Fields,
-            reasoning={"effort": "low"},
+            schema=Fields,
+            what=f"triage for #{issue.number}",
         )
-        latency_ms = round((time.perf_counter() - start) * 1000)
-        if response.output_parsed is None or response.usage is None:
-            raise RuntimeError(f"no triage for #{issue.number}")
-        usage = Usage(
-            response.usage.input_tokens, response.usage.output_tokens, latency_ms
-        )
-        return response.output_parsed, usage
 
 
 def prompt(issue: Issue, components: dict[str, str]) -> str:
@@ -392,16 +385,12 @@ def triage(
         dropped=dropped + info_dropped + record.dropped,
         conflicts=found,
         run=Run(
-            model=MODEL,
+            model=llm.MODEL,
             prompt_version=f"{PROMPT_VERSION}+verdict/{verdict.VERSION}",
-            cost_usd=_cost(f_usage) + record.cost_usd,
+            cost_usd=llm.cost(f_usage) + record.cost_usd,
             latency_ms=latency_ms,
         ),
     )
-
-
-def _cost(usage: Usage) -> float:
-    return usage.input_tokens * PRICE_IN + usage.output_tokens * PRICE_OUT
 
 
 def related_docs(hits: Sequence[tuple[str, str, str, float]]) -> list[RelatedDoc]:
