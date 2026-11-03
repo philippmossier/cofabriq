@@ -390,6 +390,11 @@ def thread_id(issue: Issue) -> str:
     return f"{issue.repo}#{issue.number}"
 
 
+def thread_config(thread: str) -> RunnableConfig:
+    """The config that points a graph call at one flow's checkpoints."""
+    return {"configurable": {"thread_id": thread}}
+
+
 class FlowStatus(BaseModel):
     """Where one flow stands, for the browser gate."""
 
@@ -404,7 +409,7 @@ class FlowStatus(BaseModel):
 def read_status(graph: CompiledStateGraph[FlowState], thread: str) -> FlowStatus | None:
     """Where a flow stands, from its newest checkpoint; None if it has none.
     A paused flow's interrupt payload is `{"gate": .., "spec" | "diff": ..}`."""
-    snap = graph.get_state(_config(thread))
+    snap = graph.get_state(thread_config(thread))
     if not snap.values:
         return None
     payloads = [i.value for t in snap.tasks for i in t.interrupts]
@@ -478,14 +483,10 @@ class FlowRunner:
         repo = thread.split("#", 1)[0]
         try:
             with compiled(self.deps_for(repo, spent), self.dsn) as graph:
-                graph.invoke(Command(resume=answer.model_dump()), _config(thread))
+                graph.invoke(Command(resume=answer.model_dump()), thread_config(thread))
         except Exception as exc:  # shown on the page; the checkpoint stays
             with self._lock:
                 self._errors[thread] = f"{type(exc).__name__}: {exc}"
         finally:
             with self._lock:
                 self._running.discard(thread)
-
-
-def _config(thread: str) -> RunnableConfig:
-    return {"configurable": {"thread_id": thread}}

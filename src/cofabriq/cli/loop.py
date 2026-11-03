@@ -12,7 +12,6 @@ import httpx
 import typer
 import uvicorn
 from fastapi import FastAPI
-from langchain_core.runnables import RunnableConfig
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command
 from rich.console import Console
@@ -260,14 +259,15 @@ def flow_start(
     refine_mod.update_clone(target, clone_dir(get_settings().clones_dir, target))
     deps, dsn = _flow_deps(target)
     thread = graph_mod.thread_id(issue)
+    config = graph_mod.thread_config(thread)
     with graph_mod.compiled(deps, dsn) as graph:
-        if graph.get_state({"configurable": {"thread_id": thread}}).values:
+        if graph.get_state(config).values:
             if not restart:
                 typer.echo(f"{thread} has a flow: `flow show`, or --restart", err=True)
                 raise typer.Exit(code=1)
             graph.checkpointer.delete_thread(thread)  # pyright: ignore[reportOptionalMemberAccess,reportAttributeAccessIssue]
         state = graph_mod.FlowState(issue=issue, route=route)
-        graph.invoke(state, {"configurable": {"thread_id": thread}})
+        graph.invoke(state, config)
         _flow_report(graph, thread)
 
 
@@ -286,7 +286,7 @@ def flow_resume(
         raise typer.Exit(code=1)
     target = check_repo(repo)
     thread = f"{target}#{number}"
-    config: RunnableConfig = {"configurable": {"thread_id": thread}}
+    config = graph_mod.thread_config(thread)
     deps, dsn = _flow_deps(target)
     with graph_mod.compiled(deps, dsn) as graph:  # read what was spent so far
         found = graph_mod.read_status(graph, thread)
