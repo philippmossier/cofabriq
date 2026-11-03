@@ -29,9 +29,10 @@ import httpx
 from pydantic import BaseModel
 
 from cofabriq.loop.refine import git_env
+from cofabriq.targets import PLAYGROUND
 
 # the repos `--apply` may write to: the demo playground only
-WRITABLE = frozenset({"philippmossier/local-ai-chat-playground"})
+WRITABLE = frozenset({PLAYGROUND})
 
 API = "https://api.github.com"
 

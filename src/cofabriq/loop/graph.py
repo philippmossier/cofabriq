@@ -66,6 +66,7 @@ from cofabriq.loop.run import (
 )
 from cofabriq.loop.sandbox import Sandbox
 from cofabriq.map import components as components_mod
+from cofabriq.targets import repo_slug
 
 type Node = Callable[["FlowState"], dict[str, object]]
 type Stage = Literal[
@@ -131,7 +132,7 @@ class Deps:
     guard: Guard | None = None  # the run budget both agents count against
 
     def worktree(self, issue: Issue) -> Path:
-        return self.work_dir / f"flow-{issue.repo.replace('/', '-')}-{issue.number}"
+        return self.work_dir / f"flow-{repo_slug(issue.repo)}-{issue.number}"
 
 
 def build_graph(deps: Deps) -> StateGraph[FlowState]:
@@ -235,7 +236,7 @@ def build_graph(deps: Deps) -> StateGraph[FlowState]:
         if s.gated is None or s.refined is None:
             return {}
         stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
-        stem = f"{s.issue.repo.replace('/', '-')}-{s.issue.number}-{stamp}"
+        stem = f"{repo_slug(s.issue.repo)}-{s.issue.number}-{stamp}"
         evidence: list[str] = []
         if s.gated.status != "blocked":  # screenshots of the final change
             evidence = collect_evidence(
@@ -373,7 +374,7 @@ def _log_rejection(deps: Deps, s: FlowState, gate: str, reason: str) -> None:
         "gate": gate,
         "reason": reason,
     }
-    path = deps.lessons_dir / f"{s.issue.repo.replace('/', '-')}-rejections.jsonl"
+    path = deps.lessons_dir / f"{repo_slug(s.issue.repo)}-rejections.jsonl"
     with path.open("a", encoding="utf-8") as out:
         out.write(json.dumps(line) + "\n")
 

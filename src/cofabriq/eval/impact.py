@@ -9,7 +9,6 @@ issue was filed.
 """
 
 import random
-import tomllib
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -22,6 +21,7 @@ from cofabriq.map.build import MAX_FILES
 from cofabriq.map.components import ComponentRules, component_of
 from cofabriq.map.fixes import Fix
 from cofabriq.map.impact import Ranked, vote
+from cofabriq.targets import target_table
 
 
 class Rules(BaseModel):
@@ -34,10 +34,7 @@ class Rules(BaseModel):
 
 
 def load_rules(targets_dir: Path, repo: str) -> Rules | None:
-    path = targets_dir / f"{repo.replace('/', '-')}.toml"
-    if not path.is_file():
-        return None
-    table = tomllib.loads(path.read_text("utf-8")).get("impact")
+    table = target_table(targets_dir, repo, "impact")
     return None if table is None else Rules.model_validate(table)
 
 

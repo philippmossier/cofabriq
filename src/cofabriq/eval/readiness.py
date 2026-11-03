@@ -11,7 +11,6 @@ the text scored is the text the maintainer reacted to.
 
 import json
 import random
-import tomllib
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -25,6 +24,7 @@ from cofabriq.issues.model import Issue
 from cofabriq.issues.readiness import InfoItem, check_info
 from cofabriq.issues.triage import PROMPT_VERSION, Fields, Triager, shown
 from cofabriq.issues.verdict import PRICE_IN, PRICE_OUT
+from cofabriq.targets import target_table
 
 
 class Rules(BaseModel):
@@ -40,10 +40,7 @@ class Rules(BaseModel):
 
 
 def load_rules(targets_dir: Path, repo: str) -> Rules | None:
-    path = targets_dir / f"{repo.replace('/', '-')}.toml"
-    if not path.is_file():
-        return None
-    table = tomllib.loads(path.read_text("utf-8")).get("readiness")
+    table = target_table(targets_dir, repo, "readiness")
     return None if table is None else Rules.model_validate(table)
 
 

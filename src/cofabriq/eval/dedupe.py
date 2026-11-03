@@ -2,7 +2,6 @@
 
 import random
 import re
-import tomllib
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -12,6 +11,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 from cofabriq.issues.model import Issue
+from cofabriq.targets import target_table
 
 type Signal = Literal["mark", "comment"]
 type Negatives = Literal["unlabelled", "closed_by_change"]
@@ -39,11 +39,7 @@ class Rules(BaseModel):
 
 
 def load_rules(targets_dir: Path, repo: str) -> Rules:
-    path = targets_dir / f"{repo.replace('/', '-')}.toml"
-    if not path.is_file():
-        return Rules()
-    table = tomllib.loads(path.read_text("utf-8")).get("dedupe", {})
-    return Rules.model_validate(table)
+    return Rules.model_validate(target_table(targets_dir, repo, "dedupe") or {})
 
 
 class Pair(BaseModel):

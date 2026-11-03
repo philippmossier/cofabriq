@@ -19,8 +19,9 @@ import time
 from pathlib import Path
 
 from cofabriq.eval.triage import load_seed
+from cofabriq.targets import PLAYGROUND
 
-REPO = "philippmossier/local-ai-chat-playground"
+REPO = PLAYGROUND
 SEED = Path(__file__).with_name("seed.toml")
 PAUSE = 2.0  # seconds between creates: distinct created_at, kinder to the API
 

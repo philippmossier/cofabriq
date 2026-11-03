@@ -22,6 +22,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from cofabriq.loop.engine import Agent, AgentRun
 from cofabriq.loop.gate import Gated
+from cofabriq.targets import repo_slug
 
 MAX_RULES = 5
 
@@ -70,7 +71,7 @@ def collect(runs_dir: Path, lessons_dir: Path, repo: str) -> list[Signal]:
     seen: set[tuple[str, str]] = set()
     raw: list[tuple[Kind, str, str, str]] = []
     paths = sorted(runs_dir.glob("gate-*.json")) + sorted(
-        runs_dir.glob(f"{repo.replace('/', '-')}-*.json")
+        runs_dir.glob(f"{repo_slug(repo)}-*.json")
     )
     for path in paths:
         for gated in _gated_in(path):
@@ -80,7 +81,7 @@ def collect(runs_dir: Path, lessons_dir: Path, repo: str) -> list[Signal]:
                 if (where, text) not in seen:
                     seen.add((where, text))
                     raw.append(("proven finding", where, text, path.name))
-    rejections = lessons_dir / f"{repo.replace('/', '-')}-rejections.jsonl"
+    rejections = lessons_dir / f"{repo_slug(repo)}-rejections.jsonl"
     if rejections.is_file():
         for line in rejections.read_text("utf-8").splitlines():
             r = json.loads(line)

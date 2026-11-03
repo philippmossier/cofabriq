@@ -13,7 +13,6 @@ the checked card: required info with verified quotes, a route, a reply draft.
 """
 
 import time
-import tomllib
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -30,6 +29,7 @@ from cofabriq.issues.fetch import fetch_one, load_issue
 from cofabriq.issues.model import Issue, IssueSource
 from cofabriq.issues.readiness import Evidence, InfoItem, Readiness
 from cofabriq.issues.verdict import PRICE_IN, PRICE_OUT, Candidate, Problem, Usage
+from cofabriq.targets import target_table
 
 MODEL = verdict.MODEL
 PROMPT_VERSION = "triage-v3"
@@ -137,12 +137,7 @@ def shown(issue: Issue) -> str:
 def load_components(targets_dir: Path, repo: str) -> dict[str, str]:
     """`<targets_dir>/<owner>-<name>.toml`, `[components]` table; empty if
     the file is missing (component is then always null)."""
-    path = targets_dir / f"{repo.replace('/', '-')}.toml"
-    if not path.is_file():
-        return {}
-    table: dict[str, object] = tomllib.loads(path.read_text("utf-8")).get(
-        "components", {}
-    )
+    table = target_table(targets_dir, repo, "components") or {}
     return {str(k): str(v) for k, v in table.items()}
 
 

@@ -26,7 +26,6 @@ import shutil
 import subprocess
 import threading
 import time
-import tomllib
 from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 from typing import Literal
@@ -36,6 +35,7 @@ from pydantic import BaseModel, ConfigDict
 from cofabriq.loop.engine import Agent, AgentError, AgentRun, Halted
 from cofabriq.loop.refine import Route, Spec, git_env
 from cofabriq.loop.sandbox import Ran, Sandbox
+from cofabriq.targets import target_table
 
 MAX_ATTEMPTS = 3
 
@@ -116,10 +116,7 @@ class Rules(BaseModel):
 
 
 def load_rules(targets_dir: Path, repo: str) -> Rules | None:
-    path = targets_dir / f"{repo.replace('/', '-')}.toml"
-    if not path.is_file():
-        return None
-    table = tomllib.loads(path.read_text("utf-8")).get("loop")
+    table = target_table(targets_dir, repo, "loop")
     return None if table is None else Rules.model_validate(table)
 
 

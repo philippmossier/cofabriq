@@ -21,7 +21,6 @@ output go in fences they can't close.
 """
 
 import re
-import tomllib
 from pathlib import Path
 from typing import Literal
 
@@ -32,6 +31,7 @@ from cofabriq.loop.refine import Route, Spec
 from cofabriq.loop.review import Finding, Review, split_diff
 from cofabriq.loop.run import Attempt, LoopResult, is_test
 from cofabriq.map.components import ComponentRules, component_of
+from cofabriq.targets import target_table
 
 type Tier = Literal["low", "medium", "high"]
 
@@ -50,11 +50,7 @@ class RiskRules(BaseModel):
 
 
 def load_risk(targets_dir: Path, repo: str) -> RiskRules:
-    path = targets_dir / f"{repo.replace('/', '-')}.toml"
-    if not path.is_file():
-        return RiskRules()
-    table = tomllib.loads(path.read_text("utf-8")).get("risk", {})
-    return RiskRules.model_validate(table)
+    return RiskRules.model_validate(target_table(targets_dir, repo, "risk") or {})
 
 
 class Touched(BaseModel):

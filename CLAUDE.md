@@ -60,6 +60,7 @@ Playground only.
 ## Layout
 
 - `src/cofabriq/config.py`: typed settings from env / `.env` (pydantic-settings)
+- `src/cofabriq/targets.py`: `target_table` (one table of `targets/<owner>-<name>.toml`; each module keeps its own model for its table), `repo_slug`, `clone_dir`, `PLAYGROUND`
 - `src/cofabriq/cli.py`: typer CLI, entry point `cofabriq`
 - `src/cofabriq/context/`: the context layer from adrscape
   - `domain.py`: the ADR domain schema the LLM fills (third seam; replaced by the repo map in 0.2)

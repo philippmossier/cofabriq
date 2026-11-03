@@ -37,6 +37,7 @@ from cofabriq.loop.intake import not_ready
 from cofabriq.loop.refine import Refined, tracked
 from cofabriq.loop.run import Attempt, CheckResult, LoopResult
 from cofabriq.serve_guard import guard
+from cofabriq.targets import clone_dir
 
 _NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 _STAMP = re.compile(r"(\d{8}T\d{6})")
@@ -440,7 +441,7 @@ def build(
 
     @cache
     def files_at(repo: str, commit: str) -> frozenset[str] | None:
-        clone = clones_dir / repo.replace("/", "-")
+        clone = clone_dir(clones_dir, repo)
         if not (clone / ".git").exists():
             return None
         try:

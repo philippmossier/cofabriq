@@ -100,6 +100,7 @@ from cofabriq.mcp_server import build as build_mcp
 from cofabriq.serve import build as build_api
 from cofabriq.serve_guard import new_token
 from cofabriq.steps import Steps
+from cofabriq.targets import PLAYGROUND, clone_dir, repo_slug
 
 app = typer.Typer(no_args_is_help=True)
 eval_app = typer.Typer(no_args_is_help=True, help="Measure retrieval and verdicts.")
@@ -243,7 +244,7 @@ def embed_issues(repo: str | None = None) -> None:
 
 
 def _evalset_path(repo: str) -> Path:
-    return EVALS_DIR / f"dedupe-{repo.replace('/', '-')}.json"
+    return EVALS_DIR / f"dedupe-{repo_slug(repo)}.json"
 
 
 @eval_app.command("dedupe-set")
@@ -339,7 +340,7 @@ def eval_dedupe(
 
 def _infoset_path(repo: str, test: bool) -> Path:
     suffix = "-test" if test else ""
-    return EVALS_DIR / f"readiness-{repo.replace('/', '-')}{suffix}.json"
+    return EVALS_DIR / f"readiness-{repo_slug(repo)}{suffix}.json"
 
 
 @eval_app.command("readiness-set")
@@ -396,7 +397,7 @@ def eval_readiness(repo: str | None = None, test: bool = False) -> None:
         for i in load_issues(settings.issues_dir, target)
         if i.number in wanted
     }
-    path = settings.readiness_dir / f"{target.replace('/', '-')}.json"
+    path = settings.readiness_dir / f"{repo_slug(target)}.json"
     triager = triage_mod.OpenAITriager(_openai_key())
     records = readiness_eval.run_fields(list(issues.values()), triager, path)
     checked = {
@@ -474,13 +475,9 @@ def map_show(
             typer.echo(f"{p.n:>6} together  {p.share:>5.0%}  {p.name}")
 
 
-def _clone(repo: str) -> Path:
-    return Path("data/clones") / repo.replace("/", "-")
-
-
 def _impact_path(repo: str, test: bool) -> Path:
     suffix = "-test" if test else ""
-    return EVALS_DIR / f"impact-{repo.replace('/', '-')}{suffix}.json"
+    return EVALS_DIR / f"impact-{repo_slug(repo)}{suffix}.json"
 
 
 @eval_app.command("impact-set")
@@ -500,7 +497,7 @@ def impact_set(
     if rules is None:
         typer.echo("needs [impact] in the target file", err=True)
         raise typer.Exit(code=1)
-    clone = _clone(target)
+    clone = clone_dir(settings.clones_dir, target)
     fixed = fixes_mod.fixes(clone, history.rev_at(clone, None), target)
     impact, pool = impact_eval.build(
         load_issues(settings.issues_dir, target),
@@ -529,7 +526,7 @@ def eval_impact(repo: str | None = None, test: bool = False) -> None:
     )
     until = impact.rules.map_until.isoformat()
     components = components_mod.load_rules(settings.targets_dir, target)
-    clone = _clone(target)
+    clone = clone_dir(settings.clones_dir, target)
     cut_rev = history.rev_at(clone, impact.rules.map_until)
     repo_map = map_build_mod.build(
         history.files_at(clone, cut_rev), history.commits(clone, cut_rev), components
@@ -643,7 +640,7 @@ def _reranked(
         )
         for r in ranked
     ]
-    path = get_settings().rerank_dir / f"{repo.replace('/', '-')}.json"
+    path = get_settings().rerank_dir / f"{repo_slug(repo)}.json"
     records, report = rerank_mod.rerank_all(
         jobs, path, rerank_mod.OpenAIReranker(_openai_key())
     )
@@ -678,7 +675,7 @@ def _verdicts(
         )
         for r in ranked
     ]
-    path = get_settings().verdicts_dir / f"{repo.replace('/', '-')}.json"
+    path = get_settings().verdicts_dir / f"{repo_slug(repo)}.json"
     judge = verdict_mod.OpenAIJudge(_openai_key())
     records, report = verdict_mod.judge_all(jobs, path, judge)
     typer.echo(f"  verdicts: {report.judged} judged, {report.cached} cached -> {path}")
@@ -984,7 +981,7 @@ def refine(number: int, repo: str | None = None, json: bool = False) -> None:
     target = _target_repo(repo)
     agent = _agent()
     steps = Steps(Console(stderr=True, soft_wrap=True))
-    clone = settings.clones_dir / target.replace("/", "-")
+    clone = clone_dir(settings.clones_dir, target)
     with steps.step("clone", f"updating {clone}") as done:
         commit = refine_mod.update_clone(target, clone)
         done(f"{clone} at {commit[:7]}")
@@ -1180,7 +1177,7 @@ def _flow_deps(target: str, spent_usd: float = 0.0) -> tuple[graph_mod.Deps, str
     if rules is None:
         typer.echo(f"no [loop] in the target file of {target}", err=True)
         raise typer.Exit(code=1)
-    clone = settings.clones_dir / target.replace("/", "-")
+    clone = clone_dir(settings.clones_dir, target)
     guard = Guard(settings.run_budget_usd, spent_usd)
     reader = Guarded(_agent(), guard)
     deps = graph_mod.Deps(
@@ -1228,7 +1225,7 @@ def _flow_report(graph: "CompiledStateGraph[graph_mod.FlowState]", thread: str) 
 @flow_app.command("start")
 def flow_start(
     number: int,
-    repo: str = "philippmossier/local-ai-chat-playground",
+    repo: str = PLAYGROUND,
     issue_type: str = typer.Option("bug", "--type"),
     restart: bool = False,
 ) -> None:
@@ -1240,9 +1237,7 @@ def flow_start(
     if issue is None:
         typer.echo(f"#{number} is not in the issue store", err=True)
         raise typer.Exit(code=1)
-    refine_mod.update_clone(
-        target, get_settings().clones_dir / target.replace("/", "-")
-    )
+    refine_mod.update_clone(target, clone_dir(get_settings().clones_dir, target))
     deps, dsn = _flow_deps(target)
     thread = graph_mod.thread_id(issue)
     with graph_mod.compiled(deps, dsn) as graph:
@@ -1259,7 +1254,7 @@ def flow_start(
 @flow_app.command("resume")
 def flow_resume(
     number: int,
-    repo: str = "philippmossier/local-ai-chat-playground",
+    repo: str = PLAYGROUND,
     approve: bool = False,
     reject: bool = False,
     reason: str = "",
@@ -1286,9 +1281,7 @@ def flow_resume(
 
 
 @flow_app.command("show")
-def flow_show(
-    number: int, repo: str = "philippmossier/local-ai-chat-playground"
-) -> None:
+def flow_show(number: int, repo: str = PLAYGROUND) -> None:
     """Where a flow stands, read from its checkpoints."""
     target = check_repo(repo)
     deps, dsn = _flow_deps(target)
@@ -1297,9 +1290,7 @@ def flow_show(
 
 
 @app.command()
-def lessons(
-    repo: str = "philippmossier/local-ai-chat-playground", propose: bool = False
-) -> None:
+def lessons(repo: str = PLAYGROUND, propose: bool = False) -> None:
     """What went wrong (findings the review gate proved, plans and tests the
     dev rejected) and, with --propose, rules for the target's CLAUDE.md that
     would have prevented it, each citing its signals: a draft in
@@ -1313,11 +1304,11 @@ def lessons(
     typer.echo(f"{len(signals)} signals for {target}")
     if not propose or not signals:
         return
-    clone = settings.clones_dir / target.replace("/", "-")
+    clone = clone_dir(settings.clones_dir, target)
     refine_mod.update_clone(target, clone)
     draft = lessons_mod.propose(target, signals, clone, Guarded(_agent(), Guard(1.0)))
     stamp = f"{datetime.now(UTC):%Y%m%dT%H%M%S}"
-    out = settings.lessons_dir / f"{target.replace('/', '-')}-{stamp}.md"
+    out = settings.lessons_dir / f"{repo_slug(target)}-{stamp}.md"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(lessons_mod.render(draft), "utf-8")
     for n, r in enumerate(draft.rules, 1):
@@ -1345,9 +1336,7 @@ def stop(clear: bool = False) -> None:
 
 
 @app.command()
-def intake(
-    numbers: list[int], repo: str = "philippmossier/local-ai-chat-playground"
-) -> None:
+def intake(numbers: list[int], repo: str = PLAYGROUND) -> None:
     """Tickets the dev filed from their own planning session, in the order
     given: done, blocked (an open blocker: GitHub's dependencies or a
     `Blocked by #N` line), waiting (a cofabriq PR is still open: one at a
@@ -1395,7 +1384,7 @@ def _route(issue_type: str) -> refine_mod.Route:
 @app.command()
 def run(
     number: int,
-    repo: str = "philippmossier/local-ai-chat-playground",
+    repo: str = PLAYGROUND,
     spec: Path | None = None,
     yes: bool = False,
     keep: bool = False,
@@ -1428,7 +1417,7 @@ def run(
     # one budget: the kill switch's run cap
     agent = Guarded(_agent(), Guard(settings.run_budget_usd))
     steps = Steps(Console(stderr=True, soft_wrap=True))
-    clone = settings.clones_dir / target.replace("/", "-")
+    clone = clone_dir(settings.clones_dir, target)
     with steps.step("clone", f"updating {clone}") as done:
         commit = refine_mod.update_clone(target, clone)
         done(f"{clone} at {commit[:7]}")
@@ -1478,9 +1467,9 @@ def run(
         question = f"Approve the plan as the answer to its {asked} open question(s)?"
     if not yes and not typer.confirm(question):
         raise typer.Exit(code=1)
-    worktree = settings.work_dir / f"{target.replace('/', '-')}-{number}"
+    worktree = settings.work_dir / f"{repo_slug(target)}-{number}"
     sandbox = Podman(image=rules.image, setup=rules.setup)
-    stem = f"{target.replace('/', '-')}-{number}-{datetime.now(UTC):%Y%m%dT%H%M%S}"
+    stem = f"{repo_slug(target)}-{number}-{datetime.now(UTC):%Y%m%dT%H%M%S}"
     test_gate = refined.route == "feature" and not yes
     loop_step = (
         _plain_step(steps, "loop")  # the test gate prompts: no spinner over it
@@ -1729,7 +1718,7 @@ def _show_loop(judged: loop_eval.Judged) -> None:
 
 @eval_app.command("refine")
 def eval_refine(
-    repo: str = "philippmossier/local-ai-chat-playground",
+    repo: str = PLAYGROUND,
     only: str | None = None,
     workers: int = 4,
     features: bool = False,
@@ -1764,7 +1753,7 @@ def eval_refine(
         s for s in triage_eval.load_seed(seed) if s.key in {b.key for b in planted}
     ]
     matched = triage_eval.match(items, load_issues(settings.issues_dir, target))
-    clone = settings.clones_dir / target.replace("/", "-")
+    clone = clone_dir(settings.clones_dir, target)
     commit = refine_mod.update_clone(target, clone)
     typer.echo(f"{target} at {commit[:7]}: {len(planted)} planted bugs, {agent.model}")
 
@@ -1852,7 +1841,7 @@ def _eval_refine_features(
             typer.echo(f"unknown feature keys: {', '.join(sorted(unknown))}", err=True)
             raise typer.Exit(code=1)
         feats = [f for f in feats if f.key in keys]
-    clone = settings.clones_dir / target.replace("/", "-")
+    clone = clone_dir(settings.clones_dir, target)
     commit = refine_mod.update_clone(target, clone)
     typer.echo(f"{target} at {commit[:7]}: {len(feats)} features, {agent.model}")
 
@@ -1904,7 +1893,7 @@ def _eval_refine_features(
 
 @eval_app.command("bug-set")
 def eval_bug_set(
-    repo: str = "philippmossier/local-ai-chat-playground",
+    repo: str = PLAYGROUND,
     only: str | None = None,
     bugs: Path = Path("playground/bugs.toml"),
     seed: Path = Path("playground/seed.toml"),
@@ -1921,7 +1910,7 @@ def eval_bug_set(
     planted = load_bugs(bugs, seed)
     if only is not None:
         planted = [b for b in planted if b.key in only.split(",")]
-    clone = settings.clones_dir / target.replace("/", "-")
+    clone = clone_dir(settings.clones_dir, target)
     commit = refine_mod.update_clone(target, clone)
     typer.echo(f"{target} at {commit[:7]}: {len(planted)} planted bugs")
     sandbox = Podman(image=rules.image, setup=rules.setup)
@@ -1952,7 +1941,7 @@ def eval_bug_set(
 
 
 @eval_app.command("sentinel")
-def eval_sentinel(repo: str = "philippmossier/local-ai-chat-playground") -> None:
+def eval_sentinel(repo: str = PLAYGROUND) -> None:
     """The sentinel's false alarms: every stored right change (a green run
     the hidden judge passed, in eval-* and features-*) checked against the
     target's invariant; a right change it flags is a false alarm. Free; the
@@ -1964,7 +1953,7 @@ def eval_sentinel(repo: str = "philippmossier/local-ai-chat-playground") -> None
     if rules is None or found is None:
         typer.echo(f"no [loop] or [sentinel] in the target file of {target}", err=True)
         raise typer.Exit(code=1)
-    clone = settings.clones_dir / target.replace("/", "-")
+    clone = clone_dir(settings.clones_dir, target)
     check = sentinel_mod.checker(
         found, sentinel_mod.policy_at(clone, "HEAD", found), rules.tests
     )
@@ -1991,7 +1980,7 @@ def eval_sentinel(repo: str = "philippmossier/local-ai-chat-playground") -> None
 
 @eval_app.command("feature-set")
 def eval_feature_set(
-    repo: str = "philippmossier/local-ai-chat-playground",
+    repo: str = PLAYGROUND,
     features: Path = Path("playground/features.toml"),
 ) -> None:
     """Prove the removed-feature set: per feature, its removal applied to
@@ -2005,7 +1994,7 @@ def eval_feature_set(
         typer.echo(f"no [loop] in the target file of {target}", err=True)
         raise typer.Exit(code=1)
     feats = features_eval.load_features(features)
-    clone = settings.clones_dir / target.replace("/", "-")
+    clone = clone_dir(settings.clones_dir, target)
     commit = refine_mod.update_clone(target, clone)
     typer.echo(f"{target} at {commit[:7]}: {len(feats)} removed features")
     sandbox = Podman(image=rules.image, setup=rules.setup)
@@ -2035,7 +2024,7 @@ def eval_feature_set(
 
 @eval_app.command("loop")
 def eval_loop(
-    repo: str = "philippmossier/local-ai-chat-playground",
+    repo: str = PLAYGROUND,
     only: str | None = None,
     workers: int = 4,
     planted: bool = False,
@@ -2093,7 +2082,7 @@ def eval_loop(
             typer.echo(f"unknown {kind} bug keys: {names}", err=True)
             raise typer.Exit(code=1)
         logic = [b for b in logic if b.key in keys]
-    clone = settings.clones_dir / target.replace("/", "-")
+    clone = clone_dir(settings.clones_dir, target)
     commit = refine_mod.update_clone(target, clone)
     specs = loop_eval.load_specs(settings.refine_dir)
     ready = [b for b in logic if b.key in specs and specs[b.key].commit == commit]
@@ -2190,7 +2179,7 @@ def _eval_loop_features(repo: str, only: str | None, workers: int, path: Path) -
             typer.echo(f"unknown feature keys: {', '.join(sorted(unknown))}", err=True)
             raise typer.Exit(code=1)
         feats = [f for f in feats if f.key in keys]
-    clone = settings.clones_dir / target.replace("/", "-")
+    clone = clone_dir(settings.clones_dir, target)
     commit = refine_mod.update_clone(target, clone)
     specs = features_eval.load_specs(settings.refine_dir)
     ready = [f for f in feats if f.key in specs and specs[f.key].commit == commit]
@@ -2263,7 +2252,7 @@ def _eval_loop_features(repo: str, only: str | None, workers: int, path: Path) -
 
 @eval_app.command("witness")
 def eval_witness(
-    repo: str = "philippmossier/local-ai-chat-playground",
+    repo: str = PLAYGROUND,
     only: str | None = None,
     workers: int = 4,
     bugs: Path = Path("playground/bugs.toml"),
@@ -2282,7 +2271,7 @@ def eval_witness(
         raise typer.Exit(code=1)
     agent = _agent().editing(budget_usd=1.0)
     by_key = {b.key: b for b in load_bugs(bugs, seed)}
-    clone = settings.clones_dir / target.replace("/", "-")
+    clone = clone_dir(settings.clones_dir, target)
     specs = loop_eval.load_specs(settings.refine_dir)
     wrong = review_eval.load_runs(settings.runs_dir, "wrong")
     todo = [
@@ -2335,7 +2324,7 @@ def eval_witness(
 
 @eval_app.command("human")
 def eval_human(
-    repo: str = "philippmossier/local-ai-chat-playground",
+    repo: str = PLAYGROUND,
     publish: bool = False,
     update_bodies: bool = False,
     shuffle: int = 0,
@@ -2420,7 +2409,7 @@ def _publish_human_set(
         raise typer.Exit(code=1)
     specs = loop_eval.load_specs(settings.refine_dir)
     titles = {s.key: s.title for s in triage_eval.load_seed(seed)}
-    clone = settings.clones_dir / target.replace("/", "-")
+    clone = clone_dir(settings.clones_dir, target)
     pulls = publish_mod.GitHubPulls(token)
     published = {(e.key, e.kind): e for e in hset.entries}
     set_path.parent.mkdir(parents=True, exist_ok=True)
@@ -2478,7 +2467,7 @@ def _publish_human_set(
 
 @eval_app.command("gate")
 def eval_gate(
-    repo: str = "philippmossier/local-ai-chat-playground",
+    repo: str = PLAYGROUND,
     only: str | None = None,
     workers: int = 4,
     bugs: Path = Path("playground/bugs.toml"),
@@ -2498,7 +2487,7 @@ def eval_gate(
     reader = _agent()
     editor = reader.editing(budget_usd=1.0)
     by_key = {b.key: b for b in load_bugs(bugs, seed)}
-    clone = settings.clones_dir / target.replace("/", "-")
+    clone = clone_dir(settings.clones_dir, target)
     specs = loop_eval.load_specs(settings.refine_dir)
     witnesses = witness_eval.load_witnesses(settings.runs_dir)
     witnessed = frozenset(k for k, w in witnesses.items() if w.confirmed)
@@ -2560,7 +2549,7 @@ def eval_gate(
 
 @eval_app.command("review")
 def eval_review(
-    repo: str = "philippmossier/local-ai-chat-playground",
+    repo: str = PLAYGROUND,
     only: str | None = None,
     workers: int = 4,
 ) -> None:
@@ -2575,7 +2564,7 @@ def eval_review(
         typer.echo(f"no [loop] in the target file of {target}", err=True)
         raise typer.Exit(code=1)
     agent = _agent()
-    clone = settings.clones_dir / target.replace("/", "-")
+    clone = clone_dir(settings.clones_dir, target)
     specs = loop_eval.load_specs(settings.refine_dir)
     todo = review_eval.cases(
         settings.runs_dir, witness_eval.load_witnessed(settings.runs_dir)
