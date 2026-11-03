@@ -1,0 +1,69 @@
+# `make check` and `make check-ui` on a clean machine, with the two databases
+# from compose.yaml as service containers. No secrets: nothing paid runs here.
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CI: "true" # tests/conftest.py: a database test fails here instead of skipping
+
+    services:
+      # the code creates the vector extension itself, so no init.sql
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: cofabriq
+          POSTGRES_PASSWORD: cofabriq
+          POSTGRES_DB: cofabriq
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U cofabriq -d cofabriq"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+      neo4j-test:
+        image: neo4j:5-community
+        env:
+          NEO4J_AUTH: neo4j/cofabriq-dev
+          NEO4J_server_memory_heap_max__size: 256m
+          NEO4J_server_memory_pagecache_size: 64m
+        ports:
+          - 7688:7687
+        options: >-
+          --health-cmd "cypher-shell -u neo4j -p cofabriq-dev 'RETURN 1'"
+          --health-interval 10s --health-timeout 5s --health-retries 12
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          version: 11
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: ui/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        working-directory: ui
+      - run: make check
+      # `make check` skips the UI when ui/ is unchanged against HEAD, always true here
+      - run: make check-ui

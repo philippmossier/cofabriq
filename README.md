@@ -1,5 +1,7 @@
 # cofabriq
 
+[![check](https://github.com/philippmossier/cofabriq/actions/workflows/check.yml/badge.svg)](https://github.com/philippmossier/cofabriq/actions/workflows/check.yml)
+
 From a GitHub issue to a reviewed draft PR, with you approving the two
 decisions that matter. A tool devs point at their repo, not a review queue.
 
