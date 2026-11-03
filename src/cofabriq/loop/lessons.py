@@ -36,7 +36,7 @@ class Signal(BaseModel):
     source: str  # the file it was read from
 
 
-def _proven(path: Path, gated: Gated) -> list[tuple[str, str]]:
+def _proven(gated: Gated) -> list[tuple[str, str]]:
     return [
         (p.finding.path, p.finding.text)
         for r in gated.rounds
@@ -76,7 +76,7 @@ def collect(runs_dir: Path, lessons_dir: Path, repo: str) -> list[Signal]:
         for gated in _gated_in(path):
             if gated.result.repo != repo:
                 continue
-            for where, text in _proven(path, gated):
+            for where, text in _proven(gated):
                 if (where, text) not in seen:
                     seen.add((where, text))
                     raw.append(("proven finding", where, text, path.name))

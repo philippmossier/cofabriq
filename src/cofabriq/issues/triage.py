@@ -278,11 +278,11 @@ def _shortlist(
     reranker: rerank.Reranker,
 ) -> list[vectors.Neighbour]:
     """The `CANDIDATE_ISSUES` best of a wide vector list, in the LLM's order."""
-    known = {h.number: h for h in hits if earlier[h.number] is not None}
-    seen = [rerank.Seen.of(i) for n in known if (i := earlier[n]) is not None]
-    order, _ = reranker.rerank(issue, seen)
-    ranked = rerank.merge(list(known), order.numbers[: rerank.KEEP])
-    return [known[n] for n in ranked[:CANDIDATE_ISSUES]]
+    shown = {h.number: i for h in hits if (i := earlier[h.number]) is not None}
+    order, _ = reranker.rerank(issue, [rerank.Seen.of(i) for i in shown.values()])
+    ranked = rerank.merge(list(shown), order.numbers[: rerank.KEEP])
+    hit = {h.number: h for h in hits}
+    return [hit[n] for n in ranked[:CANDIDATE_ISSUES]]
 
 
 def gather(

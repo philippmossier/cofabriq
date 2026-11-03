@@ -547,10 +547,12 @@ def test_planted_repro_goes_to_its_suites_folder() -> None:
 
 
 def test_test_writers_see_the_suites() -> None:
-    text = reproduce_prompt(spec("src/a.ts"), SUITES, [], 1, "")
+    text = reproduce_prompt(
+        spec("src/a.ts"), SUITES, [], 1, "", gate=SUITES.repro_checks
+    )
     assert "- *.spec.ts (pw): UI" in text
     assert "Test kinds" not in reproduce_prompt(
-        spec("src/a.ts"), AGENT_RULES, [], 1, ""
+        spec("src/a.ts"), AGENT_RULES, [], 1, "", gate=AGENT_RULES.repro_checks
     )
 
 

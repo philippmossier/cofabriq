@@ -329,12 +329,11 @@ def reproduce_prompt(
     diff: str,
     instructions: str = REPRODUCE,
     context: tuple[str, ...] = (),
-    gate: list[str] | None = None,
+    *,
+    gate: list[str],
 ) -> str:
     """The reproducer's prompt: the spec with its test ideas, then any
-    `context` (already fenced). `gate`: the checks its test must pass
-    (default: `repro_checks`)."""
-    gate = rules.repro_checks if gate is None else gate
+    `context` (already fenced). `gate`: the checks its test must pass."""
     text = instructions.format(
         tests=", ".join(rules.tests),
         checks=", ".join(gate) or "no other checks",
@@ -504,7 +503,7 @@ def reproduce(
         # 1. the agent writes; from attempt 2 it sees its diff and the errors
         current = diff(worktree, []) if n > 1 else ""
         text = reproduce_prompt(
-            spec, rules, failed, n, current, instructions, context, names
+            spec, rules, failed, n, current, instructions, context, gate=names
         )
         try:
             run = agent(text, Reproduced.model_json_schema(), worktree)

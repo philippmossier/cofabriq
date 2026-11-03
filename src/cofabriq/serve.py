@@ -18,6 +18,7 @@ folder (no paths, no `..`).
 import importlib.metadata
 import json
 import re
+import subprocess
 from datetime import UTC, datetime
 from functools import cache
 from pathlib import Path
@@ -444,7 +445,7 @@ def build(
             return None
         try:
             return frozenset(tracked(clone, commit))
-        except Exception:  # the commit isn't in the clone (any more)
+        except subprocess.CalledProcessError:  # the commit isn't in the clone
             return None
 
     def readiness(r: Refined) -> list[str] | None:

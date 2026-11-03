@@ -183,4 +183,3 @@ def test_store_keeps_fixes_and_answers_by_date(driver: Driver) -> None:
     assert store.fixed(driver, "acme/app", [8], june) == {8: ["src/vs/contrib/a"]}
     assert store.fixed_issues(driver, "acme/app", june) == [7, 8]
     assert store.rev(driver, "acme/app") == "abc"
-    assert store.cut(driver, "acme/app") is None

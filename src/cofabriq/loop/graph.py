@@ -125,10 +125,10 @@ class Deps:
     reader: Agent
     editor: Agent
     sandbox: Sandbox
+    targets_dir: Path  # risk tier and components for the PR body
+    runs_dir: Path  # where a finished flow is recorded, as `run` does
+    lessons_dir: Path  # rejections with their reason, for `lessons`
     guard: Guard | None = None  # the run budget both agents count against
-    targets_dir: Path | None = None  # risk tier and components for the PR body
-    runs_dir: Path | None = None  # where a finished flow is recorded, as `run` does
-    lessons_dir: Path | None = None  # rejections with their reason, for `lessons`
 
     def worktree(self, issue: Issue) -> Path:
         return self.work_dir / f"flow-{issue.repo.replace('/', '-')}-{issue.number}"
@@ -232,7 +232,7 @@ def build_graph(deps: Deps) -> StateGraph[FlowState]:
     def record(s: FlowState) -> dict[str, object]:
         """The finished run in data/runs, the format `cofabriq run` writes
         (result, gate, draft PR body unless blocked), so the viewer shows it."""
-        if deps.runs_dir is None or s.gated is None or s.refined is None:
+        if s.gated is None or s.refined is None:
             return {}
         stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
         stem = f"{s.issue.repo.replace('/', '-')}-{s.issue.number}-{stamp}"
@@ -251,7 +251,7 @@ def build_graph(deps: Deps) -> StateGraph[FlowState]:
             "evidence": evidence,
         }
         deps.runs_dir.mkdir(parents=True, exist_ok=True)
-        if s.gated.status != "blocked" and deps.targets_dir is not None:
+        if s.gated.status != "blocked":
             draft = pr_mod.draft(
                 issue_title=s.issue.title,
                 spec=s.refined.spec,
@@ -349,8 +349,6 @@ def compiled(deps: Deps, dsn: str) -> Generator[CompiledStateGraph[FlowState]]:
 
 
 def _sentinel(deps: Deps, repo: str, commit: str) -> sentinel_mod.Checker | None:
-    if deps.targets_dir is None:
-        return None
     found = sentinel_mod.load_sentinel(deps.targets_dir, repo)
     if found is None:
         return None
@@ -358,18 +356,13 @@ def _sentinel(deps: Deps, repo: str, commit: str) -> sentinel_mod.Checker | None
     return sentinel_mod.checker(found, policy, deps.rules.tests)
 
 
-def _answer(value: object) -> tuple[bool, str]:
-    """A gate's answer: `True`/`False`, or `{"approve": .., "reason": ..}`."""
-    if isinstance(value, dict):
-        answer: dict[str, object] = value  # pyright: ignore[reportUnknownVariableType]
-        return bool(answer.get("approve")), str(answer.get("reason", "")).strip()[:500]
-    return bool(value), ""
+def _answer(value: dict[str, object]) -> tuple[bool, str]:
+    """A gate's answer: `{"approve": .., "reason": ..}`."""
+    return bool(value.get("approve")), str(value.get("reason", "")).strip()[:500]
 
 
 def _log_rejection(deps: Deps, s: FlowState, gate: str, reason: str) -> None:
     """A rejected gate, kept for `cofabriq lessons` (one JSON line each)."""
-    if deps.lessons_dir is None:
-        return
     deps.lessons_dir.mkdir(parents=True, exist_ok=True)
     line = {
         "at": datetime.now(UTC).isoformat(timespec="seconds"),

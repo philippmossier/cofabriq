@@ -227,14 +227,6 @@ def rev(driver: Driver, repo: str) -> str | None:
     return records[0]["rev"] if records else None
 
 
-def cut(driver: Driver, repo: str) -> str | None:
-    """The date a repo's map was cut at (ISO), None for a head map or no map."""
-    records, _, _ = driver.execute_query(
-        "MATCH (r:Repo {name: $repo}) RETURN r.until AS until", repo=repo
-    )
-    return records[0]["until"] if records else None
-
-
 def _delete(driver: Driver, repo: str) -> None:
     """Batched, so a 60k-file map doesn't need one huge transaction."""
     while True:
