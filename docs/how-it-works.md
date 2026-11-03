@@ -60,8 +60,8 @@ approving the plan answers them (`--yes` with open questions stops).
 dev plans in their own session and files tickets
 ([intake](intake.md)). Intake reads each ticket's blockers (GitHub's native
 "blocked by", or a `Blocked by #N` line) and cofabriq's open draft PRs:
-done, blocked, waiting (one open PR at a time) or ready. `run` refuses a
-blocked ticket before paying for refine.
+done, blocked, waiting (one open PR at a time) or ready. `run` and
+`flow start` refuse a blocked ticket before paying for refine.
 
 **The review gate proves concerns too.** When the reviewer asks for
 changes, its concerns get a proof test like its blockers: severity is the

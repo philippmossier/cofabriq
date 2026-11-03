@@ -20,13 +20,11 @@ serializer only restores the types listed in `ALLOWED` (LangGraph's
 msgpack allow-list), so a checkpoint can't smuggle in another class.
 """
 
-import json
 import re
 import threading
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
@@ -47,6 +45,7 @@ from cofabriq.loop import gate as gate_mod
 from cofabriq.loop import refine as refine_mod
 from cofabriq.loop.engine import Agent, AgentError, Guard
 from cofabriq.loop.intake import not_ready
+from cofabriq.loop.lessons import log_rejection
 from cofabriq.loop.record import RunRecord, draft_for, sentinel_for, write_record
 from cofabriq.loop.run import (
     FEATURE,
@@ -177,7 +176,7 @@ def build_graph(deps: Deps) -> StateGraph[FlowState]:
             interrupt({"gate": "plan", "spec": s.refined.spec.model_dump()})
         )
         if not a.approve:
-            _log_rejection(deps, s, "plan", a.reason)
+            log_rejection(deps.lessons_dir, s.issue, s.route, "plan", a.reason)
         return {
             "stage": "approved" if a.approve else "rejected",
             "note": "" if a.approve else a.note("plan"),
@@ -217,7 +216,7 @@ def build_graph(deps: Deps) -> StateGraph[FlowState]:
         a = GateAnswer.model_validate(interrupt({"gate": "test", "diff": test}))
         if a.approve:
             return {}
-        _log_rejection(deps, s, "test", a.reason)
+        log_rejection(deps.lessons_dir, s.issue, s.route, "test", a.reason)
         return {"stage": "rejected", "note": a.note("test")}
 
     def build(s: FlowState) -> dict[str, object]:
@@ -367,23 +366,6 @@ def compiled(deps: Deps, dsn: str) -> Generator[CompiledStateGraph[FlowState]]:
     """The graph with its Postgres checkpointer."""
     with checkpoints(dsn) as saver:
         yield build_graph(deps).compile(checkpointer=saver)
-
-
-def _log_rejection(deps: Deps, s: FlowState, gate: str, reason: str) -> None:
-    """A rejected gate, kept for `cofabriq lessons` (one JSON line each)."""
-    deps.lessons_dir.mkdir(parents=True, exist_ok=True)
-    line = {
-        "at": datetime.now(UTC).isoformat(timespec="seconds"),
-        "repo": s.issue.repo,
-        "number": s.issue.number,
-        "title": s.issue.title,
-        "route": s.route,
-        "gate": gate,
-        "reason": reason,
-    }
-    path = deps.lessons_dir / f"{repo_slug(s.issue.repo)}-rejections.jsonl"
-    with path.open("a", encoding="utf-8") as out:
-        out.write(json.dumps(line) + "\n")
 
 
 def thread_id(issue: Issue) -> str:

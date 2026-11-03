@@ -117,11 +117,36 @@ def _plain_step(steps: Steps, name: str) -> Generator[Callable[[str], None]]:
     yield lambda detail: steps.note(name, detail)
 
 
-def _approve_test(test_diff: str) -> bool:
+def _gate_answer(question: str) -> graph_mod.GateAnswer:
+    """The dev's answer at a gate in the terminal: a no asks why (Enter
+    skips), the same reason the flow's gates keep for `lessons`."""
+    if typer.confirm(question):
+        return graph_mod.GateAnswer(approve=True)
+    reason: str = typer.prompt(
+        "Why? (optional, kept for cofabriq lessons)", default="", show_default=False
+    )
+    return graph_mod.GateAnswer(approve=False, reason=reason)
+
+
+def _approve_test(test_diff: str, issue: Issue, route: refine_mod.Route) -> bool:
     """The test gate: the frozen acceptance test, before any code."""
     typer.echo("acceptance test (frozen once approved):")
     typer.echo(test_diff)
-    return typer.confirm("Approve the test and let the agent build against it?")
+    answer = _gate_answer("Approve the test and let the agent build against it?")
+    if not answer.approve:
+        lessons_dir = get_settings().lessons_dir
+        lessons_mod.log_rejection(lessons_dir, issue, route, "test", answer.reason)
+    return answer.approve
+
+
+def _refuse_blocked(issue: Issue) -> None:
+    """A ticket with an open blocker stops here, before anything is paid."""
+    (ticket,) = intake_mod.slices([issue], _blocker_issues([issue]), [])
+    if ticket.state == "blocked":
+        typer.echo(
+            f"#{issue.number} {ticket.reason}: start it once that is merged", err=True
+        )
+        raise typer.Exit(code=1)
 
 
 def _blocker_issues(tickets: list[Issue]) -> dict[IssueRef, Issue]:
@@ -256,6 +281,7 @@ def flow_start(
     if issue is None:
         typer.echo(f"#{number} is not in the issue store", err=True)
         raise typer.Exit(code=1)
+    _refuse_blocked(issue)
     refine_mod.update_clone(target, clone_dir(get_settings().clones_dir, target))
     deps, dsn = _flow_deps(target)
     thread = graph_mod.thread_id(issue)
@@ -433,10 +459,7 @@ def run(
     if issue is None:
         typer.echo(f"#{number} is not in {settings.issues_dir}", err=True)
         raise typer.Exit(code=1)
-    (ticket,) = intake_mod.slices([issue], _blocker_issues([issue]), [])
-    if ticket.state == "blocked":  # before paying for refine
-        typer.echo(f"#{number} {ticket.reason}: start it once that is merged", err=True)
-        raise typer.Exit(code=1)
+    _refuse_blocked(issue)
     bug = planted_for(issue.title, load_bugs(bugs, seed), seed)
     if bug is not None and bug.kind == "ui" and rules.suite(bug.repro) is None:
         bug = None  # the target has no suite to run a Playwright repro
@@ -473,7 +496,11 @@ def run(
     question = "Approve the plan and let the agent edit?"
     if asked:
         question = f"Approve the plan as the answer to its {asked} open question(s)?"
-    if not yes and not typer.confirm(question):
+    answer = graph_mod.GateAnswer(approve=True) if yes else _gate_answer(question)
+    if not answer.approve:
+        lessons_mod.log_rejection(
+            settings.lessons_dir, issue, refined.route, "plan", answer.reason
+        )
         raise typer.Exit(code=1)
     worktree = settings.work_dir / f"{repo_slug(target)}-{number}"
     sandbox = Podman(image=rules.image, setup=rules.setup)
@@ -498,7 +525,11 @@ def run(
                 agent=agent.editing(budget_usd=1.0),
                 sandbox=sandbox,
                 route=refined.route,
-                approve_test=_approve_test if test_gate else None,
+                approve_test=(
+                    (lambda d: _approve_test(d, issue, refined.route))
+                    if test_gate
+                    else None
+                ),
             )
             # the review gate on the green tree, before the judge resets it:
             # review, findings proven by a test, fixed, reviewed again

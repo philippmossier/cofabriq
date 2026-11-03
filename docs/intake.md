@@ -60,8 +60,9 @@ open draft PRs (read-only) and says per ticket:
 | waiting | a cofabriq PR is still open: one at a time, so each slice builds on a merged one |
 | ready   | `cofabriq run <n> --type feature` may start                 |
 
-`run` checks the same before paying for refine, and after refine checks the
-spec in code: acceptance criteria present (features), the source files it
+`run` and `flow start` check the same before paying for refine, and after
+refine check the spec in code: acceptance criteria present (features), the
+source files it
 names exist (or are said to be new), size S or M. Anything else goes back
 to you with the reason: fix the ticket, or edit the spec and pass it with
 `--spec`. Open questions are shown at the plan gate: approving the plan

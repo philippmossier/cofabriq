@@ -20,9 +20,11 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 
+from cofabriq.issues.model import Issue
 from cofabriq.loop.engine import Agent, AgentRun
 from cofabriq.loop.gate import Gated
 from cofabriq.loop.record import RunRecord
+from cofabriq.loop.refine import Route
 from cofabriq.targets import repo_slug
 from cofabriq.untrusted import fenced
 
@@ -70,6 +72,29 @@ def _gated_in(path: Path) -> list[Gated]:
     return found
 
 
+def _rejections(lessons_dir: Path, repo: str) -> Path:
+    return lessons_dir / f"{repo_slug(repo)}-rejections.jsonl"
+
+
+def log_rejection(
+    lessons_dir: Path, issue: Issue, route: Route, gate: str, reason: str
+) -> None:
+    """A rejected gate, kept for `collect` (one JSON line each). `run` and
+    the flow both write it."""
+    lessons_dir.mkdir(parents=True, exist_ok=True)
+    line = {
+        "at": datetime.now(UTC).isoformat(timespec="seconds"),
+        "repo": issue.repo,
+        "number": issue.number,
+        "title": issue.title,
+        "route": route,
+        "gate": gate,
+        "reason": reason,
+    }
+    with _rejections(lessons_dir, issue.repo).open("a", encoding="utf-8") as out:
+        out.write(json.dumps(line) + "\n")
+
+
 def collect(runs_dir: Path, lessons_dir: Path, repo: str) -> list[Signal]:
     """Every signal for `repo`, without repeats (the same finding proven in
     several eval runs counts once)."""
@@ -86,7 +111,7 @@ def collect(runs_dir: Path, lessons_dir: Path, repo: str) -> list[Signal]:
                 if (where, text) not in seen:
                     seen.add((where, text))
                     raw.append(("proven finding", where, text, path.name))
-    rejections = lessons_dir / f"{repo_slug(repo)}-rejections.jsonl"
+    rejections = _rejections(lessons_dir, repo)
     if rejections.is_file():
         for line in rejections.read_text("utf-8").splitlines():
             r = json.loads(line)
