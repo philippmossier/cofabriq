@@ -1,7 +1,7 @@
-"""The tail both orchestrators of one run share, `cofabriq run` and the
-flow: the target's sentinel for the review gate, the draft PR, and the
-run record in data/runs (`<stem>.json`, `<stem>.pr.md` next to it) that
-the viewer and `lessons` read."""
+"""The tail of a run's graph (`loop/graph.py`, which `cofabriq run` and
+the flow both drive): the target's sentinel for the review gate, the draft
+PR, and the run record in data/runs (`<stem>.json`, `<stem>.pr.md` next to
+it) that the viewer and `lessons` read."""
 
 import json
 from pathlib import Path
@@ -18,9 +18,10 @@ from cofabriq.map import components as components_mod
 
 
 class RunRecord(BaseModel):
-    """One run as stored. `run` writes the loop's result before the gate
-    plus the judge's verdicts; the flow writes the gate's final result and
-    has no judge. Keys the writer never set stay out of the file."""
+    """One run as stored, by the graph's `record` step: the loop's result
+    before the review gate (the gate's final one is in `gate.result`), the
+    judge's verdicts only on a planted bug. Keys the writer never set stay
+    out of the file. Older flow records hold the gate's result here."""
 
     result: LoopResult
     judge: CheckResult | None = None  # the planted repro on the final tree

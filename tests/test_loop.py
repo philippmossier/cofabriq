@@ -1,5 +1,4 @@
 import json
-from collections.abc import Callable
 from pathlib import Path
 
 from cofabriq.eval.bugs import PlantedBug, load_bugs, planted_for
@@ -294,7 +293,6 @@ FEATURE_RULES = AGENT_RULES.model_copy(update={"acceptance_checks": []})
 def feature_loop(
     tmp_path: Path,
     agent: EditingAgent,
-    approve: Callable[[str], bool] | None = None,
     prepared: list[Path] | None = None,
 ) -> tuple[LoopResult, Path]:
     clone, _, commit = setup(tmp_path)
@@ -313,7 +311,6 @@ def feature_loop(
         sandbox=HostSandbox(),
         route="feature",
         prepare=None if prepared is None else prepared.append,
-        approve_test=approve,
     )
     return result, worktree
 
@@ -338,19 +335,6 @@ def test_feature_route_writes_the_acceptance_test_then_builds(tmp_path: Path) ->
     assert result.attempts[0].reverted == ["src/a.test.sh"]
     # types stay red on the frozen test: the builder can't make it pass
     assert result.status == "escalated"
-
-
-def test_the_dev_can_reject_the_acceptance_test(tmp_path: Path) -> None:
-    agent = EditingAgent(write("src/a.test.sh", REPRO))
-    seen: list[str] = []
-
-    def reject(diff: str) -> bool:
-        seen.append(diff)
-        return False
-
-    result, _ = feature_loop(tmp_path, agent, approve=reject)
-    assert result.status == "test_rejected" and result.attempts == []
-    assert "+grep -q fixed" in seen[0]
 
 
 def test_acceptance_checks_default_to_repro_checks() -> None:
