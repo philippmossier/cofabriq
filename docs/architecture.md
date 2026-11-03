@@ -49,6 +49,7 @@ features removed on purpose.
 | `refine.py` | issue -> spec (problem, files, criteria, plan, open questions, size), read-only agent |
 | `graph.py` | the run as a LangGraph graph with pauses at the plan and test gates (`cofabriq flow`) |
 | `run.py` | the stages: start (worktree, install), test (written first, must fail), build (fix attempts); write boundaries; screenshots |
+| `worktree.py` | the throwaway worktree the stages and the evals work in: what changed, files put back, local layer commits |
 | `engine.py` | the coding agent (`claude -p`, no shell), the kill switch, the run budget |
 | `sandbox.py` | the target's commands in podman, network only for the install |
 | `sentinel.py` | the target's invariant, checked in code before review |

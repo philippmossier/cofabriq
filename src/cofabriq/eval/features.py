@@ -22,15 +22,15 @@ from cofabriq.git import git
 from cofabriq.issues.model import Issue
 from cofabriq.loop.engine import Agent
 from cofabriq.loop.refine import Refined, Route, refine
-from cofabriq.loop.run import (
-    CheckResult,
-    LoopResult,
-    Rules,
-    add_worktree,
-    remove_worktree,
-    repro_command,
-)
+from cofabriq.loop.run import CheckResult, LoopResult, Rules, repro_command
 from cofabriq.loop.sandbox import Sandbox
+from cofabriq.loop.worktree import (
+    add_worktree,
+    commit_layer,
+    keep_tests_at,
+    remove_worktree,
+    reset_hard,
+)
 
 _PATCHED = re.compile(r"^\+\+\+ b/(.+)$", re.MULTILINE)
 
@@ -114,19 +114,7 @@ def remove(worktree: Path, patch: Path) -> None:
     stays local (the worktree is never pushed); its message says nothing
     about the feature, since the agent may read the worktree."""
     git(worktree, "apply", str(patch.resolve()))
-    git(worktree, "add", "-A")
-    git(
-        worktree,
-        "-c",
-        "user.name=cofabriq",
-        "-c",
-        "user.email=cofabriq@localhost",
-        "commit",
-        "-q",
-        "--no-verify",
-        "-m",
-        "eval base",
-    )
+    commit_layer(worktree, "eval base")
 
 
 def hidden_tests(
@@ -142,14 +130,7 @@ def hidden_tests(
     finally:
         for t, data in originals.items():
             (worktree / t).write_bytes(data)
-    return CheckResult(name="hidden", ok=ran.ok, seconds=ran.seconds, output=ran.output)
-
-
-def _check(name: str, cmd: str, worktree: Path, sandbox: Sandbox) -> CheckResult:
-    ran = sandbox(cmd, worktree, network=False)
-    return CheckResult(
-        name=name, ok=ran.ok, seconds=ran.seconds, output="" if ran.ok else ran.output
-    )
+    return CheckResult.of("hidden", ran, keep_output=True)
 
 
 class Proof(BaseModel):
@@ -177,13 +158,15 @@ def prove(
     between; ignored files such as node_modules survive the reset)."""
     proofs: list[Proof] = []
     for f in features:
-        git(worktree, "reset", "-q", "--hard", commit)
-        git(worktree, "clean", "-q", "-fd")
+        reset_hard(worktree, commit)
         remove(worktree, removal_path(features_file, f.key))
-        checks = [_check(c.name, c.cmd, worktree, sandbox) for c in rules.checks]
+        checks = [
+            CheckResult.of(c.name, sandbox(c.cmd, worktree, network=False))
+            for c in rules.checks
+        ]
         hidden = hidden_tests(worktree, commit, f, rules, sandbox)
         proofs.append(Proof(key=f.key, checks=checks, hidden=hidden))
-    git(worktree, "reset", "-q", "--hard", commit)
+    reset_hard(worktree, commit)
     return proofs
 
 
@@ -256,14 +239,9 @@ def on_reference(
     """The agent's acceptance test on the reference (main, the feature in):
     green = it tests the feature as it was built. Resets the worktree's
     code to `commit`, so it runs last."""
-    kept = {p: (worktree / p).read_bytes() for p in tests}
-    git(worktree, "checkout", "-qf", "--detach", commit)
-    git(worktree, "clean", "-q", "-fd")
-    for p, data in kept.items():
-        (worktree / p).parent.mkdir(parents=True, exist_ok=True)
-        (worktree / p).write_bytes(data)
+    keep_tests_at(worktree, tests, commit)
     ran = sandbox(repro_command(rules, tests), worktree, network=False)
-    return CheckResult(name="valid", ok=ran.ok, seconds=ran.seconds, output=ran.output)
+    return CheckResult.of("valid", ran, keep_output=True)
 
 
 def against_reference(

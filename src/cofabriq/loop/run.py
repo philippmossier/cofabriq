@@ -23,26 +23,27 @@ implementer can read the repro but not change it.
 
 import shlex
 import shutil
-import threading
 import time
 from collections.abc import Callable
 from pathlib import Path, PurePosixPath
-from typing import Literal
+from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict
 
-from cofabriq.git import git, tracked
 from cofabriq.loop.engine import Agent, AgentError, AgentRun, Halted
 from cofabriq.loop.refine import Route, Spec
 from cofabriq.loop.sandbox import Ran, Sandbox
+from cofabriq.loop.worktree import (
+    add_worktree,
+    changed_paths,
+    diff,
+    place_planted,
+    restore,
+)
 from cofabriq.targets import target_table
 from cofabriq.untrusted import fenced
 
 MAX_ATTEMPTS = 3
-
-# git keeps worktree bookkeeping in the clone's .git: parallel runs (eval)
-# add and remove their worktrees one at a time
-_worktrees = threading.Lock()
 
 type Status = Literal[
     "green",
@@ -142,6 +143,13 @@ class CheckResult(BaseModel):
     ok: bool
     seconds: float
     output: str  # empty when ok: back pressure is errors only
+
+    @classmethod
+    def of(cls, name: str, ran: Ran, *, keep_output: bool = False) -> Self:
+        """A sandbox run as a check, its output only when it failed;
+        `keep_output`: always (an eval's judge, read either way)."""
+        output = ran.output if keep_output or not ran.ok else ""
+        return cls(name=name, ok=ran.ok, seconds=ran.seconds, output=output)
 
 
 class Attempt(BaseModel):
@@ -335,83 +343,8 @@ def reproduce_prompt(
     return "\n\n".join([text, *note, spec_part, *context, *_later(n, diff, failed)])
 
 
-def add_worktree(clone: Path, path: Path, commit: str) -> None:
-    """A fresh detached worktree of `clone` at `commit` (an old one at the
-    same path is removed first)."""
-    remove_worktree(clone, path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with _worktrees:
-        git(clone, "worktree", "add", "-q", "--detach", str(path.resolve()), commit)
-
-
-def remove_worktree(clone: Path, path: Path) -> None:
-    with _worktrees:
-        if path.exists():
-            git(clone, "worktree", "remove", "--force", str(path.resolve()))
-        git(clone, "worktree", "prune")
-
-
-def changed_paths(worktree: Path) -> list[str]:
-    """Tracked files changed and untracked files added (ignored ones, like
-    node_modules, excluded)."""
-    out = git(worktree, "status", "--porcelain", "-z", "--untracked-files=all")
-    paths: list[str] = []
-    entries = iter(out.split("\0"))
-    for entry in entries:
-        if not entry:
-            continue
-        paths.append(entry[3:])
-        if entry[0] in "RC":  # renames carry the old path as the next entry
-            paths.append(next(entries, ""))
-    return sorted(p for p in dict.fromkeys(paths) if p)
-
-
-def restore(worktree: Path, paths: list[str], originals: dict[str, bytes]) -> None:
-    """Put protected paths back: the copied repro from its bytes, tracked
-    files from HEAD, anything else (a new file) removed."""
-    in_index = set(tracked(worktree))
-    for p in paths:
-        target = worktree / p
-        if p in originals:
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(originals[p])
-        elif p in in_index:
-            git(worktree, "checkout", "HEAD", "--", p)
-        elif target.is_dir():
-            shutil.rmtree(target)
-        else:
-            target.unlink(missing_ok=True)
-
-
 def _differs(path: Path, original: bytes) -> bool:
     return not path.is_file() or path.read_bytes() != original
-
-
-def diff(worktree: Path, exclude: list[str], base: str = "HEAD") -> str:
-    """The change against `base`, new files included, `exclude` left out."""
-    return _staged(worktree, base, exclude)
-
-
-def changed_since(worktree: Path, base: str, exclude: list[str]) -> list[str]:
-    """Paths changed against `base` (commits in the worktree included)."""
-    names = _staged(worktree, base, exclude, "--name-only")
-    return sorted(p for p in names.splitlines() if p)
-
-
-def _staged(worktree: Path, base: str, exclude: list[str], *flags: str) -> str:
-    git(worktree, "add", "-A")
-    try:
-        skip = [f":(exclude){p}" for p in exclude]
-        return git(worktree, "diff", "--cached", *flags, base, "--", ".", *skip)
-    finally:
-        git(worktree, "reset", "-q")  # the index stays as the agent left it
-
-
-def reset(worktree: Path) -> None:
-    """Back to HEAD: tracked files restored, untracked ones removed (ignored
-    ones, like node_modules, kept)."""
-    git(worktree, "checkout", "-q", "HEAD", "--", ".")
-    git(worktree, "clean", "-fdq")
 
 
 def is_test(path: str, globs: list[str]) -> bool:
@@ -444,19 +377,15 @@ def suites_note(rules: Rules) -> str:
     )
 
 
-def _result(name: str, ran: Ran) -> CheckResult:
-    return CheckResult(
-        name=name, ok=ran.ok, seconds=ran.seconds, output="" if ran.ok else ran.output
-    )
-
-
 def run_checks(
     rules: Rules, repro_cmd: str, worktree: Path, sandbox: Sandbox
 ) -> list[CheckResult]:
     """The repro first, then every check; all run, so one attempt gets all
     the errors at once."""
     named = [("repro", repro_cmd), *[(c.name, c.cmd) for c in rules.checks]]
-    return [_result(n, sandbox(cmd, worktree, network=False)) for n, cmd in named]
+    return [
+        CheckResult.of(n, sandbox(cmd, worktree, network=False)) for n, cmd in named
+    ]
 
 
 def reproduce(
@@ -511,14 +440,17 @@ def reproduce(
             red = CheckResult(name="red", ok=False, seconds=0, output=written)
         checks = [
             red,
-            *[_result(c.name, sandbox(c.cmd, worktree, network=False)) for c in gate],
+            *[
+                CheckResult.of(c.name, sandbox(c.cmd, worktree, network=False))
+                for c in gate
+            ],
         ]
         attempt = Attempt(
             n=n, summary=summary, run=run, error=error, reverted=reverted, checks=checks
         )
         attempts.append(attempt)
         if attempt.green and ran is not None:
-            return attempts, tests, _result("repro", ran)
+            return attempts, tests, CheckResult.of("repro", ran)
         failed = [c for c in checks if not c.ok]
     return attempts, [], None
 
@@ -564,17 +496,16 @@ def start_stage(
     if prepare is not None:
         prepare(worktree)
     if repro_file is not None:
-        (worktree / planted[0]).parent.mkdir(parents=True, exist_ok=True)
-        (worktree / planted[0]).write_bytes(repro_file.read_bytes())
+        place_planted(worktree, planted[0], repro_file)
     installed = sandbox(rules.install, worktree, network=True)
     p.setup_s = round(time.perf_counter() - start, 1)
     if not installed.ok:
-        p.status, p.red = "setup_failed", _result("install", installed)
+        p.status, p.red = "setup_failed", CheckResult.of("install", installed)
         return p
     stray = [path for path in changed_paths(worktree) if path not in planted]
     if stray:  # caches belong in the sandbox's volumes, not in the diff
         ran = Ran(ok=False, seconds=installed.seconds, output="\n".join(stray[:20]))
-        p.status, p.red = "setup_failed", _result("install wrote", ran)
+        p.status, p.red = "setup_failed", CheckResult.of("install wrote", ran)
     return p
 
 
@@ -605,7 +536,7 @@ def test_stage(
             p.status = "no_repro"
         return p
     ran = sandbox(repro_command(rules, p.repro), worktree, network=False)
-    p.red = _result("repro", ran)
+    p.red = CheckResult.of("repro", ran)
     if p.red.ok:
         p.status = "not_red"
     return p

@@ -35,7 +35,6 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from cofabriq.git import git
 from cofabriq.loop.engine import Agent, AgentError, AgentRun
 from cofabriq.loop.refine import Spec
 from cofabriq.loop.review import Finding, Review, review
@@ -45,19 +44,22 @@ from cofabriq.loop.run import (
     CheckResult,
     LoopResult,
     Rules,
-    changed_paths,
-    changed_since,
-    diff,
     fix,
     is_test,
     render_spec,
     repro_command,
-    reset,
-    restore,
     suites_note,
 )
 from cofabriq.loop.sandbox import Sandbox
 from cofabriq.loop.sentinel import Checker
+from cofabriq.loop.worktree import (
+    changed_paths,
+    changed_since,
+    commit_layer,
+    diff,
+    reset,
+    restore,
+)
 from cofabriq.untrusted import fenced, quote_in
 
 MAX_ROUNDS = 2  # reviews: the first, and one after fixing proven claims
@@ -164,14 +166,6 @@ def quoted(quote: str, spec: Spec) -> bool:
     return len(q) >= 10 and quote_in(q, render_spec(spec, tests=True), fold_case=True)
 
 
-def commit(worktree: Path, message: str) -> None:
-    """A layer in the throwaway worktree (never pushed): the next step's
-    write boundary is measured against it."""
-    git(worktree, "add", "-A")
-    who = ["-c", "user.name=cofabriq", "-c", "user.email=cofabriq@localhost"]
-    git(worktree, *who, "commit", "-q", "--allow-empty", "-m", message)
-
-
 def finding_text(f: Finding) -> str:
     where = f.path if f.line is None else f"{f.path}:{f.line}"
     return f"{where}: {f.text}"
@@ -221,16 +215,15 @@ def _proof_checks(
     if tests:
         ran = sandbox(repro_command(rules, tests), worktree, network=False)
         checks.append(_check("red", not ran.ok, ran.seconds, PASSES))
-        proof = CheckResult(
-            name="proof", ok=ran.ok, seconds=ran.seconds, output=ran.output
-        )
+        proof = CheckResult.of("proof", ran, keep_output=True)
     else:
         written = f"No test file written ({', '.join(rules.tests)})."
         checks.append(_check("red", False, 0, written))
     for c in rules.checks:
         if c.name in rules.repro_checks:
-            r = sandbox(c.cmd, worktree, network=False)
-            checks.append(_check(c.name, r.ok, r.seconds, r.output))
+            checks.append(
+                CheckResult.of(c.name, sandbox(c.cmd, worktree, network=False))
+            )
     return checks, proof
 
 
@@ -273,7 +266,7 @@ def prove(
         if declined:
             break
         if attempt.green and proof is not None:
-            commit(worktree, f"proof: {finding.path}")
+            commit_layer(worktree, f"proof: {finding.path}")
             return Proof(
                 finding=finding, attempts=attempts, quote=quote, tests=tests, red=proof
             )
@@ -350,7 +343,7 @@ def _review_gate(
     repro = list(result.repro)
     current = result
     rounds: list[Round] = []
-    commit(worktree, "the change")
+    commit_layer(worktree, "the change")
     for n in range(1, MAX_ROUNDS + 1):
         try:
             rv = review(
@@ -398,5 +391,5 @@ def _review_gate(
         current = _current(result, worktree, repro)
         if not attempts[-1].green:
             break
-        commit(worktree, f"fix round {n}")
+        commit_layer(worktree, f"fix round {n}")
     return Gated(status="blocked", result=current, rounds=rounds)

@@ -73,7 +73,7 @@ def test_render_spec_shows_criteria_to_the_agent() -> None:
 
 def test_on_reference_runs_the_agents_test_on_main(tmp_path: Path) -> None:
     from cofabriq.eval.features import on_reference
-    from cofabriq.loop.run import add_worktree
+    from cofabriq.loop.worktree import add_worktree
     from tests.gitrepo import git, init_repo
     from tests.test_loop import AGENT_RULES, HostSandbox
 

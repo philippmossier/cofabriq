@@ -59,13 +59,12 @@ from cofabriq.loop.run import (
     Status,
     build_stage,
     collect_evidence,
-    diff,
     pack,
-    remove_worktree,
     start_stage,
     test_stage,
 )
 from cofabriq.loop.sandbox import Sandbox
+from cofabriq.loop.worktree import diff, remove_worktree
 from cofabriq.targets import repo_slug
 
 type Node = Callable[["FlowState"], dict[str, object]]

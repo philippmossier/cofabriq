@@ -24,11 +24,11 @@ from pydantic import BaseModel, TypeAdapter
 from cofabriq.eval.loop import Judged, validate
 from cofabriq.eval.review import replay
 from cofabriq.files import newest_by_key
-from cofabriq.git import git
 from cofabriq.loop.engine import Agent
 from cofabriq.loop.refine import Spec
 from cofabriq.loop.run import Attempt, CheckResult, Rules, reproduce
 from cofabriq.loop.sandbox import Sandbox
+from cofabriq.loop.worktree import commit_layer
 from cofabriq.untrusted import fenced
 
 WITNESS = """\
@@ -87,11 +87,8 @@ def witness(
     it)."""
     result = judged.result
     replay(clone, worktree, result)
-    # a local commit in the throwaway worktree: never pushed, only so that
     # the write boundary measures the witness against the wrong fix
-    git(worktree, "add", "-A")
-    who = ["-c", "user.name=cofabriq", "-c", "user.email=cofabriq@localhost"]
-    git(worktree, *who, "commit", "-qm", "wrong fix")
+    commit_layer(worktree, "wrong fix")
     installed = sandbox(rules.install, worktree, network=True)
     if not installed.ok:
         error = f"install failed: {installed.output[-300:]}"
@@ -108,15 +105,9 @@ def witness(
     )
     if red is None:
         return Witness(attempts=attempts, tests=[], red=None, valid=None)
+    files = {p: (worktree / p).read_bytes().decode("utf-8") for p in tests}
     # back to the planted code with the witness kept, then the reference fix
-    kept = {p: (worktree / p).read_bytes() for p in tests}
-    git(worktree, "checkout", "-qf", "--detach", result.commit)
-    git(worktree, "clean", "-fdq")
-    for p, data in kept.items():
-        (worktree / p).parent.mkdir(parents=True, exist_ok=True)
-        (worktree / p).write_bytes(data)
-    valid = validate(worktree, rules, tests, patch, sandbox)
-    files = {p: data.decode("utf-8") for p, data in kept.items()}
+    valid = validate(worktree, rules, tests, patch, sandbox, base=result.commit)
     return Witness(attempts=attempts, tests=tests, red=red, valid=valid, files=files)
 
 

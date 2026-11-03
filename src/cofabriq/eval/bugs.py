@@ -12,9 +12,10 @@ from typing import Literal
 from pydantic import BaseModel, TypeAdapter
 
 from cofabriq.eval.triage import load_seed
-from cofabriq.git import git, try_git
+from cofabriq.git import try_git
 from cofabriq.loop.run import Rules, repro_command
 from cofabriq.loop.sandbox import Sandbox
+from cofabriq.loop.worktree import place_planted, reset_hard
 
 
 class PlantedBug(BaseModel):
@@ -91,16 +92,13 @@ def prove_bugs(
     between; ignored files such as node_modules survive the reset)."""
     proofs: list[BugProof] = []
     for b in bugs:
-        git(worktree, "reset", "-q", "--hard", commit)
-        git(worktree, "clean", "-q", "-fd")
+        reset_hard(worktree, commit)
         dest = rules.planted_path(b.repro)
-        (worktree / dest).parent.mkdir(parents=True, exist_ok=True)
-        (worktree / dest).write_bytes(repro_path(bugs_file, b).read_bytes())
+        place_planted(worktree, dest, repro_path(bugs_file, b))
         cmd = repro_command(rules, [dest])
         red = not sandbox(cmd, worktree, network=False).ok
         applies, _ = try_git(worktree, "apply", str(fix_path(bugs_file, b).resolve()))
         green = applies and sandbox(cmd, worktree, network=False).ok
         proofs.append(BugProof(key=b.key, applies=applies, red=red, green=green))
-    git(worktree, "reset", "-q", "--hard", commit)
-    git(worktree, "clean", "-q", "-fd")
+    reset_hard(worktree, commit)
     return proofs

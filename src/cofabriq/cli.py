@@ -79,6 +79,7 @@ from cofabriq.loop import record as record_mod
 from cofabriq.loop import refine as refine_mod
 from cofabriq.loop import run as run_mod
 from cofabriq.loop import sentinel as sentinel_mod
+from cofabriq.loop import worktree as worktree_mod
 from cofabriq.loop.engine import (
     STOP_ENV,
     AgentError,
@@ -1521,7 +1522,7 @@ def run(
                     )
         finally:
             if not keep:
-                run_mod.remove_worktree(clone, worktree)
+                worktree_mod.remove_worktree(clone, worktree)
         tries = len(result.attempts)
         done(f"{result.status}, {tries} attempts, ${result.cost_usd:.3f}")
     _show_loop(judged)
@@ -1892,14 +1893,14 @@ def eval_bug_set(
     typer.echo(f"{target} at {commit[:7]}: {len(planted)} planted bugs")
     sandbox = Podman(image=rules.image, setup=rules.setup)
     worktree = settings.work_dir / "bug-set"
-    run_mod.add_worktree(clone, worktree, commit)
+    worktree_mod.add_worktree(clone, worktree, commit)
     try:
         if not sandbox(rules.install, worktree, network=True).ok:
             typer.echo("install failed", err=True)
             raise typer.Exit(code=1)
         proofs = prove_bugs(worktree, commit, planted, bugs, rules, sandbox)
     finally:
-        run_mod.remove_worktree(clone, worktree)
+        worktree_mod.remove_worktree(clone, worktree)
     for b, p in zip(planted, proofs, strict=True):
         mark = "valid  " if p.valid else "INVALID"
         fix = (
@@ -1976,7 +1977,7 @@ def eval_feature_set(
     typer.echo(f"{target} at {commit[:7]}: {len(feats)} removed features")
     sandbox = Podman(image=rules.image, setup=rules.setup)
     worktree = settings.work_dir / "feature-set"
-    run_mod.add_worktree(clone, worktree, commit)
+    worktree_mod.add_worktree(clone, worktree, commit)
     try:
         if not sandbox(rules.install, worktree, network=True).ok:
             typer.echo("install failed", err=True)
@@ -1986,7 +1987,7 @@ def eval_feature_set(
         typer.echo(f"  hidden tests on main: {'green' if on_main.ok else 'RED'}")
         proofs = features_eval.prove(worktree, commit, feats, features, rules, sandbox)
     finally:
-        run_mod.remove_worktree(clone, worktree)
+        worktree_mod.remove_worktree(clone, worktree)
     for f, p in zip(feats, proofs, strict=True):
         failed = [c.name for c in p.checks if not c.ok]
         checks = "checks green" if not failed else f"checks red: {', '.join(failed)}"
@@ -2097,7 +2098,7 @@ def eval_loop(
                 sandbox,
             )
         finally:
-            run_mod.remove_worktree(clone, worktree)
+            worktree_mod.remove_worktree(clone, worktree)
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
         results = dict(zip([b.key for b in ready], pool.map(run, ready), strict=True))
@@ -2185,7 +2186,7 @@ def _eval_loop_features(repo: str, only: str | None, workers: int, path: Path) -
             )
             return features_eval.against_reference(result, worktree, f, rules, sandbox)
         finally:
-            run_mod.remove_worktree(clone, worktree)
+            worktree_mod.remove_worktree(clone, worktree)
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
         results = dict(zip([f.key for f in ready], pool.map(run, ready), strict=True))
@@ -2269,7 +2270,7 @@ def eval_witness(
                 patch=fix_path(bugs, by_key[key]),
             )
         finally:
-            run_mod.remove_worktree(clone, worktree)
+            worktree_mod.remove_worktree(clone, worktree)
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
         results = dict(zip(todo, pool.map(run, todo), strict=True))
@@ -2489,7 +2490,7 @@ def eval_gate(
                 witness=witnesses.get(key),
             )
         finally:
-            run_mod.remove_worktree(clone, worktree)
+            worktree_mod.remove_worktree(clone, worktree)
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
         results = list(pool.map(run, todo))

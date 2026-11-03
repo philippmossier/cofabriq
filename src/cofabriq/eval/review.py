@@ -30,7 +30,8 @@ from cofabriq.git import git
 from cofabriq.loop.engine import Agent, AgentError
 from cofabriq.loop.refine import Spec
 from cofabriq.loop.review import Review, review
-from cofabriq.loop.run import LoopResult, Rules, add_worktree, remove_worktree
+from cofabriq.loop.run import LoopResult, Rules
+from cofabriq.loop.worktree import add_worktree, remove_worktree
 
 type Kind = Literal["right", "wrong"]
 

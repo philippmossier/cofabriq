@@ -72,9 +72,7 @@ def _rerun(
         (worktree / p).parent.mkdir(parents=True, exist_ok=True)
         (worktree / p).write_text(text, "utf-8")
     ran = sandbox(repro_command(rules, list(files)), worktree, network=False)
-    return CheckResult(
-        name="witness", ok=ran.ok, seconds=ran.seconds, output=ran.output
-    )
+    return CheckResult.of("witness", ran, keep_output=True)
 
 
 def gate_case(

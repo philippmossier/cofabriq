@@ -16,15 +16,14 @@ from cofabriq.loop.run import (
     Reproduced,
     Rules,
     Suite,
-    changed_paths,
     is_test,
     load_rules,
-    remove_worktree,
     repro_command,
     reproduce_prompt,
     run_loop,
 )
 from cofabriq.loop.sandbox import Podman, Ran, run_command, tail
+from cofabriq.loop.worktree import remove_worktree
 from tests.gitrepo import git, init_repo
 from tests.test_refine import spec
 
@@ -203,16 +202,6 @@ def test_stops_when_the_repro_is_not_red(tmp_path: Path) -> None:
         sandbox=HostSandbox(),
     )
     assert result.status == "not_red" and agent.prompts == []
-
-
-def test_changed_paths_lists_new_files_not_ignored(tmp_path: Path) -> None:
-    repo = init_repo(tmp_path / "r", {"a": "1", ".gitignore": "dist\n"})
-    (repo / "a").write_text("2")
-    (repo / "new").mkdir()
-    (repo / "new" / "b").write_text("x")
-    (repo / "dist").mkdir()
-    (repo / "dist" / "c").write_text("x")
-    assert changed_paths(repo) == ["a", "new/b"]
 
 
 def test_engine_accepts_edits_only_with_edit_tools() -> None:
@@ -546,3 +535,13 @@ def test_playground_runs_logic_and_ui_suites() -> None:
         "playwright",
     ]
     assert "--retries=0" in repro_command(rules, ["e2e/repro/x.spec.ts"])
+
+
+def test_a_check_keeps_its_output_only_when_it_failed_or_is_asked_to() -> None:
+    green, red = (
+        Ran(ok=True, seconds=1, output="log"),
+        Ran(ok=False, seconds=1, output="err"),
+    )
+    assert CheckResult.of("t", green).output == ""
+    assert CheckResult.of("t", red).output == "err"
+    assert CheckResult.of("judge", green, keep_output=True).output == "log"

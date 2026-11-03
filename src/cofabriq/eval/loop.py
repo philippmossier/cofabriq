@@ -26,16 +26,11 @@ from pydantic import BaseModel, TypeAdapter
 
 from cofabriq.eval.refine import Answer
 from cofabriq.files import newest_by_key
-from cofabriq.git import git, try_git
+from cofabriq.git import try_git
 from cofabriq.loop.refine import Refined
-from cofabriq.loop.run import (
-    CheckResult,
-    LoopResult,
-    Rules,
-    repro_command,
-    reset,
-)
+from cofabriq.loop.run import CheckResult, LoopResult, Rules, repro_command
 from cofabriq.loop.sandbox import Sandbox
+from cofabriq.loop.worktree import keep_tests_at, place_planted
 
 
 def load_specs(refine_dir: Path) -> dict[str, Refined]:
@@ -56,11 +51,10 @@ def judge(worktree: Path, rules: Rules, planted: Path, sandbox: Sandbox) -> Chec
     """The hidden planted repro on the tree the loop left: does the fix fix
     the bug the issue is about, not only the agent's test?"""
     dest = rules.planted_path(planted.name)
-    (worktree / dest).parent.mkdir(parents=True, exist_ok=True)
-    (worktree / dest).write_bytes(planted.read_bytes())
+    place_planted(worktree, dest, planted)
     ran = sandbox(repro_command(rules, [dest]), worktree, network=False)
     (worktree / dest).unlink()
-    return CheckResult(name="judge", ok=ran.ok, seconds=ran.seconds, output=ran.output)
+    return CheckResult.of("judge", ran, keep_output=True)
 
 
 def validate(
@@ -76,19 +70,13 @@ def validate(
     worktree's code, so it runs last. `base`: the planted code's commit,
     when the worktree has commits on top (the review gate's layers)."""
     # 1. keep the agent's test, drop everything else it or the fix changed
-    tests = {p: (worktree / p).read_bytes() for p in repro}
-    if base is not None:
-        git(worktree, "checkout", "-qf", "--detach", base)
-    reset(worktree)
-    for p, data in tests.items():
-        (worktree / p).parent.mkdir(parents=True, exist_ok=True)
-        (worktree / p).write_bytes(data)
+    keep_tests_at(worktree, repro, base)
     # 2. the reference fix on top, then the agent's test
     applied, err = try_git(worktree, "apply", str(patch.resolve()))
     if not applied:
         return CheckResult(name="valid", ok=False, seconds=0, output=err)
     ran = sandbox(repro_command(rules, repro), worktree, network=False)
-    return CheckResult(name="valid", ok=ran.ok, seconds=ran.seconds, output=ran.output)
+    return CheckResult.of("valid", ran, keep_output=True)
 
 
 def against_key(
