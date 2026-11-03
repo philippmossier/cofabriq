@@ -755,7 +755,7 @@ def eval_loop(
     feature_set: Path = Path("playground/features.toml"),
 ) -> None:
     """The core loop on the planted bugs (`--kind logic|ui|all`, logic by
-    default; a UI bug needs a Playwright suite in `[[loop.suites]]`): the
+    default; a UI bug needs a Playwright suite in `[\\[loop.suites]]`): the
     agent writes the repro
     (red rate, valid against the reference fix), then fixes; resolved = the
     hidden planted repro and every check green. Also first try, fix in the
