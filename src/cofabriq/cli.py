@@ -107,7 +107,6 @@ app.add_typer(eval_app, name="eval")
 map_app = typer.Typer(no_args_is_help=True, help="The repo map: components, co-change.")
 app.add_typer(map_app, name="map")
 EVALS_DIR = Path("evals")
-CANDIDATE_ISSUES = 10  # vector top-k the verdict chooses from
 
 
 @app.callback()
@@ -284,7 +283,7 @@ def eval_dedupe(
     target = _target_repo(repo)
     evalset = dedupe.EvalSet.model_validate_json(_evalset_path(target).read_bytes())
     issues = {i.number: i for i in load_issues(settings.issues_dir, target)}
-    depth = rerank_mod.WIDE if rerank else CANDIDATE_ISSUES
+    depth = rerank_mod.WIDE if rerank else triage_mod.CANDIDATE_ISSUES
     with postgres.connect(settings.postgres_dsn) as conn:
 
         def rank(number: int) -> list[tuple[int, float]]:
@@ -299,7 +298,7 @@ def eval_dedupe(
     )
     reranked = _reranked(target, ranked, issues) if rerank else None
     shortlist = [
-        replace(r, candidates=r.candidates[:CANDIDATE_ISSUES])
+        replace(r, candidates=r.candidates[: triage_mod.CANDIDATE_ISSUES])
         for r in (reranked or ranked)
     ]
     records = _verdicts(target, shortlist, issues) if verdict else None
@@ -561,7 +560,7 @@ def eval_impact(repo: str | None = None, test: bool = False) -> None:
             known = [n for n, at in first_fix.items() if at < filed]
             for name, among in [("kNN", None), ("kNN fixed", known)]:
                 hits = vectors.nearest(
-                    conn, target, issue.number, impact_eval.NEIGHBOURS, filed, among
+                    conn, target, issue.number, impact_mod.NEIGHBOURS, filed, among
                 )
                 ranked = impact_eval.knn(
                     [(h.number, h.score) for h in hits], filed, fixed, components
@@ -871,9 +870,6 @@ def _render_card(out: Console, card: triage_mod.TriageCard) -> None:
     flush()
 
 
-NEIGHBOURS = 30  # earlier fixed issues voting in `impact`, as measured
-
-
 def _impact_fn(
     conn: postgres.Conn, driver: Driver, embed: Embed
 ) -> Callable[[str, int | None, str | None, int], impact_mod.Impact]:
@@ -895,12 +891,14 @@ def _impact_fn(
                 )
             before = issue.created_at
             among = map_store.fixed_issues(driver, repo, before)
-            hits = vectors.nearest(conn, repo, number, NEIGHBOURS, before, among)
+            hits = vectors.nearest(
+                conn, repo, number, impact_mod.NEIGHBOURS, before, among
+            )
         elif plan is not None:
             before = None
             among = map_store.fixed_issues(driver, repo, None)
             [vector] = embed([plan[: vectors.MAX_BODY]])
-            hits = vectors.nearest_to(conn, repo, vector, NEIGHBOURS, among)
+            hits = vectors.nearest_to(conn, repo, vector, impact_mod.NEIGHBOURS, among)
         else:
             raise ValueError("an issue number or a plan")
         neighbours = [(h.number, h.score) for h in hits]

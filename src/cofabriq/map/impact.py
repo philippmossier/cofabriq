@@ -12,6 +12,7 @@ from collections.abc import Callable, Mapping, Sequence
 
 from pydantic import BaseModel
 
+NEIGHBOURS = 30  # earlier fixed issues that vote (kNN), as measured
 SPREAD = 3  # top components whose co-change partners are added
 
 type Ranked = list[tuple[str, float]]  # component, score; best first

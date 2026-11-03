@@ -33,7 +33,6 @@ from cofabriq.issues.verdict import PRICE_IN, PRICE_OUT, Candidate, Problem, Usa
 
 MODEL = verdict.MODEL
 PROMPT_VERSION = "triage-v3"
-QUERY_BODY = 6000  # characters, as embedded and judged
 CANDIDATE_ISSUES = 10  # vector top-k the verdict chooses from
 RELATED_ISSUES = 5
 RELATED_CHUNKS = 8  # chunks searched, folded into documents
@@ -132,7 +131,7 @@ def prompt(issue: Issue, components: dict[str, str]) -> str:
 
 def shown(issue: Issue) -> str:
     """The issue text the card call sees; quotes are checked against it."""
-    return f"{issue.title}\n\n{issue.body[:QUERY_BODY]}"
+    return f"{issue.title}\n\n{issue.body[: verdict.QUERY_BODY]}"
 
 
 def load_components(targets_dir: Path, repo: str) -> dict[str, str]:

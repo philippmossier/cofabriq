@@ -28,7 +28,11 @@ MODEL = "gpt-6-luna"
 VERSION = f"{MODEL}/2"
 PRICE_IN = 0.10 / 1_000_000  # USD per token
 PRICE_OUT = 0.50 / 1_000_000  # reasoning tokens are billed as output
-QUERY_BODY = 6000  # characters, as embedded
+# Characters of the query issue's body an LLM call reads: the verdict and
+# the triage card cut the raw body, the rerank the cleaned one (like the
+# embedding, which cuts at `vectors.MAX_BODY`). Raw vs cleaned for the
+# verdict and the card is an open eval question.
+QUERY_BODY = 6000
 CANDIDATE_BODY = 1500
 CANDIDATE_COMMENTS = 3
 WORKERS = 8

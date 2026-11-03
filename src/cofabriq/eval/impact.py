@@ -23,8 +23,6 @@ from cofabriq.map.components import ComponentRules, component_of
 from cofabriq.map.fixes import Fix
 from cofabriq.map.impact import Ranked, vote
 
-NEIGHBOURS = 30  # earlier issues looked at by kNN
-
 
 class Rules(BaseModel):
     """`[impact]` in `targets/<owner>-<name>.toml`, fixed before scoring."""
