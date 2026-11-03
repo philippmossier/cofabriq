@@ -1,6 +1,8 @@
+import os
 import uuid
 from collections.abc import Iterator
 from pathlib import Path
+from typing import NoReturn
 
 import psycopg
 import pytest
@@ -11,6 +13,14 @@ from psycopg import sql
 from cofabriq.config import get_settings
 from cofabriq.context.store import graph, postgres
 from tests.gitrepo import init_repo
+
+
+def unreachable(service: str) -> NoReturn:
+    """Skip a database test locally, fail it in CI (`CI` set): a green CI
+    run must have run them."""
+    if os.environ.get("CI"):
+        pytest.fail(f"{service} not reachable in CI (service container down?)")
+    pytest.skip(f"{service} not reachable (make up)")
 
 
 @pytest.fixture
@@ -34,7 +44,7 @@ def conn() -> Iterator[postgres.Conn]:
     try:
         admin = psycopg.connect(dsn, connect_timeout=2, autocommit=True)
     except psycopg.OperationalError:
-        pytest.skip("Postgres not reachable (make up)")
+        unreachable("Postgres")
     with admin:
         admin.execute(sql.SQL("CREATE SCHEMA {}").format(ident))
         scoped = f"{dsn}?options=-csearch_path%3D{schema},public"
@@ -56,7 +66,7 @@ def driver() -> Iterator[Driver]:
     try:
         d = graph.connect(TEST_URI, settings.neo4j_user, password)
     except ServiceUnavailable:
-        pytest.skip("Neo4j test instance not reachable (make up)")
+        unreachable("Neo4j test instance")
     with d:
         d.execute_query("MATCH (n) DETACH DELETE n")
         yield d

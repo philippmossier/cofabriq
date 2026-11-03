@@ -21,7 +21,7 @@ Playground only.
 
 - `make setup`: install deps (`uv sync`), create `.env` from `.env.example`, enable the git hook in `.githooks/` (`make check` before every commit on `main`)
 - `make up` / `make down`: start / stop Postgres+pgvector and Neo4j (podman compose)
-- `make check`: ruff lint, ruff format check, pyright (strict), pytest. Must be green before any commit.
+- `make check`: ruff lint, ruff format check, pyright (strict), pytest. Must be green before any commit. CI (`.github/workflows/check.yml`) runs it and `make check-ui` on every push to `main` and every PR, the two databases as service containers; there a database test fails instead of skipping (`CI` set)
 - `make fmt`: autofix lint and format
 - `uv run cofabriq health`: connectivity check for all three services
 - `uv run cofabriq fetch <repo>...` / `embed` / `search "..."`: ingest local clones into `data/raw/`, embed into pgvector (needs `OPENAI_API_KEY`), query
