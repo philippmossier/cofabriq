@@ -36,6 +36,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from cofabriq.git import git
 from cofabriq.loop.engine import Agent, AgentError, AgentRun
 from cofabriq.loop.refine import Spec
 from cofabriq.loop.review import Finding, Review, review
@@ -50,7 +51,6 @@ from cofabriq.loop.run import (
     diff,
     fenced,
     fix,
-    git,
     is_test,
     render_spec,
     repro_command,

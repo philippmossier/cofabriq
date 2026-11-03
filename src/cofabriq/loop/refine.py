@@ -12,13 +12,12 @@ feature (find where it goes, and write acceptance criteria, each checkable
 by one test: the contract the acceptance test is written from, 0.3).
 """
 
-import os
-import subprocess
 from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from cofabriq.git import files_at, git
 from cofabriq.issues.model import Issue
 from cofabriq.loop.engine import Agent, AgentRun
 
@@ -139,33 +138,8 @@ def _unfenced(text: str) -> str:
     return text.replace("</issue", "</ issue")
 
 
-def git_env() -> dict[str, str]:
-    """The environment for git on a target repo: without the caller's
-    `GIT_*` variables. Inside a git hook (cofabriq's own pre-commit runs the
-    tests) `GIT_INDEX_FILE` and friends would point git at the wrong repo."""
-    return {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
-
-
-def tracked(clone: Path, commit: str) -> set[str]:
-    out = subprocess.run(
-        ["git", "-C", str(clone), "ls-tree", "-r", "--name-only", commit],
-        capture_output=True,
-        text=True,
-        check=True,
-        env=git_env(),
-    )
-    return set(out.stdout.splitlines())
-
-
 def head(clone: Path) -> str:
-    out = subprocess.run(
-        ["git", "-C", str(clone), "rev-parse", "HEAD"],
-        capture_output=True,
-        text=True,
-        check=True,
-        env=git_env(),
-    )
-    return out.stdout.strip()
+    return git(clone, "rev-parse", "HEAD").strip()
 
 
 def normalized(path: str) -> str:
@@ -208,7 +182,7 @@ def refine(issue: Issue, clone: Path, agent: Agent, route: Route = "bug") -> Ref
         commit=commit,
         route=route,
         spec=spec,
-        unknown_paths=unknown_paths(spec, tracked(clone, commit)),
+        unknown_paths=unknown_paths(spec, set(files_at(clone, commit))),
         run=run,
     )
 
@@ -219,14 +193,8 @@ def update_clone(repo: str, clone: Path) -> str:
     cache, nothing is ever committed in it). Returns the commit."""
     if not (clone / ".git").is_dir():
         clone.parent.mkdir(parents=True, exist_ok=True)
-        _git(Path.cwd(), "clone", "-q", f"https://github.com/{repo}", str(clone))
+        git(Path.cwd(), "clone", "-q", f"https://github.com/{repo}", str(clone))
     else:
-        _git(clone, "fetch", "-q", "origin", "HEAD")
-        _git(clone, "checkout", "-q", "--detach", "FETCH_HEAD")
+        git(clone, "fetch", "-q", "origin", "HEAD")
+        git(clone, "checkout", "-q", "--detach", "FETCH_HEAD")
     return head(clone)
-
-
-def _git(cwd: Path, *args: str) -> None:
-    subprocess.run(
-        ["git", "-C", str(cwd), *args], capture_output=True, check=True, env=git_env()
-    )

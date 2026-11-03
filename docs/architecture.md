@@ -29,6 +29,7 @@ features removed on purpose.
 | `cli.py` | every command (`triage`, `refine`, `run`, `flow`, `intake`, `serve`, `lessons`, `stop`, `eval ...`) |
 | `config.py` | settings from `.env` |
 | `targets.py` | the per-repo target file (`targets/<owner>-<name>.toml`, one table per concern), the repo slug and the clone folder, the playground's name |
+| `git.py` | every git call on a target repo, a clone or a worktree, without the caller's `GIT_*` variables (inside a git hook they point at the wrong repo) |
 | `context/` | the docs layer from the project's first version: fetch, parse, chunk, embed docs into Postgres, extract decisions into Neo4j; behind the MCP tools `search`, `decisions`, `affected` |
 | `issues/` | GitHub issues in: the GraphQL source, the local store, vectors for duplicates (the text cleaned first, an optional rerank of the top 50), the triage card, the readiness check for missing info |
 | `map/` | the repo map from git history: files to components, co-change, which commit fixed which issue; behind `impact` |

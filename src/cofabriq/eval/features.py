@@ -10,7 +10,6 @@ one into the `Issue` the loop takes.
 
 import json
 import re
-import subprocess
 import tomllib
 from datetime import UTC, datetime
 from pathlib import Path
@@ -19,9 +18,10 @@ from typing import Literal
 from pydantic import BaseModel, TypeAdapter
 
 from cofabriq.eval.loop import Judged
+from cofabriq.git import git
 from cofabriq.issues.model import Issue
 from cofabriq.loop.engine import Agent
-from cofabriq.loop.refine import Refined, Route, git_env, refine
+from cofabriq.loop.refine import Refined, Route, refine
 from cofabriq.loop.run import (
     CheckResult,
     LoopResult,
@@ -108,24 +108,14 @@ def ticket(feature: Feature, repo: str) -> Issue:
     )
 
 
-def _git(worktree: Path, *args: str) -> str:
-    return subprocess.run(
-        ["git", "-C", str(worktree), *args],
-        capture_output=True,
-        text=True,
-        check=True,
-        env=git_env(),
-    ).stdout
-
-
 def remove(worktree: Path, patch: Path) -> None:
     """Applies the removal and commits it in the (detached) worktree, so
     every later diff against HEAD shows only the agent's work. The commit
     stays local (the worktree is never pushed); its message says nothing
     about the feature, since the agent may read the worktree."""
-    _git(worktree, "apply", str(patch.resolve()))
-    _git(worktree, "add", "-A")
-    _git(
+    git(worktree, "apply", str(patch.resolve()))
+    git(worktree, "add", "-A")
+    git(
         worktree,
         "-c",
         "user.name=cofabriq",
@@ -147,7 +137,7 @@ def hidden_tests(
     originals = {t: (worktree / t).read_bytes() for t in feature.tests}
     try:
         for t in feature.tests:
-            (worktree / t).write_text(_git(worktree, "show", f"{commit}:{t}"), "utf-8")
+            (worktree / t).write_text(git(worktree, "show", f"{commit}:{t}"), "utf-8")
         ran = sandbox(repro_command(rules, feature.tests), worktree, network=False)
     finally:
         for t, data in originals.items():
@@ -187,13 +177,13 @@ def prove(
     between; ignored files such as node_modules survive the reset)."""
     proofs: list[Proof] = []
     for f in features:
-        _git(worktree, "reset", "-q", "--hard", commit)
-        _git(worktree, "clean", "-q", "-fd")
+        git(worktree, "reset", "-q", "--hard", commit)
+        git(worktree, "clean", "-q", "-fd")
         remove(worktree, removal_path(features_file, f.key))
         checks = [_check(c.name, c.cmd, worktree, sandbox) for c in rules.checks]
         hidden = hidden_tests(worktree, commit, f, rules, sandbox)
         proofs.append(Proof(key=f.key, checks=checks, hidden=hidden))
-    _git(worktree, "reset", "-q", "--hard", commit)
+    git(worktree, "reset", "-q", "--hard", commit)
     return proofs
 
 
@@ -273,8 +263,8 @@ def on_reference(
     green = it tests the feature as it was built. Resets the worktree's
     code to `commit`, so it runs last."""
     kept = {p: (worktree / p).read_bytes() for p in tests}
-    _git(worktree, "checkout", "-qf", "--detach", commit)
-    _git(worktree, "clean", "-q", "-fd")
+    git(worktree, "checkout", "-qf", "--detach", commit)
+    git(worktree, "clean", "-q", "-fd")
     for p, data in kept.items():
         (worktree / p).parent.mkdir(parents=True, exist_ok=True)
         (worktree / p).write_bytes(data)

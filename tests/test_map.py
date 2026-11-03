@@ -6,11 +6,12 @@ from pathlib import Path
 import pytest
 from neo4j import Driver
 
+from cofabriq.git import files_at
 from cofabriq.map import store
 from cofabriq.map.build import MAX_FILES, build
 from cofabriq.map.components import ROOT, ComponentRules, component_of, load_rules
 from cofabriq.map.fixes import Fix
-from cofabriq.map.history import Commit, commits, files_at, rev_at
+from cofabriq.map.history import Commit, commits, rev_at
 from tests.gitrepo import init_repo
 
 AT = datetime(2022, 1, 1, tzinfo=UTC)

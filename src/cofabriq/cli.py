@@ -60,6 +60,7 @@ from cofabriq.eval.bugs import (
     prove_bugs,
     repro_path,
 )
+from cofabriq.git import files_at
 from cofabriq.issues import rerank as rerank_mod
 from cofabriq.issues import triage as triage_mod
 from cofabriq.issues import vectors
@@ -443,9 +444,7 @@ def map_build(clone: Path, repo: str | None = None, until: str | None = None) ->
     day = date.fromisoformat(until) if until else None
     rules = components_mod.load_rules(get_settings().targets_dir, target)
     rev = history.rev_at(clone, day)
-    m = map_build_mod.build(
-        history.files_at(clone, rev), history.commits(clone, rev), rules
-    )
+    m = map_build_mod.build(files_at(clone, rev), history.commits(clone, rev), rules)
     fixed = fixes_mod.fixes(clone, rev, target)
     rows = map_store.fix_rows(fixed, rules, set(m.files.values()))
     with _graph() as driver:
@@ -529,7 +528,7 @@ def eval_impact(repo: str | None = None, test: bool = False) -> None:
     clone = clone_dir(settings.clones_dir, target)
     cut_rev = history.rev_at(clone, impact.rules.map_until)
     repo_map = map_build_mod.build(
-        history.files_at(clone, cut_rev), history.commits(clone, cut_rev), components
+        files_at(clone, cut_rev), history.commits(clone, cut_rev), components
     )
     popular = repo_map.popular()
     fixed = fixes_mod.fixes(clone, history.rev_at(clone, None), target)
@@ -1454,7 +1453,7 @@ def run(
             r = refined.run
             done(f"{r.turns} turns, {r.latency_ms / 1000:.0f} s, ${r.cost_usd:.3f}")
     _show_spec(refined)
-    reasons = intake_mod.not_ready(refined, refine_mod.tracked(clone, refined.commit))
+    reasons = intake_mod.not_ready(refined, set(files_at(clone, refined.commit)))
     if reasons:  # back to the dev: edit the spec (--spec) or the ticket
         typer.echo(f"not ready for the loop: {'; '.join(reasons)}", err=True)
         raise typer.Exit(code=1)

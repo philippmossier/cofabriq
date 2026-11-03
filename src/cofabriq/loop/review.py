@@ -13,14 +13,14 @@ refine's are.
 """
 
 import re
-import subprocess
 from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from cofabriq.git import tracked
 from cofabriq.loop.engine import Agent, AgentRun
-from cofabriq.loop.refine import Spec, git_env
+from cofabriq.loop.refine import Spec
 from cofabriq.loop.run import LoopResult, Rules, fenced, render_spec
 
 type Severity = Literal["blocker", "concern", "nit"]
@@ -132,19 +132,8 @@ def review(
     """One read-only reviewer run on the worktree a green loop left."""
     run = agent(prompt(spec, rules, result), Reviewed.model_json_schema(), worktree)
     reviewed = Reviewed.model_validate(run.output)
-    files = set(_tracked(worktree)) | set(result.changed)
+    files = set(tracked(worktree)) | set(result.changed)
     unknown = sorted({f.path for f in reviewed.findings} - files)
     return Review(
         reviewed=reviewed, approved=approves(reviewed), unknown_paths=unknown, run=run
     )
-
-
-def _tracked(worktree: Path) -> list[str]:
-    out = subprocess.run(
-        ["git", "-C", str(worktree), "ls-files", "-z"],
-        capture_output=True,
-        text=True,
-        check=True,
-        env=git_env(),
-    ).stdout
-    return [p for p in out.split("\0") if p]

@@ -26,10 +26,11 @@ from pydantic import BaseModel
 from cofabriq.eval.loop import Judged, judge, validate
 from cofabriq.eval.review import Kind, replay
 from cofabriq.eval.witness import Witness
+from cofabriq.git import git
 from cofabriq.loop.engine import Agent
 from cofabriq.loop.gate import Gated, review_gate
 from cofabriq.loop.refine import Spec
-from cofabriq.loop.run import CheckResult, Rules, git, repro_command
+from cofabriq.loop.run import CheckResult, Rules, repro_command
 from cofabriq.loop.sandbox import Sandbox
 
 type Outcome = Literal["published", "false_block", "blocked", "fixed", "leaked"]

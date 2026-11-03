@@ -40,6 +40,7 @@ from langgraph.types import Command, interrupt
 from psycopg.rows import DictRow, dict_row
 from pydantic import BaseModel
 
+from cofabriq.git import files_at
 from cofabriq.issues.model import Issue
 from cofabriq.loop import gate as gate_mod
 from cofabriq.loop import pr as pr_mod
@@ -142,7 +143,7 @@ def build_graph(deps: Deps) -> StateGraph[FlowState]:
         except (AgentError, refine_mod.NoCriteria) as exc:  # back to the dev
             return {"stage": "failed", "note": f"not ready: {exc}"}
         # the readiness check `run` does: back to the dev before any gate
-        reasons = not_ready(refined, refine_mod.tracked(deps.clone, refined.commit))
+        reasons = not_ready(refined, set(files_at(deps.clone, refined.commit)))
         if reasons:
             note = f"not ready: {'; '.join(reasons)}"
             return {"refined": refined, "stage": "failed", "note": note}

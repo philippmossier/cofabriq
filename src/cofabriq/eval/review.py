@@ -19,7 +19,6 @@ prompt costs reviewer runs only.
 """
 
 import json
-import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -27,8 +26,9 @@ from typing import Literal
 from pydantic import BaseModel, TypeAdapter
 
 from cofabriq.eval.loop import Judged
+from cofabriq.git import git
 from cofabriq.loop.engine import Agent, AgentError
-from cofabriq.loop.refine import Spec, git_env
+from cofabriq.loop.refine import Spec
 from cofabriq.loop.review import Review, review
 from cofabriq.loop.run import LoopResult, Rules, add_worktree, remove_worktree
 
@@ -109,14 +109,7 @@ def cases(
 def replay(clone: Path, worktree: Path, result: LoopResult) -> None:
     """A worktree at the run's commit with its diff applied."""
     add_worktree(clone, worktree, result.commit)
-    subprocess.run(
-        ["git", "-C", str(worktree), "apply", "-"],
-        input=result.diff,
-        text=True,
-        capture_output=True,
-        check=True,
-        env=git_env(),
-    )
+    git(worktree, "apply", "-", input=result.diff)
 
 
 class Case(BaseModel):

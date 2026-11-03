@@ -2,8 +2,6 @@ import json
 from collections.abc import Callable
 from pathlib import Path
 
-import pytest
-
 from cofabriq.eval.bugs import PlantedBug, load_bugs, planted_for
 from cofabriq.eval.loop import Judged, against_key, load_specs, score_bug, summarize
 from cofabriq.eval.triage import load_seed
@@ -361,15 +359,6 @@ def test_load_specs_newest_file_wins(tmp_path: Path) -> None:
     newer.write_text(json.dumps({"a": refined("new")}))
     specs = load_specs(tmp_path)
     assert specs["a"].commit == "new" and specs["b"].commit == "old"
-
-
-def test_git_ignores_the_callers_git_environment(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # as inside cofabriq's own pre-commit hook
-    monkeypatch.setenv("GIT_INDEX_FILE", ".git/index")
-    result, _, _ = loop(tmp_path, EditingAgent(write("src/a.ts", "fixed\n")))
-    assert result.status == "green"
 
 
 def test_agent_writes_the_repro_then_fixes_against_it(tmp_path: Path) -> None:

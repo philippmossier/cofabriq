@@ -29,12 +29,13 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
+from cofabriq import git as git_mod
 from cofabriq.eval.loop import Judged
 from cofabriq.issues.model import check_repo
 from cofabriq.loop.gate import Gated
 from cofabriq.loop.graph import FlowRunner, FlowStatus
 from cofabriq.loop.intake import not_ready
-from cofabriq.loop.refine import Refined, tracked
+from cofabriq.loop.refine import Refined
 from cofabriq.loop.run import Attempt, CheckResult, LoopResult
 from cofabriq.serve_guard import guard
 from cofabriq.targets import clone_dir
@@ -445,7 +446,7 @@ def build(
         if not (clone / ".git").exists():
             return None
         try:
-            return frozenset(tracked(clone, commit))
+            return frozenset(git_mod.files_at(clone, commit))
         except subprocess.CalledProcessError:  # the commit isn't in the clone
             return None
 

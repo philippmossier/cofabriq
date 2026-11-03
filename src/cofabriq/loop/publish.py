@@ -28,7 +28,7 @@ from pathlib import Path
 import httpx
 from pydantic import BaseModel
 
-from cofabriq.loop.refine import git_env
+from cofabriq.git import git, git_env
 from cofabriq.targets import PLAYGROUND
 
 # the repos `--apply` may write to: the demo playground only
@@ -64,17 +64,10 @@ def branch_name(number: int, title: str, sha: str) -> str:
 
 
 def _git(clone: Path, *args: str, env: dict[str, str], stdin: str = "") -> str:
-    done = subprocess.run(
-        ["git", "-C", str(clone), *args],
-        input=stdin,
-        capture_output=True,
-        text=True,
-        check=False,
-        env=env,
-    )
-    if done.returncode != 0:
-        raise PublishError(f"git {args[0]}: {done.stderr.strip()[:500]}")
-    return done.stdout.strip()
+    try:
+        return git(clone, *args, input=stdin, env=env).strip()
+    except subprocess.CalledProcessError as e:
+        raise PublishError(f"git {args[0]}: {e.stderr.strip()[:500]}") from e
 
 
 def commit_diff(clone: Path, base: str, diff: str, message: str) -> str:

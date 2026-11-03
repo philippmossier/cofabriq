@@ -5,7 +5,6 @@ test reproduces it; the issue a user would file is the seed entry with the
 same key. See the header of bugs.toml for how the bugs were planted.
 """
 
-import subprocess
 import tomllib
 from pathlib import Path
 from typing import Literal
@@ -13,8 +12,8 @@ from typing import Literal
 from pydantic import BaseModel, TypeAdapter
 
 from cofabriq.eval.triage import load_seed
-from cofabriq.loop.refine import git_env
-from cofabriq.loop.run import Rules, git, repro_command
+from cofabriq.git import git, try_git
+from cofabriq.loop.run import Rules, repro_command
 from cofabriq.loop.sandbox import Sandbox
 
 
@@ -99,19 +98,7 @@ def prove_bugs(
         (worktree / dest).write_bytes(repro_path(bugs_file, b).read_bytes())
         cmd = repro_command(rules, [dest])
         red = not sandbox(cmd, worktree, network=False).ok
-        applied = subprocess.run(
-            [
-                "git",
-                "-C",
-                str(worktree),
-                "apply",
-                str(fix_path(bugs_file, b).resolve()),
-            ],
-            capture_output=True,
-            check=False,
-            env=git_env(),
-        )
-        applies = applied.returncode == 0
+        applies, _ = try_git(worktree, "apply", str(fix_path(bugs_file, b).resolve()))
         green = applies and sandbox(cmd, worktree, network=False).ok
         proofs.append(BugProof(key=b.key, applies=applies, red=red, green=green))
     git(worktree, "reset", "-q", "--hard", commit)

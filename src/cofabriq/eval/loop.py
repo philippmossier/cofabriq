@@ -18,7 +18,6 @@ Rates per bug size, as for refine.
 """
 
 import json
-import subprocess
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -27,12 +26,12 @@ from statistics import median
 from pydantic import BaseModel, TypeAdapter
 
 from cofabriq.eval.refine import Answer
-from cofabriq.loop.refine import Refined, git_env
+from cofabriq.git import git, try_git
+from cofabriq.loop.refine import Refined
 from cofabriq.loop.run import (
     CheckResult,
     LoopResult,
     Rules,
-    git,
     repro_command,
     reset,
 )
@@ -90,15 +89,9 @@ def validate(
         (worktree / p).parent.mkdir(parents=True, exist_ok=True)
         (worktree / p).write_bytes(data)
     # 2. the reference fix on top, then the agent's test
-    applied = subprocess.run(
-        ["git", "-C", str(worktree), "apply", str(patch.resolve())],
-        capture_output=True,
-        text=True,
-        check=False,
-        env=git_env(),
-    )
-    if applied.returncode != 0:
-        return CheckResult(name="valid", ok=False, seconds=0, output=applied.stderr)
+    applied, err = try_git(worktree, "apply", str(patch.resolve()))
+    if not applied:
+        return CheckResult(name="valid", ok=False, seconds=0, output=err)
     ran = sandbox(repro_command(rules, repro), worktree, network=False)
     return CheckResult(name="valid", ok=ran.ok, seconds=ran.seconds, output=ran.output)
 

@@ -7,10 +7,11 @@ fix is all of them together.
 """
 
 import re
-import subprocess
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+
+from cofabriq.git import git
 
 RECORD = "\x1e"  # starts a commit
 FILES = "\x1f"  # ends its message, the changed paths follow
@@ -33,22 +34,15 @@ def closing_pattern(repo: str) -> re.Pattern[str]:
 
 def fixes(clone: Path, rev: str, repo: str) -> dict[int, list[Fix]]:
     """Issue number -> the non-merge commits reachable from `rev` that fix it."""
-    out = subprocess.run(
-        [
-            "git",
-            "-C",
-            str(clone),
-            "log",
-            "--no-merges",
-            "--no-renames",
-            "--name-only",
-            f"--format={RECORD}%H %cI%n%B{FILES}",
-            rev,
-        ],
-        capture_output=True,
-        check=True,
-        text=True,
-    ).stdout
+    out = git(
+        clone,
+        "log",
+        "--no-merges",
+        "--no-renames",
+        "--name-only",
+        f"--format={RECORD}%H %cI%n%B{FILES}",
+        rev,
+    )
     pattern = closing_pattern(repo)
     found: dict[int, list[Fix]] = {}
     for record in out.split(RECORD)[1:]:

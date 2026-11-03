@@ -16,7 +16,6 @@ check, like ADR-008's red test, not an agent's opinion.
 """
 
 import re
-import subprocess
 from collections.abc import Callable
 from fnmatch import fnmatch
 from pathlib import Path
@@ -24,7 +23,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from cofabriq.loop.refine import git_env
+from cofabriq.git import git
 from cofabriq.loop.run import is_test
 from cofabriq.targets import target_table
 
@@ -103,14 +102,7 @@ def explain(v: Violation, sentinel: Sentinel) -> str:
 def policy_at(clone: Path, commit: str, sentinel: Sentinel) -> str:
     """The policy file as of the run's commit: what the change may not
     widen (the agent's own edits to it don't count)."""
-    out = subprocess.run(
-        ["git", "-C", str(clone), "show", f"{commit}:{sentinel.policy_file}"],
-        capture_output=True,
-        text=True,
-        check=True,
-        env=git_env(),
-    )
-    return out.stdout
+    return git(clone, "show", f"{commit}:{sentinel.policy_file}")
 
 
 type Checker = Callable[[str], list[str]]

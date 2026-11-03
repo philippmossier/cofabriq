@@ -1,12 +1,13 @@
 """Where documents come from: the `Source` seam and its implementations."""
 
 import re
-import subprocess
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path, PurePosixPath
 from typing import Protocol
+
+from cofabriq.git import git
 
 
 class DocKind(StrEnum):
@@ -116,7 +117,7 @@ class LocalGitSource:
 
     def refs(self) -> Iterator[DocRef]:
         for name, repo in self._repos.items():
-            tree = _git(repo, "ls-tree", "-r", "-z", "HEAD")
+            tree = git(repo, "ls-tree", "-r", "-z", "HEAD")
             for entry in tree.split("\0"):
                 if not entry:
                     continue
@@ -127,13 +128,4 @@ class LocalGitSource:
                     yield DocRef(repo=name, path=path, sha=sha, kind=kind)
 
     def read(self, ref: DocRef) -> str:
-        return _git(self._repos[ref.repo], "cat-file", "blob", ref.sha)
-
-
-def _git(repo: Path, *args: str) -> str:
-    return subprocess.run(
-        ["git", "-C", str(repo), *args],
-        capture_output=True,
-        check=True,
-        encoding="utf-8",
-    ).stdout
+        return git(self._repos[ref.repo], "cat-file", "blob", ref.sha)

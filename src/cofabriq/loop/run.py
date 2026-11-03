@@ -23,7 +23,6 @@ implementer can read the repro but not change it.
 
 import shlex
 import shutil
-import subprocess
 import threading
 import time
 from collections.abc import Callable
@@ -32,8 +31,9 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from cofabriq.git import git, tracked
 from cofabriq.loop.engine import Agent, AgentError, AgentRun, Halted
-from cofabriq.loop.refine import Route, Spec, git_env
+from cofabriq.loop.refine import Route, Spec
 from cofabriq.loop.sandbox import Ran, Sandbox
 from cofabriq.targets import target_table
 
@@ -340,16 +340,6 @@ def reproduce_prompt(
     return "\n\n".join([text, *note, spec_part, *context, *_later(n, diff, failed)])
 
 
-def git(cwd: Path, *args: str) -> str:
-    return subprocess.run(
-        ["git", "-C", str(cwd), *args],
-        capture_output=True,
-        text=True,
-        check=True,
-        env=git_env(),
-    ).stdout
-
-
 def add_worktree(clone: Path, path: Path, commit: str) -> None:
     """A fresh detached worktree of `clone` at `commit` (an old one at the
     same path is removed first)."""
@@ -384,13 +374,13 @@ def changed_paths(worktree: Path) -> list[str]:
 def restore(worktree: Path, paths: list[str], originals: dict[str, bytes]) -> None:
     """Put protected paths back: the copied repro from its bytes, tracked
     files from HEAD, anything else (a new file) removed."""
-    tracked = set(git(worktree, "ls-files", "-z").split("\0"))
+    in_index = set(tracked(worktree))
     for p in paths:
         target = worktree / p
         if p in originals:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(originals[p])
-        elif p in tracked:
+        elif p in in_index:
             git(worktree, "checkout", "HEAD", "--", p)
         elif target.is_dir():
             shutil.rmtree(target)
