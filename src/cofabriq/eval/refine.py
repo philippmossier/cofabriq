@@ -1,6 +1,6 @@
 """Refine against the planted bugs: are the files in the spec the files the
 reference fix changes, and is the size estimate right? The removed
-features (0.3) are scored the same way.
+features are scored the same way.
 
 Truth is `files` in `playground/bugs.toml` or `features.toml` (code only, so the spec's
 `tests` don't count). The spec's `files` are ranked, most likely first:

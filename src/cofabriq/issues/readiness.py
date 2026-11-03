@@ -7,9 +7,10 @@ in the text the model was shown, so neither a hallucination nor an injected
 a rule over the checked card, never an LLM answer: every rule that fires is
 listed as a reason.
 
-Size and blast radius are not judged here: they need the repo map (0.2) and
-become part of the autopilot gate (0.3). `ready` means complete and
-unambiguous, not small.
+Size and blast radius are not judged here: the spec's readiness check
+(`loop/intake.py`) refuses size L, and the risk tier (`loop/pr.py`) reads
+the components from the repo map. `ready` means complete and unambiguous,
+not small.
 """
 
 from typing import Literal

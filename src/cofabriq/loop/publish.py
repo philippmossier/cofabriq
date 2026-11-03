@@ -30,7 +30,7 @@ from pydantic import BaseModel
 
 from cofabriq.loop.refine import git_env
 
-# the repos `--apply` may write to: the demo playground only, through 0.2
+# the repos `--apply` may write to: the demo playground only
 WRITABLE = frozenset({"philippmossier/local-ai-chat-playground"})
 
 API = "https://api.github.com"

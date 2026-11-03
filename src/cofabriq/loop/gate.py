@@ -4,7 +4,7 @@ A reviewer's blocker is a claim; a dev can't verify it without running the
 code, and in the human round green checks won over it. So a blocker
 blocks only once a test proves it. The reviewer's severity is a label, not
 a verdict: when it asks for changes, its concerns are proven the same way
-(0.3: a wrong fix leaked as an unproven concern whose text named the
+(measured: a wrong fix leaked as an unproven concern whose text named the
 defect, 3 runs of 3). Nits never are.
 
     the green loop's change, committed in the worktree (each step below is
@@ -141,7 +141,7 @@ class Gated(BaseModel):
     result: LoopResult  # the final change: diff and files against the spec's commit
     rounds: list[Round]
     error: str = ""  # a review run failed: status unproven, no verdict
-    sentinel: list[str] = []  # the target's invariant broken (0.6): blocked
+    sentinel: list[str] = []  # the target's invariant broken: blocked
 
     @property
     def review(self) -> Review | None:

@@ -1,4 +1,4 @@
-"""Lessons (0.6): rules for a target's CLAUDE.md that grow from what went
+"""Lessons: rules for a target's CLAUDE.md that grow from what went
 wrong, instead of rules installed up front.
 
     signals   what the factory already knows went wrong:

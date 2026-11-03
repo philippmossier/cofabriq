@@ -112,7 +112,8 @@ CANDIDATE_ISSUES = 10  # vector top-k the verdict chooses from
 
 @app.callback()
 def main() -> None:
-    """Map a company's engineering landscape from its repos."""
+    """A software factory pointed at a GitHub repo: triage, refine and the
+    core loop for small issues, the repo map and its context for planning."""
 
 
 def _check_postgres() -> str:
@@ -1136,8 +1137,10 @@ def _no_deps(repo: str, spent: float) -> graph_mod.Deps:
 
 @app.command()
 def serve(port: int = 8765, ui: Path = Path("ui/dist"), write: bool = False) -> None:
-    """The read-only API over data/refine and data/runs, plus the built UI
-    (`ui/dist`, when built), on 127.0.0.1 only. API docs at /api/docs."""
+    """The API over data/refine and data/runs, plus the built UI
+    (`ui/dist`, when built), on 127.0.0.1 only. API docs at /api/docs.
+    Read-only, unless `--write`: then the browser gate answers flows' gates
+    (the token is printed once)."""
 
     typer.echo(f"http://127.0.0.1:{port}  (API docs: /api/docs; Ctrl+C stops)")
     if not write:  # no token: the guard refuses every non-GET
@@ -1167,7 +1170,8 @@ def openapi(out: Path = Path("ui/openapi.json")) -> None:
 
 flow_app = typer.Typer(
     no_args_is_help=True,
-    help="SPIKE (0.5 step 0): `run` as a LangGraph graph that pauses at its gates.",
+    help="`run` as a LangGraph graph that pauses at its gates; "
+    "`serve --write` answers them too.",
 )
 app.add_typer(flow_app, name="flow")
 
@@ -2050,7 +2054,7 @@ def eval_loop(
     (red rate, valid against the reference fix), then fixes; resolved = the
     hidden planted repro and every check green. Also first try, fix in the
     reference's files, cost and time, per bug size. `--planted` hands the
-    planted repro to the agent instead (the step 6 baseline).
+    planted repro to the agent instead (the given-repro baseline).
 
     Paid: the reproducer's and implementer's runs only. Each bug starts from the spec
     `eval refine` stored in data/refine/ (refine is measured there); a bug
@@ -2776,7 +2780,8 @@ def affected(adr: str) -> None:
 
 @app.command()
 def mcp() -> None:
-    """Serve search and the graph queries as MCP tools over stdio."""
+    """Serve search, decisions, affected, triage and impact as MCP tools
+    over stdio."""
     embed = _embedder()
     with postgres.connect(get_settings().postgres_dsn) as conn, _graph() as driver:
         # Long-lived: one transaction per query, none left open. Writes only

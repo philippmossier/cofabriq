@@ -1,7 +1,7 @@
 """The core loop against the planted bugs: how many go from red to green?
 
-Each bug runs `run_loop` on the spec refine already wrote for it (step 5's
-eval, `data/refine/`), so this measures reproduce and fix, not the spec
+Each bug runs `run_loop` on the spec refine already wrote for it (`eval
+refine`, `data/refine/`), so this measures reproduce and fix, not the spec
 again, and costs only those agents' runs.
 
 With the agent's own repro (the default) the planted repro is the hidden
@@ -10,7 +10,7 @@ repro passes on the final tree. The agent's test is also checked against
 the reference fix (valid = it was red on the planted code and is green with
 the reference patch: it tests this bug, not something else). With
 `planted` the planted repro is handed to the agent and green is resolved
-(the step 6 baseline).
+(the given-repro baseline).
 
 Also kept: whether the fix touched the reference fix's files (a green fix
 in another place may be a workaround), cost, attempts and time per node.

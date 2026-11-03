@@ -4,8 +4,9 @@
     uv run python playground/playground.py reset --yes   # wipe, then seed
 
 Writes to GitHub through the `gh` CLI with the caller's own login, not
-through cofabriq (which stays read-only towards GitHub through v2). The repo
-is fixed below on purpose: this script can't be pointed at anything else.
+through cofabriq (whose only write is `run --apply`: one branch and one
+draft PR). The repo is fixed below on purpose: this script can't be
+pointed at anything else.
 
 reset: deletes every issue, closes open pull requests, deletes every branch
 but main, moves main back to the `baseline` tag, then seeds.

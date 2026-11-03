@@ -1,5 +1,5 @@
 """The removed features in the playground: the answer key for the feature
-route (0.3).
+route.
 
 `playground/features.toml` says per feature which files the reference
 changes and which test files judge it; `features/remove/<key>.patch` takes
@@ -36,7 +36,7 @@ _PATCHED = re.compile(r"^\+\+\+ b/(.+)$", re.MULTILINE)
 
 
 class Feature(BaseModel):
-    """One entry of a removed set: a removed feature, or (0.6, `route =
+    """One entry of a removed set: a removed feature, or (`route =
     "bug"`) a planted hard bug, the same mechanism: a patch on main, main's
     test files as the hidden judge."""
 

@@ -1,4 +1,4 @@
-"""The sentinel (0.6): an invariant a target declares as its contract,
+"""The sentinel: an invariant a target declares as its contract,
 checked in code on every change, before any reviewer is paid for.
 
 The playground's contract is "nothing typed leaves the device", and its

@@ -25,19 +25,19 @@ class Settings(BaseSettings):
     targets_dir: Path = Path("targets")
     target_repo: str | None = None
     github_token: SecretStr | None = None
-    github_write_token: SecretStr | None = None  # `run --apply` only (0.2)
+    github_write_token: SecretStr | None = None  # `run --apply` only
     issue_comments: int = 10
     # triage: one more LLM call picks the verdict's 10 candidates from the
     # vector top 50 (docs/evals.md: better retrieval, a mixed verdict; on,
     # since a human reads the candidates and decides)
     rerank_candidates: bool = True
-    anthropic_api_key: SecretStr | None = None  # the coding agent (0.2)
+    anthropic_api_key: SecretStr | None = None  # the coding agent
     # opt-in: the dev's own runs on their Claude plan (`claude setup-token`)
     agent_auth: Literal["api", "subscription"] = "api"
     claude_code_oauth_token: SecretStr | None = None
     agent_model: str = "claude-opus-5-5"
     agent_effort: str = "medium"
-    # the kill switch (0.4): no agent starts while this file exists, and one
+    # the kill switch: no agent starts while this file exists, and one
     # run (all its agents together) stops at this budget
     stop_file: Path = Path("data/STOP")
     run_budget_usd: float = 3.0
@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     refine_dir: Path = Path("data/refine")
     work_dir: Path = Path("data/work")  # worktrees of the core loop
     runs_dir: Path = Path("data/runs")  # one JSON per `cofabriq run`
-    lessons_dir: Path = Path("data/lessons")  # rejections, proposed rules (0.6)
+    lessons_dir: Path = Path("data/lessons")  # rejections, proposed rules
     human_dir: Path = Path("data/human")  # `eval human`: the PR set, the timings
 
 

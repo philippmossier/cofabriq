@@ -1,5 +1,5 @@
-"""`cofabriq serve`: a read-only HTTP API over what refine and the loop
-stored, plus the built UI (0.3).
+"""`cofabriq serve`: an HTTP API over what refine and the loop stored, plus
+the built UI.
 
     data/refine/*.json   specs: {key: Refined}
     data/runs/*.json     runs:  {key: Judged} (eval-, features-, wrong-),
@@ -8,12 +8,14 @@ stored, plus the built UI (0.3).
 
 The API returns its own response models, not the stored ones: a stored
 shape can change without changing the UI's contract (ADR-009). Everything
-is read per request from the files, nothing is cached or written. Read-only
-by design: no route changes anything, so it binds to 127.0.0.1 and needs no
-token yet (the browser gate in 0.5 adds one). File names in URLs must be
-files in the folder (no paths, no `..`).
+is read per request from the files, nothing is cached. It binds to
+127.0.0.1 only. Every route reads, except one: with `--write`, the browser
+gate answers a paused flow's gate (`_flow_routes`), behind the token and
+the checks in `serve_guard`. File names in URLs must be files in the
+folder (no paths, no `..`).
 """
 
+import importlib.metadata
 import json
 import re
 from datetime import UTC, datetime
@@ -427,7 +429,7 @@ def build(
     `write_token` on anything that isn't a read) is installed."""
     app = FastAPI(
         title="cofabriq",
-        version="0.3",
+        version=importlib.metadata.version("cofabriq"),
         docs_url="/api/docs",
         openapi_url="/api/openapi.json",
         # operation ids = the route function names: the UI's generated hooks

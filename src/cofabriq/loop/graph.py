@@ -1,6 +1,7 @@
-"""SPIKE (0.5 step 0): `cofabriq run` as a LangGraph graph whose human gates
-are interrupts, checkpointed in Postgres, so a run can wait for the dev for
-hours and resume in another process (the browser gate's need).
+"""`cofabriq run` as a LangGraph graph whose human gates are interrupts,
+checkpointed in Postgres, so a run can wait for the dev for hours and
+resume in another process: `flow start/resume` and the browser gate
+(`serve --write`) both drive it.
 
     refine -> plan_gate -> setup -> write_test -> test_gate -> build -> review -> END
                  |                                  |   (feature only)
@@ -127,7 +128,7 @@ class Deps:
     guard: Guard | None = None  # the run budget both agents count against
     targets_dir: Path | None = None  # risk tier and components for the PR body
     runs_dir: Path | None = None  # where a finished flow is recorded, as `run` does
-    lessons_dir: Path | None = None  # rejections with their reason (0.6 lessons)
+    lessons_dir: Path | None = None  # rejections with their reason, for `lessons`
 
     def worktree(self, issue: Issue) -> Path:
         return self.work_dir / f"flow-{issue.repo.replace('/', '-')}-{issue.number}"
