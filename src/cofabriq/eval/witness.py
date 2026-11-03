@@ -27,8 +27,9 @@ from cofabriq.files import newest_by_key
 from cofabriq.git import git
 from cofabriq.loop.engine import Agent
 from cofabriq.loop.refine import Spec
-from cofabriq.loop.run import Attempt, CheckResult, Rules, fenced, reproduce
+from cofabriq.loop.run import Attempt, CheckResult, Rules, reproduce
 from cofabriq.loop.sandbox import Sandbox
+from cofabriq.untrusted import fenced
 
 WITNESS = """\
 The change in your working directory was made incomplete on purpose, for a

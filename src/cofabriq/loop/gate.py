@@ -30,7 +30,6 @@ spec the dev approved, and the proof test ships in the PR for the dev to
 read.
 """
 
-import re
 from pathlib import Path
 from typing import Literal
 
@@ -49,7 +48,6 @@ from cofabriq.loop.run import (
     changed_paths,
     changed_since,
     diff,
-    fenced,
     fix,
     is_test,
     render_spec,
@@ -60,6 +58,7 @@ from cofabriq.loop.run import (
 )
 from cofabriq.loop.sandbox import Sandbox
 from cofabriq.loop.sentinel import Checker
+from cofabriq.untrusted import fenced, quote_in
 
 MAX_ROUNDS = 2  # reviews: the first, and one after fixing proven claims
 
@@ -158,14 +157,11 @@ class Gated(BaseModel):
         return sum(r.cost_usd for r in runs)
 
 
-def _flat(text: str) -> str:
-    return re.sub(r"\s+", " ", text).strip().strip(".").lower()
-
-
 def quoted(quote: str, spec: Spec) -> bool:
-    """`quote` is in the spec the agents saw (whitespace and case loose)."""
-    q = _flat(quote)
-    return len(q) >= 10 and q in _flat(render_spec(spec, tests=True))
+    """`quote` is in the spec the agents saw (whitespace and case loose), at
+    least 10 characters without its end dots."""
+    q = " ".join(quote.split()).strip(".")
+    return len(q) >= 10 and quote_in(q, render_spec(spec, tests=True), fold_case=True)
 
 
 def commit(worktree: Path, message: str) -> None:

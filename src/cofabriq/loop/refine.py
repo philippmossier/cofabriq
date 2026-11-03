@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from cofabriq.git import files_at, git
 from cofabriq.issues.model import Issue
 from cofabriq.loop.engine import Agent, AgentRun
+from cofabriq.untrusted import fenced
 
 type Size = Literal["S", "M", "L"]
 type Route = Literal["bug", "feature"]
@@ -128,14 +129,9 @@ def prompt(issue: Issue, route: Route = "bug") -> str:
     shown = "".join(
         f"\n\n--- comment by {c.author or 'ghost'}\n{c.body[:BODY]}" for c in comments
     )
-    text = _unfenced(f"{issue.title}\n\n{issue.body[:BODY]}{shown}")
+    text = f"{issue.title}\n\n{issue.body[:BODY]}{shown}"
     rules = FEATURE_INSTRUCTIONS if route == "feature" else INSTRUCTIONS
-    return f'{rules}\n\n<issue number="{issue.number}">\n{text}\n</issue>'
-
-
-def _unfenced(text: str) -> str:
-    """No closing tag inside the fence: the issue can't end it early."""
-    return text.replace("</issue", "</ issue")
+    return f"{rules}\n\n{fenced('issue', text, number=str(issue.number))}"
 
 
 def head(clone: Path) -> str:

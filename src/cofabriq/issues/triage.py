@@ -30,6 +30,7 @@ from cofabriq.issues.model import Issue, IssueSource
 from cofabriq.issues.readiness import Evidence, InfoItem, Readiness
 from cofabriq.issues.verdict import PRICE_IN, PRICE_OUT, Candidate, Problem, Usage
 from cofabriq.targets import target_table
+from cofabriq.untrusted import fenced
 
 MODEL = verdict.MODEL
 PROMPT_VERSION = "triage-v3"
@@ -125,7 +126,7 @@ def prompt(issue: Issue, components: dict[str, str]) -> str:
     listed = "\n".join(f"- {name}: {text}" for name, text in components.items())
     return (
         f"Components of {issue.repo}:\n{listed or '(none configured)'}\n\n"
-        f'<issue number="{issue.number}">\n{shown(issue)}\n</issue>'
+        f"{fenced('issue', shown(issue), number=str(issue.number))}"
     )
 
 

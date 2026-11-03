@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field, TypeAdapter
 
 from cofabriq.files import write_atomic
 from cofabriq.issues.model import Comment, Issue
+from cofabriq.untrusted import fenced, quote_in
 
 MODEL = "gpt-6-luna"
 # Stored with every record. Bump the suffix when the prompt or the schema
@@ -167,19 +168,16 @@ def prompt(query: Issue, candidates: Sequence[Candidate]) -> str:
     """Query first, then candidates in retrieval order, scores left out so the
     model reads the text instead of trusting the ranking."""
     shown = "\n\n".join(_candidate_block(c) for c in candidates) or "(none)"
-    return (
-        f'<issue number="{query.number}">\n{query.title}\n\n'
-        f"{query.body[:QUERY_BODY]}\n</issue>\n\n"
-        f"Candidates (earlier issues):\n\n{shown}"
+    issue = fenced(
+        "issue", f"{query.title}\n\n{query.body[:QUERY_BODY]}", number=str(query.number)
     )
+    return f"{issue}\n\nCandidates (earlier issues):\n\n{shown}"
 
 
 def _candidate_block(c: Candidate) -> str:
     comments = "".join(f"\n\n[comment]\n{x.body}" for x in c.comments)
-    return (
-        f'<candidate number="{c.number}">\n{c.title}\n\n{c.body}{comments}\n'
-        "</candidate>"
-    )
+    text = f"{c.title}\n\n{c.body}{comments}"
+    return fenced("candidate", text, number=str(c.number))
 
 
 def check(
@@ -201,7 +199,7 @@ def check(
         chosen = offered.get(target) if target is not None else None
         if chosen is None:
             dropped.append(f"{verdict} -> #{target}: not a candidate")
-        elif not evidence.strip() or _squash(evidence) not in _squash(chosen.text()):
+        elif not evidence.strip() or not quote_in(evidence, chosen.text()):
             dropped.append(f"{verdict} -> #{target}: evidence not in the candidate")
         if dropped:
             verdict = "none"
@@ -287,8 +285,3 @@ def load(path: Path) -> list[VerdictRecord]:
 
 def _save(path: Path, records: list[VerdictRecord]) -> None:
     write_atomic(path, _records_adapter.dump_json(records, indent=2))
-
-
-def _squash(text: str) -> str:
-    """Whitespace-insensitive form, so a quote across a line break still matches."""
-    return " ".join(text.split())

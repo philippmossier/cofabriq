@@ -24,6 +24,7 @@ from cofabriq.files import write_atomic
 from cofabriq.issues.model import Issue
 from cofabriq.issues.vectors import clean_issue_text
 from cofabriq.issues.verdict import MODEL, PRICE_IN, PRICE_OUT, QUERY_BODY, Usage
+from cofabriq.untrusted import fenced
 
 VERSION = f"{MODEL}/rerank-1"
 WIDE = 50  # vector candidates the reranker reads
@@ -108,14 +109,12 @@ class OpenAIReranker:
 def prompt(query: Issue, candidates: Sequence[Seen]) -> str:
     """Query first, then candidates in vector order, scores left out."""
     shown = "\n\n".join(
-        f'<candidate number="{c.number}">\n{c.title}\n\n{c.snippet}\n</candidate>'
+        fenced("candidate", f"{c.title}\n\n{c.snippet}", number=str(c.number))
         for c in candidates
     )
-    return (
-        f'<issue number="{query.number}">\n{query.title}\n\n'
-        f"{clean_issue_text(query.body)[:QUERY_BODY]}\n</issue>\n\n"
-        f"Candidates (earlier issues):\n\n{shown or '(none)'}"
-    )
+    body = clean_issue_text(query.body)[:QUERY_BODY]
+    issue = fenced("issue", f"{query.title}\n\n{body}", number=str(query.number))
+    return f"{issue}\n\nCandidates (earlier issues):\n\n{shown or '(none)'}"
 
 
 def merge(offered: Sequence[int], answer: Sequence[int]) -> list[int]:

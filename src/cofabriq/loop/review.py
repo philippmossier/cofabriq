@@ -21,7 +21,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from cofabriq.git import tracked
 from cofabriq.loop.engine import Agent, AgentRun
 from cofabriq.loop.refine import Spec
-from cofabriq.loop.run import LoopResult, Rules, fenced, render_spec
+from cofabriq.loop.run import LoopResult, Rules, render_spec
+from cofabriq.untrusted import fenced
 
 type Severity = Literal["blocker", "concern", "nit"]
 

@@ -13,6 +13,7 @@ from cofabriq.context.domain import Extraction, Link
 from cofabriq.context.ingest.parse import ParsedDoc
 from cofabriq.context.ingest.source import DocKind, DocRef
 from cofabriq.files import write_atomic
+from cofabriq.untrusted import fenced, quote_in
 
 MODEL = "gpt-6-luna"
 # Stored with every record. Bump the suffix when the prompt or the schema
@@ -105,11 +106,13 @@ def prompt(
         "\n".join(f"- {c.id} ({c.date or 'undated'}): {c.title}" for c in candidates)
         or "(none)"
     )
+    ref = doc.ref
+    document = fenced(
+        "document", doc_text(doc), project=ref.repo, path=ref.path, kind=ref.kind
+    )
     return (
         f"Projects: {', '.join(projects)}\n\n"
-        f"Candidate ADRs (id (date): title):\n{listed}\n\n"
-        f'<document project="{doc.ref.repo}" path="{doc.ref.path}" '
-        f'kind="{doc.ref.kind}">\n{doc_text(doc)}\n</document>'
+        f"Candidate ADRs (id (date): title):\n{listed}\n\n{document}"
     )
 
 
@@ -166,7 +169,7 @@ def check(
     quote from the document; everything else is dropped and recorded.
     """
     dropped: list[str] = []
-    text = _squash(doc_text(doc))
+    text = doc_text(doc)
     is_adr = doc.ref.kind is DocKind.ADR
     date = doc.meta.get("date")
     offered = {c.id: c.date for c in candidates}
@@ -182,7 +185,7 @@ def check(
                 dropped.append(f"{field} -> {link.target}: not on the list")
             elif _newer(allowed[link.target], than=date):
                 dropped.append(f"{field} -> {link.target}: newer than this ADR")
-            elif _squash(link.evidence) not in text:
+            elif not quote_in(link.evidence, text):
                 dropped.append(f"{field} -> {link.target}: evidence not in document")
             else:
                 kept.append(link)
@@ -250,8 +253,3 @@ def _newer(target: str | None, than: str | None) -> bool:
 
 def _key(ref: DocRef) -> DocKey:
     return (ref.repo, ref.path, ref.sha)
-
-
-def _squash(text: str) -> str:
-    """Whitespace-insensitive form, so a quote across a line break still matches."""
-    return " ".join(text.split())
