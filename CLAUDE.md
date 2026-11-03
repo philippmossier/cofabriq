@@ -65,7 +65,7 @@ Playground only.
 - `src/cofabriq/files.py`: result files under `data/`: `stamp` (UTC, names sort by time), `write_stamped` (`<prefix>-<stamp>.json`), `newest_by_key` (the newest value per key over those files), `write_atomic` (tmp + rename, for every cache and index)
 - `src/cofabriq/untrusted.py`: untrusted text in prompts: `fenced` (data in a tag it can't close early, in every prompt), `quote_in` (a quote the model gives back is in the text it saw, whitespace loose, case optional)
 - `src/cofabriq/llm.py`: the OpenAI model and prices, `structured` (one parsed call with usage, behind the `Judge` / `Reranker` / `Triager` / `Extractor` protocols), `cached_batch` (one `Record` per issue and version in a JSON list, reused while usable, saved even when a call fails)
-- `src/cofabriq/cli.py`: typer CLI, entry point `cofabriq`
+- `src/cofabriq/cli/`: typer CLI, entry point `cofabriq` (`app` in `common.py`): `context.py` (documents, decision graph, MCP, the repo map), `issues.py` (issue ingest, triage, impact), `loop.py` (refine, run, flow, intake, serve, lessons, stop), `evals.py` (`eval ...`), `render.py` (terminal output); `__init__.py` imports them, which registers the commands
 - `src/cofabriq/context/`: the context layer from adrscape
   - `domain.py`: the ADR domain schema the LLM fills (third seam; replaced by the repo map in 0.2)
   - `ingest/`: `source.py` (Source protocol, `LocalGitSource`), fetch, parse, chunk, embed, extract (`Extractor` protocol)

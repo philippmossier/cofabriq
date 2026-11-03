@@ -26,7 +26,7 @@ features removed on purpose.
 
 | Module | Role |
 | --- | --- |
-| `cli.py` | every command (`triage`, `refine`, `run`, `flow`, `intake`, `serve`, `lessons`, `stop`, `eval ...`) |
+| `cli/` | every command, one module per layer: `context.py` (documents, the decision graph, MCP, the repo map), `issues.py` (`fetch-issues`, `triage`, `impact`), `loop.py` (`refine`, `run`, `flow`, `intake`, `serve`, `lessons`, `stop`), `evals.py` (`eval ...`); `common.py` holds the typer apps and the helpers they share, `render.py` the terminal output |
 | `config.py` | settings from `.env` |
 | `targets.py` | the per-repo target file (`targets/<owner>-<name>.toml`, one table per concern), the repo slug and the clone folder, the playground's name |
 | `git.py` | every git call on a target repo, a clone or a worktree, without the caller's `GIT_*` variables (inside a git hook they point at the wrong repo) |
@@ -72,7 +72,7 @@ graph LR
     PODMAN(["podman<br/>the target's commands"]):::ext
 
     subgraph cofabriq
-        CLI["cli.py<br/>run, flow, intake, eval..."]
+        CLI["cli/<br/>run, flow, intake, eval..."]
         SERVE["serve.py<br/>API + viewer"]
         ISSUES["issues/<br/>fetch, triage"]
         MAP["map/<br/>repo history"]
