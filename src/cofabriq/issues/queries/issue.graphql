@@ -1,0 +1,13 @@
+# One issue by number (`triage` refreshing the issue it is asked about).
+query ($owner: String!, $name: String!, $number: Int!, $comments: Int!) {
+  rateLimit {
+    cost
+    remaining
+    resetAt
+  }
+  repository(owner: $owner, name: $name) {
+    issue(number: $number) {
+      ...IssueFields
+    }
+  }
+}

@@ -1,0 +1,6 @@
+# How many issues a search matches, to slice it under the search cap.
+query ($q: String!) {
+  search(type: ISSUE, query: $q, first: 0) {
+    issueCount
+  }
+}

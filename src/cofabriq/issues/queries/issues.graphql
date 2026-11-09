@@ -1,0 +1,27 @@
+# One request per page of issues, oldest update first. REST would need two
+# more calls per issue (comments, timeline), about 14k calls for open-webui
+# against a budget of 5000 per hour.
+query ($owner: String!, $name: String!, $since: DateTime, $after: String,
+       $pageSize: Int!, $comments: Int!) {
+  rateLimit {
+    cost
+    remaining
+    resetAt
+  }
+  repository(owner: $owner, name: $name) {
+    issues(
+      first: $pageSize
+      after: $after
+      filterBy: { since: $since }
+      orderBy: { field: UPDATED_AT, direction: ASC }
+    ) {
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+      nodes {
+        ...IssueFields
+      }
+    }
+  }
+}

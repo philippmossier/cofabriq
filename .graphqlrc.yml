@@ -1,0 +1,4 @@
+# For the GraphQL language server (completion, typo checks in
+# src/cofabriq/issues/queries/). The same schema the tests validate against.
+schema: tests/fixtures/github-schema.graphql
+documents: src/cofabriq/issues/queries/*.graphql

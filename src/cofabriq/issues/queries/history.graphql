@@ -1,0 +1,14 @@
+# Label history and body edits of single issues, for eval sets. `history()`
+# builds the query around it: one aliased `issue(number: N)` per issue.
+fragment History on Issue {
+  lastEditedAt
+  timelineItems(first: 100, itemTypes: [LABELED_EVENT]) {
+    nodes {
+      ... on LabeledEvent {
+        label {
+          name
+        }
+      }
+    }
+  }
+}
