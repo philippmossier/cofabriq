@@ -1,0 +1,93 @@
+# The fields cofabriq keeps per issue: its first N comments, duplicate marks,
+# what closed it last (a merged pull request, a commit, or a person) and the
+# issues blocking it. `$comments` comes from the query that spreads it.
+fragment IssueFields on Issue {
+  number
+  title
+  body
+  state
+  stateReason
+  createdAt
+  updatedAt
+  closedAt
+  author {
+    __typename
+    login
+  }
+  labels(first: 20) {
+    nodes {
+      name
+    }
+  }
+  comments(first: $comments) {
+    totalCount
+    nodes {
+      author {
+        __typename
+        login
+      }
+      body
+      createdAt
+    }
+  }
+  # marked and unmarked both, so the latest event wins
+  timelineItems(
+    first: 20
+    itemTypes: [MARKED_AS_DUPLICATE_EVENT, UNMARKED_AS_DUPLICATE_EVENT]
+  ) {
+    nodes {
+      __typename
+      ... on MarkedAsDuplicateEvent {
+        canonical {
+          ...Target
+        }
+        duplicate {
+          ...Target
+        }
+      }
+      ... on UnmarkedAsDuplicateEvent {
+        canonical {
+          ...Target
+        }
+        duplicate {
+          ...Target
+        }
+      }
+    }
+  }
+  # an alias: a second `timelineItems` with other arguments needs its own key;
+  # `closer` is null when a person closed it
+  closed: timelineItems(last: 1, itemTypes: [CLOSED_EVENT]) {
+    nodes {
+      ... on ClosedEvent {
+        closer {
+          __typename
+        }
+      }
+    }
+  }
+  blockedBy(first: 10) {
+    nodes {
+      number
+      repository {
+        nameWithOwner
+      }
+    }
+  }
+}
+
+# Either side of a duplicate mark: a union, so fields only per member type.
+fragment Target on IssueOrPullRequest {
+  ... on Issue {
+    number
+    repository {
+      nameWithOwner
+    }
+  }
+  ... on PullRequest {
+    number
+    repository {
+      nameWithOwner
+    }
+  }
+}

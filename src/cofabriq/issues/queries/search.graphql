@@ -1,0 +1,22 @@
+# Issues created in a date range: the `issues` connection filters by update
+# time only, search filters by creation. Search stops at 1000 results per
+# query, so `created` cuts the range into slices below that.
+query ($q: String!, $after: String, $pageSize: Int!, $comments: Int!) {
+  rateLimit {
+    cost
+    remaining
+    resetAt
+  }
+  search(type: ISSUE, query: $q, first: $pageSize, after: $after) {
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+    nodes {
+      # a pull request matching the search comes back as {}
+      ... on Issue {
+        ...IssueFields
+      }
+    }
+  }
+}

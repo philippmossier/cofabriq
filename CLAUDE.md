@@ -23,6 +23,7 @@ Playground only.
 - `make up` / `make down`: start / stop Postgres+pgvector and Neo4j (podman compose)
 - `make check`: ruff lint, ruff format check, pyright (strict), pytest. Must be green before any commit. CI (`.github/workflows/check.yml`) runs it and `make check-ui` on every push to `main` and every PR, the two databases as service containers; there a database test fails instead of skipping (`CI` set)
 - `make fmt`: autofix lint and format
+- `make schema`: refresh GitHub's GraphQL schema (`tests/fixtures/github-schema.graphql`), which the query test and the GraphQL LSP (`.graphqlrc.yml`) read
 - `uv run cofabriq health`: connectivity check for all three services
 - `uv run cofabriq fetch <repo>...` / `embed` / `search "..."`: ingest local clones into `data/raw/`, embed into pgvector (needs `OPENAI_API_KEY`), query
 - `uv run cofabriq extract`: LLM fills the domain schema per document into `data/extracted.json` (needs `embed` first; unchanged docs skipped)
@@ -70,7 +71,7 @@ Playground only.
   - `domain.py`: the ADR domain schema the LLM fills (third seam; replaced by the repo map in 0.2)
   - `ingest/`: `source.py` (Source protocol, `LocalGitSource`), fetch, parse, chunk, embed, extract (`Extractor` protocol)
   - `store/`: `postgres.py` (vectors), `graph.py` (Neo4j)
-- `src/cofabriq/issues/`: 0.1 issue ingest: `model.py` (`Issue`, `IssueSource`), `github.py` (GraphQL source), `fetch.py` (incremental store), `vectors.py` (pgvector, time-cut nearest), `verdict.py` (checked duplicate verdict), `triage.py` (the triage card schema, checks and assembly; `triage_fn`, the refresh-then-triage pipeline the CLI and the MCP tool share), `readiness.py` (required info with verified quotes, the route, the reply draft)
+- `src/cofabriq/issues/`: 0.1 issue ingest: `model.py` (`Issue`, `IssueSource`), `github.py` (GraphQL source; its queries in `queries/*.graphql`, validated against GitHub's schema in `tests/fixtures/` by `tests/test_queries.py`), `fetch.py` (incremental store), `vectors.py` (pgvector, time-cut nearest), `verdict.py` (checked duplicate verdict), `triage.py` (the triage card schema, checks and assembly; `triage_fn`, the refresh-then-triage pipeline the CLI and the MCP tool share), `readiness.py` (required info with verified quotes, the route, the reply draft)
 - `src/cofabriq/eval/`: eval sets and metrics (`dedupe.py`, `impact.py`, `readiness.py`, `triage.py`, `bugs.py`, `features.py`, `refine.py`, `loop.py`, `review.py`, `witness.py`, `gate.py`, `human.py`)
 - `targets/<owner>-<name>.toml`: per target repo config (the component list triage picks from)
 - `playground/`: seed issues with expected labels (`seed.toml`), the planted bugs (`bugs.toml`), the removed features (`features.toml`) and the seed/reset script for the demo repo

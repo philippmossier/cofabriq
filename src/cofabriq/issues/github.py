@@ -1,9 +1,14 @@
-"""`GitHubIssueSource`: a repo's issues over the GitHub GraphQL API."""
+"""`GitHubIssueSource`: a repo's issues over the GitHub GraphQL API.
+
+The queries live in `queries/*.graphql`, checked against GitHub's schema by
+`tests/test_queries.py`.
+"""
 
 import time
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
+from importlib.resources import files
 from typing import Any
 
 import httpx
@@ -14,116 +19,21 @@ API = "https://api.github.com"
 PAGE_SIZE = 50
 MAX_RETRIES = 5
 
-# The fields cofabriq keeps per issue: its first N comments, duplicate marks,
-# what closed it last (a merged pull request, a commit, or a person) and the
-# issues blocking it.
-FIELDS = """
-fragment IssueFields on Issue {
-  number title body state stateReason createdAt updatedAt closedAt
-  author { __typename login }
-  labels(first: 20) { nodes { name } }
-  comments(first: $comments) {
-    totalCount
-    nodes { author { __typename login } body createdAt }
-  }
-  timelineItems(first: 20,
-                itemTypes: [MARKED_AS_DUPLICATE_EVENT,
-                            UNMARKED_AS_DUPLICATE_EVENT]) {
-    nodes {
-      __typename
-      ... on MarkedAsDuplicateEvent {
-        canonical { ...Target } duplicate { ...Target }
-      }
-      ... on UnmarkedAsDuplicateEvent {
-        canonical { ...Target } duplicate { ...Target }
-      }
-    }
-  }
-  closed: timelineItems(last: 1, itemTypes: [CLOSED_EVENT]) {
-    nodes { ... on ClosedEvent { closer { __typename } } }
-  }
-  blockedBy(first: 10) { nodes { number repository { nameWithOwner } } }
-}
+QUERIES = files("cofabriq.issues") / "queries"
 
-fragment Target on IssueOrPullRequest {
-  ... on Issue { number repository { nameWithOwner } }
-  ... on PullRequest { number repository { nameWithOwner } }
-}
-"""
 
-PULLS_QUERY = """
-query($owner: String!, $name: String!) {
-  repository(owner: $owner, name: $name) {
-    pullRequests(states: OPEN, first: 100,
-                 orderBy: {field: CREATED_AT, direction: DESC}) {
-      nodes { number headRefName }
-    }
-  }
-}
-"""
+def _load(name: str) -> str:
+    return (QUERIES / f"{name}.graphql").read_text()
 
-# One request per page of issues. REST would need two more calls per issue
-# (comments, timeline), about 14k calls for open-webui against a budget of
-# 5000 per hour.
-QUERY = (
-    """
-query($owner: String!, $name: String!, $since: DateTime, $after: String,
-      $pageSize: Int!, $comments: Int!) {
-  rateLimit { cost remaining resetAt }
-  repository(owner: $owner, name: $name) {
-    issues(first: $pageSize, after: $after, filterBy: {since: $since},
-           orderBy: {field: UPDATED_AT, direction: ASC}) {
-      pageInfo { hasNextPage endCursor }
-      nodes { ...IssueFields }
-    }
-  }
-}
-"""
-    + FIELDS
-)
 
-# One issue by number (`triage` refreshing the issue it is asked about).
-ISSUE_QUERY = (
-    """
-query($owner: String!, $name: String!, $number: Int!, $comments: Int!) {
-  rateLimit { cost remaining resetAt }
-  repository(owner: $owner, name: $name) {
-    issue(number: $number) { ...IssueFields }
-  }
-}
-"""
-    + FIELDS
-)
-
-# Issues created in a date range: the GraphQL `issues` connection filters by
-# update time only, search filters by creation. Search stops at 1000 results
-# per query, so `created` cuts the range into slices below that.
-SEARCH_QUERY = (
-    """
-query($q: String!, $after: String, $pageSize: Int!, $comments: Int!) {
-  rateLimit { cost remaining resetAt }
-  search(type: ISSUE, query: $q, first: $pageSize, after: $after) {
-    pageInfo { hasNextPage endCursor }
-    nodes { ... on Issue { ...IssueFields } }
-  }
-}
-"""
-    + FIELDS
-)
-
-COUNT_QUERY = """
-query($q: String!) { search(type: ISSUE, query: $q, first: 0) { issueCount } }
-"""
-
-# Label history and body edits of single issues, for eval sets.
-HISTORY_FIELDS = """
-fragment History on Issue {
-  lastEditedAt
-  timelineItems(first: 100, itemTypes: [LABELED_EVENT]) {
-    nodes { ... on LabeledEvent { label { name } } }
-  }
-}
-"""
+# A query and the fragments it spreads go out as one document.
+FIELDS = _load("issue_fields")
+QUERY = _load("issues") + FIELDS
+ISSUE_QUERY = _load("issue") + FIELDS
+SEARCH_QUERY = _load("search") + FIELDS
+COUNT_QUERY = _load("count")
+PULLS_QUERY = _load("pulls")
+HISTORY_FIELDS = _load("history")
 HISTORY_BATCH = 25
 
 SEARCH_CAP = 1000

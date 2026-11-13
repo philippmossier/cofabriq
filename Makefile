@@ -1,4 +1,4 @@
-.PHONY: setup up down check check-ui ui fmt health
+.PHONY: setup up down check check-ui ui fmt schema health
 
 setup:  ## install deps into .venv, create .env if missing
 	uv sync
@@ -31,6 +31,9 @@ ui:     ## build the UI into ui/dist (served by `cofabriq serve`)
 fmt:    ## autofix lint + format
 	uv run ruff check --fix .
 	uv run ruff format .
+
+schema: ## refresh GitHub's GraphQL schema (tests/test_queries.py, the GraphQL LSP)
+	uv run python -m tests.github_schema
 
 health: ## check DB connectivity
 	uv run cofabriq health
