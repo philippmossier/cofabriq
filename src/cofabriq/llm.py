@@ -17,6 +17,7 @@ from typing import Protocol
 from openai import OpenAI
 from pydantic import BaseModel, TypeAdapter
 
+from cofabriq import tracing
 from cofabriq.files import write_atomic
 
 MODEL = "gpt-6-luna"
@@ -49,18 +50,23 @@ def structured[T: BaseModel](
 ) -> tuple[T, Usage]:
     """One call whose answer is parsed into `schema`. `what` names the answer
     in the error raised when there is none ("verdict for #12")."""
-    start = time.perf_counter()
-    response = client.responses.parse(
-        model=MODEL,
-        instructions=instructions,
-        input=input,
-        text_format=schema,
-        reasoning={"effort": "low"},
-    )
-    latency_ms = round((time.perf_counter() - start) * 1000)
-    if response.output_parsed is None or response.usage is None:
-        raise RuntimeError(f"no {what}")
-    usage = Usage(response.usage.input_tokens, response.usage.output_tokens, latency_ms)
+    with tracing.chat(MODEL, what) as span:
+        start = time.perf_counter()
+        response = client.responses.parse(
+            model=MODEL,
+            instructions=instructions,
+            input=input,
+            text_format=schema,
+            reasoning={"effort": "low"},
+        )
+        latency_ms = round((time.perf_counter() - start) * 1000)
+        if response.output_parsed is None or response.usage is None:
+            raise RuntimeError(f"no {what}")
+        tokens = response.usage
+        usage = Usage(tokens.input_tokens, tokens.output_tokens, latency_ms)
+        tracing.used(
+            span, response.model, usage.input_tokens, usage.output_tokens, cost(usage)
+        )
     return response.output_parsed, usage
 
 

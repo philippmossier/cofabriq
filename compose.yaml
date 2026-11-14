@@ -46,6 +46,14 @@ services:
     tmpfs:
       - /data
 
+  # Traces (OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318): OTLP over
+  # HTTP in, the UI on http://localhost:16686; kept in memory only.
+  jaeger:
+    image: docker.io/jaegertracing/jaeger:2.23.0
+    ports:
+      - "4318:4318"
+      - "16686:16686"
+
 volumes:
   pgdata:
   neo4jdata:

@@ -25,6 +25,9 @@ The worktree lives on disk between nodes and is removed by `finish`
 (unless `Deps.keep`). State is a Pydantic model; the checkpoint
 serializer only restores the types listed in `ALLOWED` (LangGraph's
 msgpack allow-list), so a checkpoint can't smuggle in another class.
+
+Each node is a span (`tracing.py`); `invoke` is the root of one process's
+part of a run, linked to the trace the flow started in.
 """
 
 import re
@@ -40,12 +43,14 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
+from langgraph.errors import GraphInterrupt
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command, interrupt
 from psycopg.rows import DictRow, dict_row
 from pydantic import BaseModel, field_validator
 
+from cofabriq import tracing
 from cofabriq.files import stamp
 from cofabriq.git import files_at
 from cofabriq.issues.model import Issue
@@ -94,6 +99,7 @@ class FlowState(BaseModel):
     record: str = ""  # the finished run's file in data/runs (the viewer's Runs)
     result: LoopResult | None = None  # the loop's, before the review gate
     gated: gate_mod.Gated | None = None
+    trace: str = ""  # the first trace's `traceparent`: each resume links to it
 
     @property
     def outcome(self) -> str:
@@ -373,18 +379,26 @@ def build_graph(deps: Deps) -> StateGraph[FlowState]:
         "finish": finish,
     }
 
-    def counted(node: Node) -> Node:
-        """The node, with the run's spending so far written into the state."""
+    def counted(name: str, node: Node) -> Node:
+        """The node in its own span, with the run's spending so far and the
+        first trace written into the state."""
 
         def run(s: FlowState) -> dict[str, object]:
-            update = node(s)
+            with tracing.span(f"node {name}", expected=(GraphInterrupt,)) as span:
+                try:
+                    update = node(s)
+                except GraphInterrupt:  # a gate: the process stops here
+                    span.set_attribute("cofabriq.paused", True)
+                    raise
+                if not s.trace:
+                    update["trace"] = tracing.traceparent()
             if deps.guard is not None:
                 update["spent_usd"] = deps.guard.spent_usd
             return update
 
         return run
 
-    nodes = {name: counted(node) for name, node in nodes.items()}
+    nodes = {name: counted(name, node) for name, node in nodes.items()}
     for name, node in nodes.items():
         g.add_node(name, node)  # pyright: ignore[reportArgumentType,reportUnknownMemberType]
     ends = {"finish": "finish", "record": "record"}
@@ -437,6 +451,22 @@ def thread_id(issue: Issue) -> str:
 def thread_config(thread: str) -> RunnableConfig:
     """The config that points a graph call at one flow's checkpoints."""
     return {"configurable": {"thread_id": thread}}
+
+
+def invoke(
+    graph: CompiledStateGraph[FlowState], given: FlowState | GateAnswer, thread: str
+) -> None:
+    """Start a flow, or resume it with the dev's answer, to its next gate or
+    its end: one trace per call, a resume linked to the flow's first."""
+    config = thread_config(thread)
+    resume = isinstance(given, GateAnswer)
+    first = str(graph.get_state(config).values.get("trace", "")) if resume else ""
+    attributes = {"cofabriq.thread": thread, "cofabriq.resume": resume}
+    with tracing.span("cofabriq.flow", attributes, link=first):
+        if isinstance(given, GateAnswer):
+            graph.invoke(Command(resume=given.model_dump()), config)
+        else:
+            graph.invoke(given, config)
 
 
 class FlowStatus(BaseModel):
@@ -527,7 +557,7 @@ class FlowRunner:
         repo = thread.split("#", 1)[0]
         try:
             with compiled(self.deps_for(repo, spent), self.dsn) as graph:
-                graph.invoke(Command(resume=answer.model_dump()), thread_config(thread))
+                invoke(graph, answer, thread)
         except Exception as exc:  # shown on the page; the checkpoint stays
             with self._lock:
                 self._errors[thread] = f"{type(exc).__name__}: {exc}"

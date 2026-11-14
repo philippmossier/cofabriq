@@ -18,6 +18,8 @@ from typing import Protocol
 
 from pydantic import BaseModel
 
+from cofabriq import tracing
+
 TAIL = 4000  # characters of output kept from a failing command
 _ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
@@ -83,9 +85,17 @@ class Podman:
         ]
 
     def __call__(self, cmd: str, worktree: Path, *, network: bool) -> Ran:
-        return run_command(
-            self.command(cmd, worktree, network=network), worktree, self.timeout_s
-        )
+        attributes = {
+            "cofabriq.sandbox.command": cmd,  # the target's own line, no secret
+            "cofabriq.sandbox.image": self.image,
+            "cofabriq.sandbox.network": network,
+        }
+        with tracing.span("sandbox.run", attributes) as span:
+            ran = run_command(
+                self.command(cmd, worktree, network=network), worktree, self.timeout_s
+            )
+            span.set_attribute("cofabriq.sandbox.ok", ran.ok)  # red can be the goal
+        return ran
 
 
 def run_command(argv: list[str], cwd: Path, timeout_s: float) -> Ran:

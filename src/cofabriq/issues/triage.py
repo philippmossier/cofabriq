@@ -15,6 +15,7 @@ the checked card: required info with verified quotes, a route, a reply draft.
 import time
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Protocol
@@ -22,7 +23,7 @@ from typing import Literal, Protocol
 from openai import OpenAI
 from pydantic import BaseModel, Field
 
-from cofabriq import llm
+from cofabriq import llm, tracing
 from cofabriq.context.ingest.embed import Embed
 from cofabriq.context.store import postgres
 from cofabriq.issues import readiness, rerank, vectors, verdict
@@ -332,9 +333,11 @@ def triage(
 ) -> TriageCard:
     """Run both calls in parallel, check both, assemble the card."""
     start = clock()
+    # each call in a copy of this thread's context: a worker thread starts
+    # with an empty one, and its span would lose its parent
     with ThreadPoolExecutor(max_workers=2) as pool:
-        f = pool.submit(triager.fields, ctx.issue, ctx.components)
-        v = pool.submit(judge.judge, ctx.issue, ctx.candidates)
+        f = pool.submit(copy_context().run, triager.fields, ctx.issue, ctx.components)
+        v = pool.submit(copy_context().run, judge.judge, ctx.issue, ctx.candidates)
         (raw, f_usage), (answer, v_usage) = f.result(), v.result()
     latency_ms = round((clock() - start) * 1000)
 
@@ -416,6 +419,11 @@ def triage_fn(
     silent (MCP, eval).
     """
 
+    def traced(repo: str, number: int) -> TriageCard:
+        attributes = {"cofabriq.repo": repo, "cofabriq.issue": number}
+        with tracing.span("cofabriq.triage", attributes):
+            return run(repo, number)
+
     def run(repo: str, number: int) -> TriageCard:
         source = github(repo) if github is not None else None
         if source is not None:
@@ -438,7 +446,7 @@ def triage_fn(
         steps.note("checks", _checked(card), ok=not (card.dropped or card.conflicts))
         return card
 
-    return run
+    return traced
 
 
 def fetched(number: int, got: tuple[object, str] | None) -> str:

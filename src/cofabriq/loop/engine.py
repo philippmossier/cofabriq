@@ -47,6 +47,8 @@ from typing import Protocol
 
 from pydantic import BaseModel, Field, ValidationError
 
+from cofabriq import tracing
+
 READ_ONLY = ("Read", "Grep", "Glob")
 EDIT = (*READ_ONLY, "Edit", "Write")
 
@@ -158,20 +160,29 @@ class ClaudeCode:
         reason = stop_reason(self.stop_file)
         if reason is not None:
             raise Halted(f"stopped: {reason}")
-        start = time.perf_counter()
-        with tempfile.TemporaryDirectory(prefix="cofabriq-claude-") as config:
-            done = subprocess.run(
-                self.command(schema, cwd),
-                input=prompt,  # stdin: no argv size limit, not visible in `ps`
-                capture_output=True,
-                text=True,
-                cwd=cwd,
-                env=_env(self.auth, Path(config)),
-                timeout=self.timeout_s,
-                check=False,
-            )
-        latency_ms = round((time.perf_counter() - start) * 1000)
-        return parse(done.stdout, done.stderr, latency_ms)
+        with tracing.agent(
+            "claude-code", self.model, self.tools, self.budget_usd
+        ) as span:
+            start = time.perf_counter()
+            with tempfile.TemporaryDirectory(prefix="cofabriq-claude-") as config:
+                done = subprocess.run(
+                    self.command(schema, cwd),
+                    input=prompt,  # stdin: no argv size limit, not visible in `ps`
+                    capture_output=True,
+                    text=True,
+                    cwd=cwd,
+                    env=_env(self.auth, Path(config)),
+                    timeout=self.timeout_s,
+                    check=False,
+                )
+            latency_ms = round((time.perf_counter() - start) * 1000)
+            try:
+                run = parse(done.stdout, done.stderr, latency_ms)
+            except AgentError as exc:
+                tracing.agent_ran(span, self.model, exc.cost_usd, 0)
+                raise
+            tracing.agent_ran(span, run.model, run.cost_usd, run.turns)
+        return run
 
 
 def _env(auth: Auth, config: Path) -> dict[str, str]:
