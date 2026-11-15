@@ -63,8 +63,8 @@ export interface CodeLines {
   /** The first line's number, 1-based. */
   start: number;
   lines: string[];
-  /** The line the spec points at. */
-  focus: number | null;
+  /** The file's length in lines. */
+  total: number;
 }
 
 export interface FileNote {
@@ -146,6 +146,7 @@ export interface FlowView {
   diff: string;
   commit: string;
   tests: FileNote[];
+  unknown_paths: string[];
   trace: string;
   record: string;
 }
@@ -451,6 +452,7 @@ export type CodeParams = {
 commit: string;
 path: string;
 line?: number | null;
+end?: number | null;
 };
 
 const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKey: K } => {
@@ -1401,9 +1403,10 @@ export const getCodeUrl = (owner: string,
 }
 
 /**
- * Up to 17 lines of a file at a commit, around `line` (the top of the
- * file without one). Only a file in that commit's tree of the local
- * clone: never a path from outside it.
+ * A file at a commit: lines `line` to `end` (default: `line`) with 8
+ * above and below, at most 80; the top of the file without `line`. Only
+ * a file in that commit's tree of the local clone: never a path from
+ * outside it.
  * @summary Code
  */
 export const code = async (owner: string,

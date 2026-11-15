@@ -97,7 +97,11 @@ export function FlowPage() {
   const q = useFlow(owner, name, Number(number), {
     query: {
       select: (r) => (r.status === 200 ? r.data : null),
-      refetchInterval: POLL_MS,
+      // while it works, each second: a rejection ends it in under one
+      refetchInterval: (query) => {
+        const r = query.state.data;
+        return r?.status === 200 && r.data.running ? 1000 : POLL_MS;
+      },
     },
   });
   const token = useWriteToken();
@@ -122,6 +126,8 @@ export function FlowPage() {
   const spec = f.problem ? <SpecReview s={f} /> : null;
   // which button was pressed: it gets the spinner
   const sending = answer.isPending ? answer.variables.data.approve : null;
+  // the last answer from this page was a no: the work left is closing it
+  const rejected = answer.variables?.data.approve === false;
   // the guard's 401 / 403 aren't in the schema: a plain number
   const refused: number | null =
     answer.data && answer.data.status !== 200 ? answer.data.status : null;
@@ -147,8 +153,10 @@ export function FlowPage() {
           <CardTitle>
             {f.running && !f.problem
               ? "Reading the code to write a spec… (about 20 s; the plan gate comes next)"
-              : f.running
-              ? "Working on your answer… (setup, test, build and review take a few minutes)"
+              : f.running && rejected
+                ? "Rejected: closing the flow…"
+                : f.running
+                  ? "Working on your answer… (setup, test, build and review take a few minutes)"
               : f.waiting === "plan"
                 ? "Approve the plan? No code is written before you do."
                 : f.waiting === "test"

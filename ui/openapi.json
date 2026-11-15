@@ -264,7 +264,7 @@
     "/api/code/{owner}/{name}": {
       "get": {
         "summary": "Code",
-        "description": "Up to 17 lines of a file at a commit, around `line` (the top of the\nfile without one). Only a file in that commit's tree of the local\nclone: never a path from outside it.",
+        "description": "A file at a commit: lines `line` to `end` (default: `line`) with 8\nabove and below, at most 80; the top of the file without `line`. Only\na file in that commit's tree of the local clone: never a path from\noutside it.",
         "operationId": "code",
         "parameters": [
           {
@@ -317,6 +317,22 @@
                 }
               ],
               "title": "Line"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End"
             }
           }
         ],
@@ -757,17 +773,10 @@
             "type": "array",
             "title": "Lines"
           },
-          "focus": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Focus",
-            "description": "The line the spec points at."
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "description": "The file's length in lines."
           }
         },
         "type": "object",
@@ -775,7 +784,7 @@
           "path",
           "start",
           "lines",
-          "focus"
+          "total"
         ],
         "title": "CodeLines",
         "description": "A few lines of one file at a commit, read from the clone: the plan\ngate's \"current code\" next to what the spec will change. The target's\ntext: shown as text."
@@ -1020,6 +1029,13 @@
             "type": "array",
             "title": "Tests"
           },
+          "unknown_paths": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unknown Paths"
+          },
           "trace": {
             "type": "string",
             "title": "Trace"
@@ -1050,6 +1066,7 @@
           "diff",
           "commit",
           "tests",
+          "unknown_paths",
           "trace",
           "record"
         ],

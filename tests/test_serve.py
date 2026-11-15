@@ -123,11 +123,13 @@ def test_code_lines_come_from_the_clone_at_the_commit_only(tmp_path: Path) -> No
     url = f"/api/code/acme/app?commit={commit}"
 
     around = c.get(f"{url}&path=src/a.ts&line=20").json()
+    span = c.get(f"{url}&path=src/a.ts&line=10&end=30").json()
     top = c.get(f"{url}&path=src/a.ts").json()
 
-    assert (around["start"], around["focus"], len(around["lines"])) == (12, 20, 17)
+    assert (around["start"], len(around["lines"]), around["total"]) == (12, 17, 40)
     assert around["lines"][8] == "line 20"
-    assert (top["start"], top["focus"], top["lines"][0]) == (1, None, "line 1")
+    assert (span["start"], span["lines"][-1]) == (2, "line 38")  # 8 around the range
+    assert (top["start"], top["lines"][0]) == (1, "line 1")
     for bad in ("../../etc/passwd", "src/nope.ts", ".git/config"):
         assert c.get(f"{url}&path={bad}").status_code == 404
     assert c.get("/api/code/acme/app?commit=HEAD&path=src/a.ts").status_code == 404
