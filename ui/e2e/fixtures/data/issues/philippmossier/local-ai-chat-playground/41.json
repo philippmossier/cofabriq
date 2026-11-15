@@ -1,0 +1,18 @@
+{
+  "repo": "philippmossier/local-ai-chat-playground",
+  "number": 41,
+  "title": "GPU not recognised on Firefox, only CPU models offered",
+  "body": "Firefox 145 with dom.webgpu.enabled = true. The welcome screen says no WebGPU, so I only get the CPU path. Same machine in Chrome gets the \"strong GPU\" tier.",
+  "state": "open",
+  "state_reason": null,
+  "author": "philippmossier",
+  "labels": [],
+  "created_at": "2026-10-16T09:54:17Z",
+  "updated_at": "2026-10-16T09:54:17Z",
+  "closed_at": null,
+  "closed_by": null,
+  "comment_count": 0,
+  "comments": [],
+  "duplicate_of": [],
+  "duplicates": []
+}

@@ -1,0 +1,18 @@
+{
+  "repo": "philippmossier/local-ai-chat-playground",
+  "number": 37,
+  "title": "Refreshing the tab during model download loses all progress",
+  "body": "If you refresh while the model is downloading, it begins the whole download again. On my connection the big model takes 20 minutes, so losing it at 90% hurts.\n\nFirefox 145, Ubuntu 24.04.",
+  "state": "open",
+  "state_reason": null,
+  "author": "philippmossier",
+  "labels": [],
+  "created_at": "2026-10-16T09:54:05Z",
+  "updated_at": "2026-10-16T09:54:05Z",
+  "closed_at": null,
+  "closed_by": null,
+  "comment_count": 0,
+  "comments": [],
+  "duplicate_of": [],
+  "duplicates": []
+}

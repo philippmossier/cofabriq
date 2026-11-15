@@ -1,0 +1,16 @@
+{
+  "update": {
+    "progress": {
+      "repo": "philippmossier/local-ai-chat-playground",
+      "number": 8,
+      "commit": "50c141408e067f3a878ad49b131a40f583600034",
+      "planted": [],
+      "setup_s": 12.5,
+      "repro": [],
+      "reproduced": [],
+      "red": null,
+      "status": null
+    },
+    "stage": "set_up"
+  }
+}

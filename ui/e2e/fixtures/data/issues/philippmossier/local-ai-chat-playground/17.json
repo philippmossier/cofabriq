@@ -1,0 +1,17 @@
+{
+  "repo": "philippmossier/local-ai-chat-playground",
+  "number": 17,
+  "title": "German recommendation label cut off on the welcome screen on small phones",
+  "body": "On a 360px wide phone the German text \"Empfohlen für Ihren Computer\" on the welcome screen is cut off after \"Empfohlen für\". In English it fits.",
+  "state": "open",
+  "state_reason": null,
+  "author": "philippmossier",
+  "labels": [],
+  "created_at": "2026-10-13T13:09:16Z",
+  "updated_at": "2026-10-13T13:09:16Z",
+  "closed_at": null,
+  "comment_count": 0,
+  "comments": [],
+  "duplicate_of": [],
+  "duplicates": []
+}

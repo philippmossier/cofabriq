@@ -1,0 +1,18 @@
+{
+  "repo": "philippmossier/local-ai-chat-playground",
+  "number": 64,
+  "title": "Deleted an old chat and my current conversation was gone instead",
+  "body": "I hovered an old chat in the sidebar, clicked the trash icon and confirmed. The old chat is still there, but the conversation I had open is gone. Lost a long chat this way. Please fix, this is data loss.",
+  "state": "open",
+  "state_reason": null,
+  "author": "philippmossier",
+  "labels": [],
+  "created_at": "2026-10-16T09:55:28Z",
+  "updated_at": "2026-10-16T09:55:28Z",
+  "closed_at": null,
+  "closed_by": null,
+  "comment_count": 0,
+  "comments": [],
+  "duplicate_of": [],
+  "duplicates": []
+}

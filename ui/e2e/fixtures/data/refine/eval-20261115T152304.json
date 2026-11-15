@@ -1,0 +1,2020 @@
+{
+  "title-ellipsis": {
+    "repo": "philippmossier/local-ai-chat-playground",
+    "number": 51,
+    "commit": "50c141408e067f3a878ad49b131a40f583600034",
+    "route": "bug",
+    "spec": {
+      "problem": "`titleFrom` in `src/lib/chat/store.ts:50-53` checks `flat.length < TITLE_LENGTH` (TITLE_LENGTH = 42, line 48). That is off by one: a message that flattens to exactly 42 characters fits the limit, but it still takes the truncation branch. Its 42nd character is dropped and replaced with \"…\". So the title shows an ellipsis even though the uncut text was no longer than the limit. Longer messages are cut correctly, which matches the report that \"longer questions look fine\". The sidebar (`src/components/chat-sidebar.tsx:88`) only adds `truncate`, a CSS ellipsis that appears only on real overflow, so it is not the cause. The question quoted in the issue (\"What is the difference between RAM and VRAM?\") is 44 characters by itself, so the reporter's exact title was probably a different length. The off-by-one is the only defect in the code that produces a \"…\" when the text fits.",
+      "files": [
+        {
+          "path": "src/lib/chat/store.ts",
+          "why": "Change `<` to `<=` so a title of exactly TITLE_LENGTH characters is kept whole. Longer titles are still cut to TITLE_LENGTH including the ellipsis.",
+          "at": [
+            "52"
+          ]
+        }
+      ],
+      "tests": [
+        {
+          "path": "src/lib/chat/chat.test.ts",
+          "why": "In the `titleFrom` describe block, add boundary cases. A 42-character input comes back unchanged with no ellipsis. A 43-character input comes back as 42 characters ending in \"…\". Inputs that are 42 characters only after whitespace is flattened also come back unchanged.",
+          "at": [
+            "101-106"
+          ]
+        }
+      ],
+      "criteria": [],
+      "plan": [
+        "In `src/lib/chat/store.ts:52`, change the comparison to `flat.length <= TITLE_LENGTH`.",
+        "Add boundary tests for 42 and 43 characters to the `titleFrom` block in `src/lib/chat/chat.test.ts`.",
+        "Run `pnpm check-types && pnpm lint && pnpm test`."
+      ],
+      "assumptions": [
+        "The reporter's flattened message was exactly 42 characters, which hits the off-by-one. The issue does not give the exact text.",
+        "The intended limit is 42 characters for the whole title, including the ellipsis when it is cut. The existing test expects a truncated title of length 42.",
+        "Titles already saved with the wrong ellipsis are not fixed retroactively. The title is set once, on the first send (`store.ts:110`)."
+      ],
+      "open_questions": [
+        "Can the reporter share the exact message? If it was not 42 characters after flattening, there is a second cause not found in the code. For example, the sidebar's CSS `truncate` cuts the title because the sidebar is narrow, and that is real overflow."
+      ],
+      "size": "S"
+    },
+    "unknown_paths": [],
+    "run": {
+      "output": {
+        "problem": "`titleFrom` in `src/lib/chat/store.ts:50-53` checks `flat.length < TITLE_LENGTH` (TITLE_LENGTH = 42, line 48). That is off by one: a message that flattens to exactly 42 characters fits the limit, but it still takes the truncation branch. Its 42nd character is dropped and replaced with \"…\". So the title shows an ellipsis even though the uncut text was no longer than the limit. Longer messages are cut correctly, which matches the report that \"longer questions look fine\". The sidebar (`src/components/chat-sidebar.tsx:88`) only adds `truncate`, a CSS ellipsis that appears only on real overflow, so it is not the cause. The question quoted in the issue (\"What is the difference between RAM and VRAM?\") is 44 characters by itself, so the reporter's exact title was probably a different length. The off-by-one is the only defect in the code that produces a \"…\" when the text fits.",
+        "files": [
+          {
+            "path": "src/lib/chat/store.ts",
+            "at": [
+              "52"
+            ],
+            "why": "Change `<` to `<=` so a title of exactly TITLE_LENGTH characters is kept whole. Longer titles are still cut to TITLE_LENGTH including the ellipsis."
+          }
+        ],
+        "tests": [
+          {
+            "path": "src/lib/chat/chat.test.ts",
+            "at": [
+              "101-106"
+            ],
+            "why": "In the `titleFrom` describe block, add boundary cases. A 42-character input comes back unchanged with no ellipsis. A 43-character input comes back as 42 characters ending in \"…\". Inputs that are 42 characters only after whitespace is flattened also come back unchanged."
+          }
+        ],
+        "plan": [
+          "In `src/lib/chat/store.ts:52`, change the comparison to `flat.length <= TITLE_LENGTH`.",
+          "Add boundary tests for 42 and 43 characters to the `titleFrom` block in `src/lib/chat/chat.test.ts`.",
+          "Run `pnpm check-types && pnpm lint && pnpm test`."
+        ],
+        "assumptions": [
+          "The reporter's flattened message was exactly 42 characters, which hits the off-by-one. The issue does not give the exact text.",
+          "The intended limit is 42 characters for the whole title, including the ellipsis when it is cut. The existing test expects a truncated title of length 42.",
+          "Titles already saved with the wrong ellipsis are not fixed retroactively. The title is set once, on the first send (`store.ts:110`)."
+        ],
+        "open_questions": [
+          "Can the reporter share the exact message? If it was not 42 characters after flattening, there is a second cause not found in the code. For example, the sidebar's CSS `truncate` cuts the title because the sidebar is narrow, and that is real overflow."
+        ],
+        "size": "S",
+        "criteria": [
+          "titleFrom of a 42-character string returns it unchanged, with no ellipsis.",
+          "titleFrom of a 43-character string returns 42 characters ending in \"…\".",
+          "titleFrom of a 100-character string still returns 42 characters ending in \"…\"."
+        ]
+      },
+      "model": "claude-opus-5-5",
+      "cost_usd": 0.1311472,
+      "turns": 6,
+      "latency_ms": 22590,
+      "tokens": {
+        "input": 8,
+        "output": 2205,
+        "cache_read": 25756,
+        "cache_write": 10233
+      }
+    }
+  },
+  "low-memory-reason": {
+    "repo": "philippmossier/local-ai-chat-playground",
+    "number": 52,
+    "commit": "50c141408e067f3a878ad49b131a40f583600034",
+    "route": "bug",
+    "spec": {
+      "problem": "The cause is in the text lookup, not in device detection. In `src/lib/labels.ts:53-58`, `reasonText` has `case \"hw.lowMemory\":` fall through into `case \"hw.mobile\":`, so both reasons show the same sentence: \"On phones and tablets only the smallest model is offered, to save battery and data.\" On a 4 GB Chromebook, `classify` (`src/lib/hardware/classify.ts:49-53`) correctly pushes only `hw.lowMemory`, because `navigator.deviceMemory <= 4` caps it to the smallest tier. It does not push `hw.mobile`: the mobile test at `src/lib/hardware/detect.ts:117-118` looks for Android/iPhone/iPad/iPod/Mobile in the user agent, and a ChromeOS user agent (\"X11; CrOS\") has none of these. The welcome card (`src/components/welcome.tsx:140-142`) shows each reason through `reasonText`, so the Chromebook user sees the phone sentence. Limiting the Chromebook to the small model is correct. Only the explanation is wrong.",
+      "files": [
+        {
+          "path": "src/lib/labels.ts",
+          "why": "Split the shared case: give hw.lowMemory its own English and German sentence about limited memory (e.g. \"This device has 4 GB of memory or less, so only the smallest model is offered.\") and keep the phone/tablet sentence for hw.mobile only.",
+          "at": [
+            "53-58"
+          ]
+        }
+      ],
+      "tests": [
+        {
+          "path": "src/lib/labels.test.ts",
+          "why": "New file. Assert that reasonText(\"hw.lowMemory\", 0) does not mention phones or tablets and does mention memory, and that it differs from reasonText(\"hw.mobile\", 0). Tests run in English (no navigator), as lang.test.ts already relies on.",
+          "at": []
+        },
+        {
+          "path": "src/lib/hardware/hardware.test.ts",
+          "why": "Add to \"explains itself with reason keys\": classify(PROFILES.lowMemoryChromebook).reasons contains \"hw.lowMemory\" and not \"hw.mobile\". This pins down that the device is not detected as mobile.",
+          "at": [
+            "29-34"
+          ]
+        }
+      ],
+      "criteria": [],
+      "plan": [
+        "In src/lib/labels.ts, remove the fall-through and add a separate `case \"hw.lowMemory\"` with its own tr(English, German) text about limited device memory. Keep the hw.mobile text as it is.",
+        "Add src/lib/labels.test.ts covering the two distinct texts.",
+        "Extend the classify reason test in hardware.test.ts for the lowMemoryChromebook fixture.",
+        "Run pnpm check-types && pnpm lint && pnpm test."
+      ],
+      "assumptions": [
+        "The reporter's Chromebook reports navigator.deviceMemory of 4 or less and is not flagged as mobile, so only hw.lowMemory is shown. This matches the lowMemoryChromebook fixture and the ChromeOS user agent. It was not checked on a real device.",
+        "The tier cap for low memory stays as it is. The reporter agrees the small model is fine.",
+        "The new sentence should not state an exact amount of RAM, because deviceMemory is rounded and capped. A wording like \"4 GB or less\" or \"limited memory\" is acceptable."
+      ],
+      "open_questions": [],
+      "size": "S"
+    },
+    "unknown_paths": [
+      "src/lib/labels.test.ts"
+    ],
+    "run": {
+      "output": {
+        "problem": "The cause is in the text lookup, not in device detection. In `src/lib/labels.ts:53-58`, `reasonText` has `case \"hw.lowMemory\":` fall through into `case \"hw.mobile\":`, so both reasons show the same sentence: \"On phones and tablets only the smallest model is offered, to save battery and data.\" On a 4 GB Chromebook, `classify` (`src/lib/hardware/classify.ts:49-53`) correctly pushes only `hw.lowMemory`, because `navigator.deviceMemory <= 4` caps it to the smallest tier. It does not push `hw.mobile`: the mobile test at `src/lib/hardware/detect.ts:117-118` looks for Android/iPhone/iPad/iPod/Mobile in the user agent, and a ChromeOS user agent (\"X11; CrOS\") has none of these. The welcome card (`src/components/welcome.tsx:140-142`) shows each reason through `reasonText`, so the Chromebook user sees the phone sentence. Limiting the Chromebook to the small model is correct. Only the explanation is wrong.",
+        "files": [
+          {
+            "path": "src/lib/labels.ts",
+            "at": [
+              "53-58"
+            ],
+            "why": "Split the shared case: give hw.lowMemory its own English and German sentence about limited memory (e.g. \"This device has 4 GB of memory or less, so only the smallest model is offered.\") and keep the phone/tablet sentence for hw.mobile only."
+          }
+        ],
+        "tests": [
+          {
+            "path": "src/lib/labels.test.ts",
+            "at": [],
+            "why": "New file. Assert that reasonText(\"hw.lowMemory\", 0) does not mention phones or tablets and does mention memory, and that it differs from reasonText(\"hw.mobile\", 0). Tests run in English (no navigator), as lang.test.ts already relies on."
+          },
+          {
+            "path": "src/lib/hardware/hardware.test.ts",
+            "at": [
+              "29-34"
+            ],
+            "why": "Add to \"explains itself with reason keys\": classify(PROFILES.lowMemoryChromebook).reasons contains \"hw.lowMemory\" and not \"hw.mobile\". This pins down that the device is not detected as mobile."
+          }
+        ],
+        "plan": [
+          "In src/lib/labels.ts, remove the fall-through and add a separate `case \"hw.lowMemory\"` with its own tr(English, German) text about limited device memory. Keep the hw.mobile text as it is.",
+          "Add src/lib/labels.test.ts covering the two distinct texts.",
+          "Extend the classify reason test in hardware.test.ts for the lowMemoryChromebook fixture.",
+          "Run pnpm check-types && pnpm lint && pnpm test."
+        ],
+        "assumptions": [
+          "The reporter's Chromebook reports navigator.deviceMemory of 4 or less and is not flagged as mobile, so only hw.lowMemory is shown. This matches the lowMemoryChromebook fixture and the ChromeOS user agent. It was not checked on a real device.",
+          "The tier cap for low memory stays as it is. The reporter agrees the small model is fine.",
+          "The new sentence should not state an exact amount of RAM, because deviceMemory is rounded and capped. A wording like \"4 GB or less\" or \"limited memory\" is acceptable."
+        ],
+        "open_questions": [],
+        "size": "S"
+      },
+      "model": "claude-opus-5-5",
+      "cost_usd": 0.233877,
+      "turns": 10,
+      "latency_ms": 26269,
+      "tokens": {
+        "input": 12,
+        "output": 2649,
+        "cache_read": 62725,
+        "cache_write": 21038
+      }
+    }
+  },
+  "reload-active-chat": {
+    "repo": "philippmossier/local-ai-chat-playground",
+    "number": 53,
+    "commit": "50c141408e067f3a878ad49b131a40f583600034",
+    "route": "bug",
+    "spec": {
+      "problem": "The app saves which chat is open but throws that away when it loads. `serialize` (src/lib/chat/store.ts:150-152) writes the whole `ChatState`, including `activeId`. Selecting a chat in the sidebar changes `activeId` through the `select` action (store.ts:87-90), and the persist effect in src/App.tsx:167-178 saves that change. On reload, App.tsx:61 calls `deserialize`, which ignores the saved `data.activeId` and always sets `activeId = chats[0]?.id ?? null` (store.ts:164). That is the most recently updated chat, not the one the user was reading. So after a reload the app opens the newest chat instead of the selected one.",
+      "files": [
+        {
+          "path": "src/lib/chat/store.ts",
+          "why": "Keep the saved `activeId` when it points to a chat that passed validation. Otherwise fall back to `chats[0]`, as it does now.",
+          "at": [
+            "164"
+          ]
+        }
+      ],
+      "tests": [
+        {
+          "path": "src/lib/chat/chat.test.ts",
+          "why": "Add cases in the deserialize describe block, after the 'drops malformed chats' test. (1) A saved `activeId` naming the second, older valid chat is kept. (2) A saved `activeId` naming no chat, or missing, or not a string, falls back to the first chat. The existing test (`activeId: \"bad\"` gives \"c1\") already covers the dropped-chat case and must still pass.",
+          "at": [
+            "133"
+          ]
+        }
+      ],
+      "criteria": [],
+      "plan": [
+        "In `deserialize` (store.ts:164), set `activeId` to `data.activeId` when it is a string and `chats.some((c) => c.id === data.activeId)`. Otherwise use `chats[0]?.id ?? null`.",
+        "Add the unit tests in chat.test.ts after line 133.",
+        "Run `pnpm check-types && pnpm lint && pnpm test`. Then check in `pnpm dev`: select an older chat, reload, and the same chat is open."
+      ],
+      "assumptions": [
+        "The wanted behaviour is to reopen the last chat selected in any tab. Tabs share one storage key, so the tab that saved last decides which chat opens on reload. The `sync` reducer (store.ts:100-106) still keeps each open tab's own selection.",
+        "If the user selects a chat while an answer is being generated, the selection is saved once generation ends (App.tsx:172), not right away. This is acceptable for this issue.",
+        "No change to the storage format or key is needed. `activeId` is already written to disk."
+      ],
+      "open_questions": [],
+      "size": "S"
+    },
+    "unknown_paths": [],
+    "run": {
+      "output": {
+        "problem": "The app saves which chat is open but throws that away when it loads. `serialize` (src/lib/chat/store.ts:150-152) writes the whole `ChatState`, including `activeId`. Selecting a chat in the sidebar changes `activeId` through the `select` action (store.ts:87-90), and the persist effect in src/App.tsx:167-178 saves that change. On reload, App.tsx:61 calls `deserialize`, which ignores the saved `data.activeId` and always sets `activeId = chats[0]?.id ?? null` (store.ts:164). That is the most recently updated chat, not the one the user was reading. So after a reload the app opens the newest chat instead of the selected one.",
+        "files": [
+          {
+            "path": "src/lib/chat/store.ts",
+            "at": [
+              "164"
+            ],
+            "why": "Keep the saved `activeId` when it points to a chat that passed validation. Otherwise fall back to `chats[0]`, as it does now."
+          }
+        ],
+        "tests": [
+          {
+            "path": "src/lib/chat/chat.test.ts",
+            "at": [
+              "133"
+            ],
+            "why": "Add cases in the deserialize describe block, after the 'drops malformed chats' test. (1) A saved `activeId` naming the second, older valid chat is kept. (2) A saved `activeId` naming no chat, or missing, or not a string, falls back to the first chat. The existing test (`activeId: \"bad\"` gives \"c1\") already covers the dropped-chat case and must still pass."
+          }
+        ],
+        "plan": [
+          "In `deserialize` (store.ts:164), set `activeId` to `data.activeId` when it is a string and `chats.some((c) => c.id === data.activeId)`. Otherwise use `chats[0]?.id ?? null`.",
+          "Add the unit tests in chat.test.ts after line 133.",
+          "Run `pnpm check-types && pnpm lint && pnpm test`. Then check in `pnpm dev`: select an older chat, reload, and the same chat is open."
+        ],
+        "assumptions": [
+          "The wanted behaviour is to reopen the last chat selected in any tab. Tabs share one storage key, so the tab that saved last decides which chat opens on reload. The `sync` reducer (store.ts:100-106) still keeps each open tab's own selection.",
+          "If the user selects a chat while an answer is being generated, the selection is saved once generation ends (App.tsx:172), not right away. This is acceptable for this issue.",
+          "No change to the storage format or key is needed. `activeId` is already written to disk."
+        ],
+        "open_questions": [],
+        "size": "S"
+      },
+      "model": "claude-opus-5-5",
+      "cost_usd": 0.1615126,
+      "turns": 7,
+      "latency_ms": 20005,
+      "tokens": {
+        "input": 10,
+        "output": 1834,
+        "cache_read": 42723,
+        "cache_write": 14531
+      }
+    }
+  },
+  "yesterday-near-midnight": {
+    "repo": "philippmossier/local-ai-chat-playground",
+    "number": 54,
+    "commit": "50c141408e067f3a878ad49b131a40f583600034",
+    "route": "bug",
+    "spec": {
+      "problem": "The message timestamp label counts 24-hour periods since the message, not calendar days. `src/lib/chat/time.ts:10` computes `days = Math.floor((now - at) / DAY)`. A message sent at 11:50 PM and read at 12:10 AM is 20 minutes old, so `days` is 0 and the label is \"Today 11:50 PM\" (lines 16-21). A message from late evening two days ago, read the next morning, is under 48 hours old, so `days` is 1 and the label is \"Yesterday\". The same off-by-one moves the boundaries for the weekday label (line 23, `days < 7`) and for the full date. The existing tests in `src/lib/chat/time.test.ts` miss it because each fixture is far enough from the 8:13 PM `NOW` that elapsed days and calendar days agree.",
+      "files": [
+        {
+          "path": "src/lib/chat/time.ts",
+          "why": "Count calendar days in the viewer's local time zone. Take the difference between local midnight of `now` and local midnight of `at` (for example `new Date(y, m, d).getTime()` for each) and round it with `Math.round(... / DAY)` so that a DST day of 23 or 25 hours still counts as one day. Today, Yesterday, the weekday label and the full date then all switch at midnight.",
+          "at": [
+            "3",
+            "10"
+          ]
+        }
+      ],
+      "tests": [
+        {
+          "path": "src/lib/chat/time.test.ts",
+          "why": "Add cases that cross midnight. 11:50 PM yesterday seen at 12:10 AM must give \"Yesterday 11:50 PM\". 11:00 PM two days ago seen the next morning must give the weekday name, not \"Yesterday\". A message 6 calendar days ago but under 6x24h old must still give the weekday, and one 7 calendar days ago must give the full date. Add a case across a DST change, for example the last Sunday of October in Europe, which only fails when the test run uses a time zone with DST.",
+          "at": [
+            "13",
+            "17",
+            "22"
+          ]
+        }
+      ],
+      "criteria": [],
+      "plan": [
+        "In messageTime, replace the elapsed-time day count with a calendar-day difference between the local midnights of `now` and `at`, rounded to absorb DST hours.",
+        "Keep the existing thresholds (<2 relative word, <7 weekday, otherwise date). Keep the clamp `Math.max(0, days)` for timestamps slightly in the future.",
+        "Add the midnight-crossing tests that build `NOW` with `new Date(...)` in local time, then run pnpm check-types && pnpm lint && pnpm test."
+      ],
+      "assumptions": [
+        "\"Today\" and \"Yesterday\" should follow the viewer's local calendar day. The browser's local time zone is the right reference; there is no per-user time zone setting.",
+        "The weekday window (\"within the last week\") should also count in calendar days, so a message from 7 calendar days ago shows the date and not a weekday name that is ambiguous with today's.",
+        "Labels are computed when a message is rendered. If an open chat does not re-render at midnight, labels stay stale until the next render. That is a separate concern and is not part of this fix."
+      ],
+      "open_questions": [],
+      "size": "S"
+    },
+    "unknown_paths": [],
+    "run": {
+      "output": {
+        "problem": "The message timestamp label counts 24-hour periods since the message, not calendar days. `src/lib/chat/time.ts:10` computes `days = Math.floor((now - at) / DAY)`. A message sent at 11:50 PM and read at 12:10 AM is 20 minutes old, so `days` is 0 and the label is \"Today 11:50 PM\" (lines 16-21). A message from late evening two days ago, read the next morning, is under 48 hours old, so `days` is 1 and the label is \"Yesterday\". The same off-by-one moves the boundaries for the weekday label (line 23, `days < 7`) and for the full date. The existing tests in `src/lib/chat/time.test.ts` miss it because each fixture is far enough from the 8:13 PM `NOW` that elapsed days and calendar days agree.",
+        "files": [
+          {
+            "path": "src/lib/chat/time.ts",
+            "at": [
+              "3",
+              "10"
+            ],
+            "why": "Count calendar days in the viewer's local time zone. Take the difference between local midnight of `now` and local midnight of `at` (for example `new Date(y, m, d).getTime()` for each) and round it with `Math.round(... / DAY)` so that a DST day of 23 or 25 hours still counts as one day. Today, Yesterday, the weekday label and the full date then all switch at midnight."
+          }
+        ],
+        "tests": [
+          {
+            "path": "src/lib/chat/time.test.ts",
+            "at": [
+              "13",
+              "17",
+              "22"
+            ],
+            "why": "Add cases that cross midnight. 11:50 PM yesterday seen at 12:10 AM must give \"Yesterday 11:50 PM\". 11:00 PM two days ago seen the next morning must give the weekday name, not \"Yesterday\". A message 6 calendar days ago but under 6x24h old must still give the weekday, and one 7 calendar days ago must give the full date. Add a case across a DST change, for example the last Sunday of October in Europe, which only fails when the test run uses a time zone with DST."
+          }
+        ],
+        "plan": [
+          "In messageTime, replace the elapsed-time day count with a calendar-day difference between the local midnights of `now` and `at`, rounded to absorb DST hours.",
+          "Keep the existing thresholds (<2 relative word, <7 weekday, otherwise date). Keep the clamp `Math.max(0, days)` for timestamps slightly in the future.",
+          "Add the midnight-crossing tests that build `NOW` with `new Date(...)` in local time, then run pnpm check-types && pnpm lint && pnpm test."
+        ],
+        "assumptions": [
+          "\"Today\" and \"Yesterday\" should follow the viewer's local calendar day. The browser's local time zone is the right reference; there is no per-user time zone setting.",
+          "The weekday window (\"within the last week\") should also count in calendar days, so a message from 7 calendar days ago shows the date and not a weekday name that is ambiguous with today's.",
+          "Labels are computed when a message is rendered. If an open chat does not re-render at midnight, labels stay stale until the next render. That is a separate concern and is not part of this fix."
+        ],
+        "open_questions": [],
+        "size": "S"
+      },
+      "model": "claude-opus-5-5",
+      "cost_usd": 0.11219960000000001,
+      "turns": 5,
+      "latency_ms": 17306,
+      "tokens": {
+        "input": 6,
+        "output": 1606,
+        "cache_read": 15558,
+        "cache_write": 9618
+      }
+    }
+  },
+  "too-slow-suggests-lighter": {
+    "repo": "philippmossier/local-ai-chat-playground",
+    "number": 55,
+    "commit": "50c141408e067f3a878ad49b131a40f583600034",
+    "route": "bug",
+    "spec": {
+      "problem": "When the first answer is too slow, the banner suggests the next bigger model instead of the next smaller one. In `src/lib/hardware/advice.ts:29` the too-slow branch calls `neighbour(current, 1)`, but `neighbour` (`src/lib/models/catalog.ts:118-120`) returns `CATALOG[index + direction]`. The catalog runs from lightest to heaviest: qwen3-0.6b (line 49), qwen3-1.7b (65), gemma4-e2b (81), gemma4-e4b (97). So a direction of +1 picks the heavier model. From Gemma 4 E2B it offers Gemma 4 E4B, which is exactly what the reporter saw. The direction should be -1. This is a copy of the room-to-grow branch at line 35, which correctly uses +1. A related problem: on the lightest model (qwen3-0.6b) the too-slow branch currently suggests qwen3-1.7b, when it should stay quiet. The existing tests in `src/lib/hardware/hardware.test.ts:120-142` never cover the too-slow path, so the bug went unnoticed.",
+      "files": [
+        {
+          "path": "src/lib/hardware/advice.ts",
+          "why": "Change `neighbour(current, 1)` to `neighbour(current, -1)` so the too-slow branch suggests the next lighter model.",
+          "at": [
+            "29"
+          ]
+        }
+      ],
+      "tests": [
+        {
+          "path": "src/lib/hardware/hardware.test.ts",
+          "why": "Add cases to the `adviseFromSpeed` describe block, after 'stays quiet in the comfortable middle'. (1) At 3 tok/s over 80 tokens on gemma4-e2b, expect { kind: 'too-slow', suggest: getModel('qwen3-1.7b') }. (2) At 3 tok/s on qwen3-0.6b, the lightest model, expect { kind: 'ok' }.",
+          "at": [
+            "139-141"
+          ]
+        }
+      ],
+      "criteria": [],
+      "plan": [
+        "In src/lib/hardware/advice.ts:29, change the direction passed to `neighbour` from 1 to -1.",
+        "Add the two too-slow test cases to the adviseFromSpeed block in hardware.test.ts.",
+        "Run pnpm check-types && pnpm lint && pnpm test."
+      ],
+      "assumptions": [
+        "The banner text in src/components/advice-banner.tsx is already correct for the too-slow kind and only the model it names is wrong.",
+        "CATALOG stays ordered from lightest to heaviest, as TIER_ORDER and the room-to-grow branch already assume.",
+        "Suggesting a smaller model regardless of its hardware fit is fine, because a lighter model is always at least as fast. Only room-to-grow checks fit."
+      ],
+      "open_questions": [],
+      "size": "S"
+    },
+    "unknown_paths": [],
+    "run": {
+      "output": {
+        "problem": "When the first answer is too slow, the banner suggests the next bigger model instead of the next smaller one. In `src/lib/hardware/advice.ts:29` the too-slow branch calls `neighbour(current, 1)`, but `neighbour` (`src/lib/models/catalog.ts:118-120`) returns `CATALOG[index + direction]`. The catalog runs from lightest to heaviest: qwen3-0.6b (line 49), qwen3-1.7b (65), gemma4-e2b (81), gemma4-e4b (97). So a direction of +1 picks the heavier model. From Gemma 4 E2B it offers Gemma 4 E4B, which is exactly what the reporter saw. The direction should be -1. This is a copy of the room-to-grow branch at line 35, which correctly uses +1. A related problem: on the lightest model (qwen3-0.6b) the too-slow branch currently suggests qwen3-1.7b, when it should stay quiet. The existing tests in `src/lib/hardware/hardware.test.ts:120-142` never cover the too-slow path, so the bug went unnoticed.",
+        "files": [
+          {
+            "path": "src/lib/hardware/advice.ts",
+            "at": [
+              "29"
+            ],
+            "why": "Change `neighbour(current, 1)` to `neighbour(current, -1)` so the too-slow branch suggests the next lighter model."
+          }
+        ],
+        "tests": [
+          {
+            "path": "src/lib/hardware/hardware.test.ts",
+            "at": [
+              "139-141"
+            ],
+            "why": "Add cases to the `adviseFromSpeed` describe block, after 'stays quiet in the comfortable middle'. (1) At 3 tok/s over 80 tokens on gemma4-e2b, expect { kind: 'too-slow', suggest: getModel('qwen3-1.7b') }. (2) At 3 tok/s on qwen3-0.6b, the lightest model, expect { kind: 'ok' }."
+          }
+        ],
+        "plan": [
+          "In src/lib/hardware/advice.ts:29, change the direction passed to `neighbour` from 1 to -1.",
+          "Add the two too-slow test cases to the adviseFromSpeed block in hardware.test.ts.",
+          "Run pnpm check-types && pnpm lint && pnpm test."
+        ],
+        "assumptions": [
+          "The banner text in src/components/advice-banner.tsx is already correct for the too-slow kind and only the model it names is wrong.",
+          "CATALOG stays ordered from lightest to heaviest, as TIER_ORDER and the room-to-grow branch already assume.",
+          "Suggesting a smaller model regardless of its hardware fit is fine, because a lighter model is always at least as fast. Only room-to-grow checks fit."
+        ],
+        "open_questions": [],
+        "size": "S",
+        "criteria": [
+          "adviseFromSpeed(3, 80, gemma4-e2b, options) returns { kind: 'too-slow', suggest: qwen3-1.7b }",
+          "adviseFromSpeed(3, 80, qwen3-0.6b, options) returns { kind: 'ok' }",
+          "adviseFromSpeed(45, 80, gemma4-e2b, options) still returns room-to-grow with gemma4-e4b"
+        ]
+      },
+      "model": "claude-opus-5-5",
+      "cost_usd": 0.0973768,
+      "turns": 7,
+      "latency_ms": 18897,
+      "tokens": {
+        "input": 10,
+        "output": 1861,
+        "cache_read": 47224,
+        "cache_write": 6334
+      }
+    }
+  },
+  "low-storage-cached": {
+    "repo": "philippmossier/local-ai-chat-playground",
+    "number": 56,
+    "commit": "50c141408e067f3a878ad49b131a40f583600034",
+    "route": "bug",
+    "spec": {
+      "problem": "For a model that is already cached, the picker and the welcome card show both \"Already on this device\" and the low-storage warning. Only \"Already on this device\" is true. In `src/lib/hardware/recommend.ts`, both branches correctly set `downloadMB` to 0 for cached models (lines 76 and 116), as the doc comment at line 60 intends (\"they need no download, so no free space\"). But `lowStorage` is computed from the catalog size, not from that value: `isLowStorage(p, model.downloadMB[backend.dtype])` at lines 89 and 129. `isLowStorage` (lines 153-154) already returns false when `downloadMB` is 0, so it would do the right thing if it got the cached-aware value. The UI then shows `storageWarning()` whenever `lowStorage` is true (`src/components/model-picker.tsx:77-79`, `src/components/welcome.tsx:198-200`), right next to the cached label (`model-picker.tsx:61-62`, `welcome.tsx:191-192`). `App.tsx:73` already passes `cached` into `recommend`, so the data is available. The existing test at `src/lib/hardware/hardware.test.ts:188-194` is titled \"no download and no free space\" but only checks `downloadMB`, not `lowStorage`, which is why the bug got through.",
+      "files": [
+        {
+          "path": "src/lib/hardware/recommend.ts",
+          "why": "Pass the local `downloadMB` (0 for cached models) to `isLowStorage` instead of `model.downloadMB[backend.dtype]`, in both the heuristic path and the measured-speed path.",
+          "at": [
+            "89",
+            "129"
+          ]
+        }
+      ],
+      "tests": [
+        {
+          "path": "src/lib/hardware/hardware.test.ts",
+          "why": "In the existing 'counts cached models as needing no download and no free space' test (measured path), assert `withCached.recommended?.lowStorage` is false. Add the same assertion for the heuristic path next to the 'treats low reported storage as a warning' test, using appleSiliconMac with storageFreeMB 2000 and gemma4-e2b cached.",
+          "at": [
+            "188-194",
+            "93-99"
+          ]
+        }
+      ],
+      "criteria": [],
+      "plan": [
+        "In recommend.ts, change both `isLowStorage(p, model.downloadMB[backend.dtype])` calls to `isLowStorage(p, downloadMB)`.",
+        "Extend hardware.test.ts so a cached model under tight storage has lowStorage false on both paths, and an uncached model still has it true.",
+        "Run pnpm check-types && pnpm lint && pnpm test."
+      ],
+      "assumptions": [
+        "The reporter's model is actually in the `cached` set (the 'Already on this device' label comes from that same set), so the fix in recommend() is enough and the UI components need no change.",
+        "A cached model needs no further free space to start. A cached model needs no further free space to start. Any extra space the runtime might need on load is not counted today, and the issue does not ask for that."
+      ],
+      "open_questions": [],
+      "size": "S"
+    },
+    "unknown_paths": [],
+    "run": {
+      "output": {
+        "problem": "For a model that is already cached, the picker and the welcome card show both \"Already on this device\" and the low-storage warning. Only \"Already on this device\" is true. In `src/lib/hardware/recommend.ts`, both branches correctly set `downloadMB` to 0 for cached models (lines 76 and 116), as the doc comment at line 60 intends (\"they need no download, so no free space\"). But `lowStorage` is computed from the catalog size, not from that value: `isLowStorage(p, model.downloadMB[backend.dtype])` at lines 89 and 129. `isLowStorage` (lines 153-154) already returns false when `downloadMB` is 0, so it would do the right thing if it got the cached-aware value. The UI then shows `storageWarning()` whenever `lowStorage` is true (`src/components/model-picker.tsx:77-79`, `src/components/welcome.tsx:198-200`), right next to the cached label (`model-picker.tsx:61-62`, `welcome.tsx:191-192`). `App.tsx:73` already passes `cached` into `recommend`, so the data is available. The existing test at `src/lib/hardware/hardware.test.ts:188-194` is titled \"no download and no free space\" but only checks `downloadMB`, not `lowStorage`, which is why the bug got through.",
+        "files": [
+          {
+            "path": "src/lib/hardware/recommend.ts",
+            "at": [
+              "89",
+              "129"
+            ],
+            "why": "Pass the local `downloadMB` (0 for cached models) to `isLowStorage` instead of `model.downloadMB[backend.dtype]`, in both the heuristic path and the measured-speed path."
+          }
+        ],
+        "tests": [
+          {
+            "path": "src/lib/hardware/hardware.test.ts",
+            "at": [
+              "188-194",
+              "93-99"
+            ],
+            "why": "In the existing 'counts cached models as needing no download and no free space' test (measured path), assert `withCached.recommended?.lowStorage` is false. Add the same assertion for the heuristic path next to the 'treats low reported storage as a warning' test, using appleSiliconMac with storageFreeMB 2000 and gemma4-e2b cached."
+          }
+        ],
+        "plan": [
+          "In recommend.ts, change both `isLowStorage(p, model.downloadMB[backend.dtype])` calls to `isLowStorage(p, downloadMB)`.",
+          "Extend hardware.test.ts so a cached model under tight storage has lowStorage false on both paths, and an uncached model still has it true.",
+          "Run pnpm check-types && pnpm lint && pnpm test."
+        ],
+        "assumptions": [
+          "The reporter's model is actually in the `cached` set (the 'Already on this device' label comes from that same set), so the fix in recommend() is enough and the UI components need no change.",
+          "A cached model needs no further free space to start. A cached model needs no further free space to start. Any extra space the runtime might need on load is not counted today, and the issue does not ask for that."
+        ],
+        "open_questions": [],
+        "size": "S"
+      },
+      "model": "claude-opus-5-5",
+      "cost_usd": 0.1455732,
+      "turns": 9,
+      "latency_ms": 21029,
+      "tokens": {
+        "input": 12,
+        "output": 2061,
+        "cache_read": 56046,
+        "cache_write": 11637
+      }
+    }
+  },
+  "model-host-lookalike": {
+    "repo": "philippmossier/local-ai-chat-playground",
+    "number": 57,
+    "commit": "50c141408e067f3a878ad49b131a40f583600034",
+    "route": "bug",
+    "spec": {
+      "problem": "The privacy panel files hosts with `classifyHost` in `src/lib/privacy/network.ts:20-24`, using the patterns in `MODEL_HOSTS` at `src/lib/privacy/network.ts:18`. The first pattern, `/(^|\\.)huggingface\\.co$/`, is anchored to a label boundary. The second, `/hf\\.co$/`, is not, so it matches any host that ends in the letters \"hf.co\". That includes `evilhf.co`, `nothf.co` and `attacker-hf.co`. All of these are classed as \"model\" and shown under \"Model files (download only, nothing is uploaded)\". This misleads the panel whose job is to show what leaves the device.\n\nThe existing test checks the look-alike case only for huggingface (`evilhuggingface.co` at `src/lib/privacy/network.test.ts:24`), not for hf.co, which is why the bug went unnoticed.\n\nThe CSP in `vite.config.ts:20` already only allows `https://*.hf.co`, so in a production build the browser should block a request to `evilhf.co`. The panel still has to label hosts correctly: it also runs in dev, where there is no CSP, and it shows whatever the browser recorded.",
+      "files": [
+        {
+          "path": "src/lib/privacy/network.ts",
+          "why": "Anchor the hf.co pattern to a label boundary, `/(^|\\.)hf\\.co$/`, to match the huggingface.co pattern. Look-alike hosts such as `evilhf.co` then fall through to \"other\".",
+          "at": [
+            "18"
+          ]
+        }
+      ],
+      "tests": [
+        {
+          "path": "src/lib/privacy/network.test.ts",
+          "why": "Add `classifyHost` cases next to the `evilhuggingface.co` case. `evilhf.co` -> \"other\" and `hf.co.evil.com` -> \"other\" prove the fix. `cdn-lfs.hf.co` -> \"model\" (and optionally bare `hf.co` -> \"model\") guard against breaking real hosts.",
+          "at": [
+            "24"
+          ]
+        }
+      ],
+      "criteria": [],
+      "plan": [
+        "In `src/lib/privacy/network.ts:18`, change `/hf\\.co$/` to `/(^|\\.)hf\\.co$/`.",
+        "Add test cases to the `classifyHost` table in `src/lib/privacy/network.test.ts`: `evilhf.co` -> other, `hf.co.evil.com` -> other, `cdn-lfs.hf.co` -> model.",
+        "Run `pnpm check-types && pnpm lint && pnpm test`."
+      ],
+      "assumptions": [
+        "Only `huggingface.co`, `hf.co` and their subdomains are real model hosts, matching the CSP `connect-src` in `vite.config.ts:20`.",
+        "Counting bare `hf.co` as \"model\" is fine. The CSP allows only `*.hf.co`, so the browser would block a request to bare `hf.co` anyway.",
+        "Classification is case-sensitive. Hosts come from `URL.host`, which the browser lowercases, so this needs no change."
+      ],
+      "open_questions": [],
+      "size": "S"
+    },
+    "unknown_paths": [],
+    "run": {
+      "output": {
+        "problem": "The privacy panel files hosts with `classifyHost` in `src/lib/privacy/network.ts:20-24`, using the patterns in `MODEL_HOSTS` at `src/lib/privacy/network.ts:18`. The first pattern, `/(^|\\.)huggingface\\.co$/`, is anchored to a label boundary. The second, `/hf\\.co$/`, is not, so it matches any host that ends in the letters \"hf.co\". That includes `evilhf.co`, `nothf.co` and `attacker-hf.co`. All of these are classed as \"model\" and shown under \"Model files (download only, nothing is uploaded)\". This misleads the panel whose job is to show what leaves the device.\n\nThe existing test checks the look-alike case only for huggingface (`evilhuggingface.co` at `src/lib/privacy/network.test.ts:24`), not for hf.co, which is why the bug went unnoticed.\n\nThe CSP in `vite.config.ts:20` already only allows `https://*.hf.co`, so in a production build the browser should block a request to `evilhf.co`. The panel still has to label hosts correctly: it also runs in dev, where there is no CSP, and it shows whatever the browser recorded.",
+        "files": [
+          {
+            "path": "src/lib/privacy/network.ts",
+            "at": [
+              "18"
+            ],
+            "why": "Anchor the hf.co pattern to a label boundary, `/(^|\\.)hf\\.co$/`, to match the huggingface.co pattern. Look-alike hosts such as `evilhf.co` then fall through to \"other\"."
+          }
+        ],
+        "tests": [
+          {
+            "path": "src/lib/privacy/network.test.ts",
+            "at": [
+              "24"
+            ],
+            "why": "Add `classifyHost` cases next to the `evilhuggingface.co` case. `evilhf.co` -> \"other\" and `hf.co.evil.com` -> \"other\" prove the fix. `cdn-lfs.hf.co` -> \"model\" (and optionally bare `hf.co` -> \"model\") guard against breaking real hosts."
+          }
+        ],
+        "plan": [
+          "In `src/lib/privacy/network.ts:18`, change `/hf\\.co$/` to `/(^|\\.)hf\\.co$/`.",
+          "Add test cases to the `classifyHost` table in `src/lib/privacy/network.test.ts`: `evilhf.co` -> other, `hf.co.evil.com` -> other, `cdn-lfs.hf.co` -> model.",
+          "Run `pnpm check-types && pnpm lint && pnpm test`."
+        ],
+        "assumptions": [
+          "Only `huggingface.co`, `hf.co` and their subdomains are real model hosts, matching the CSP `connect-src` in `vite.config.ts:20`.",
+          "Counting bare `hf.co` as \"model\" is fine. The CSP allows only `*.hf.co`, so the browser would block a request to bare `hf.co` anyway.",
+          "Classification is case-sensitive. Hosts come from `URL.host`, which the browser lowercases, so this needs no change."
+        ],
+        "open_questions": [],
+        "size": "S"
+      },
+      "model": "claude-opus-5-5",
+      "cost_usd": 0.07071540000000001,
+      "turns": 6,
+      "latency_ms": 18070,
+      "tokens": {
+        "input": 8,
+        "output": 1753,
+        "cache_read": 32237,
+        "cache_write": 3647
+      }
+    }
+  },
+  "first-visit-new-models": {
+    "repo": "philippmossier/local-ai-chat-playground",
+    "number": 58,
+    "commit": "50c141408e067f3a878ad49b131a40f583600034",
+    "route": "bug",
+    "spec": {
+      "problem": "On a first visit the \"New models available\" toast lists every catalog model that fits the hardware and is not cached, which is the opposite of what the code says it intends. `src/App.tsx:110` says \"Not on a first visit\", and the doc comment at `src/lib/models/seen.ts:3-7` says that when `seen === null` (no list stored yet) \"nothing is announced then, the current catalog is simply remembered\". `docs/REVIEW-GUIDE.md:82-84` describes the same behaviour. The cause is in `unseenModels` at `src/lib/models/seen.ts:9`: it does `!(seen ?? []).includes(id)`, so a missing list is treated as an empty list, and every catalog id counts as unseen. In a fresh profile `readSeenModels()` returns null (`seen.ts:14-17`). So in `src/App.tsx:116-121` every model the hardware can run sensibly, other than the one already downloaded, ends up in `fresh`, and the toast fires (`App.tsx:123-132`) as soon as the chat stage is reached. `writeSeenModels(ids)` at `App.tsx:122` then stores the list, so the toast only shows once, but that once is the very first visit.",
+      "files": [
+        {
+          "path": "src/lib/models/seen.ts",
+          "why": "Return [] when `seen` is null, so a browser with no stored list announces nothing. This matches the doc comment and REVIEW-GUIDE item 16.",
+          "at": [
+            "8-10"
+          ]
+        }
+      ],
+      "tests": [
+        {
+          "path": "src/lib/models/seen.test.ts",
+          "why": "Add a case: `unseenModels(null, [\"a\", \"b\"])` returns `[]` (first visit or old build). Keep the existing cases for a stored list, including an empty stored list `[]`, which should still return every id.",
+          "at": [
+            "8-9"
+          ]
+        }
+      ],
+      "criteria": [],
+      "plan": [
+        "In `unseenModels`, return [] early when `seen === null`; otherwise filter `catalogIds` against `seen`.",
+        "Add the null case to `seen.test.ts`, plus a case showing that an explicitly stored empty list still counts every id as unseen.",
+        "Leave `App.tsx` as it is: it still calls `writeSeenModels(ids)` on the first chat, so later catalog additions are announced.",
+        "Run `pnpm check-types && pnpm lint && pnpm test`. Then check by hand with a fresh browser profile (`pnpm build && pnpm preview`): start a model, no toast. Then remove one id from the stored `local-ai-chat:seen-models` value, reload, and the toast should name that model."
+      ],
+      "assumptions": [
+        "The behaviour in the doc comment and REVIEW-GUIDE item 16 is what is wanted: nothing is announced when no list is stored, including for users coming from a build that did not have the feature yet.",
+        "If localStorage is blocked, `readSeenModels` returns null, so after the fix nothing is announced instead of the toast repeating on every visit. That is acceptable."
+      ],
+      "open_questions": [],
+      "size": "S"
+    },
+    "unknown_paths": [],
+    "run": {
+      "output": {
+        "problem": "On a first visit the \"New models available\" toast lists every catalog model that fits the hardware and is not cached, which is the opposite of what the code says it intends. `src/App.tsx:110` says \"Not on a first visit\", and the doc comment at `src/lib/models/seen.ts:3-7` says that when `seen === null` (no list stored yet) \"nothing is announced then, the current catalog is simply remembered\". `docs/REVIEW-GUIDE.md:82-84` describes the same behaviour. The cause is in `unseenModels` at `src/lib/models/seen.ts:9`: it does `!(seen ?? []).includes(id)`, so a missing list is treated as an empty list, and every catalog id counts as unseen. In a fresh profile `readSeenModels()` returns null (`seen.ts:14-17`). So in `src/App.tsx:116-121` every model the hardware can run sensibly, other than the one already downloaded, ends up in `fresh`, and the toast fires (`App.tsx:123-132`) as soon as the chat stage is reached. `writeSeenModels(ids)` at `App.tsx:122` then stores the list, so the toast only shows once, but that once is the very first visit.",
+        "files": [
+          {
+            "path": "src/lib/models/seen.ts",
+            "at": [
+              "8-10"
+            ],
+            "why": "Return [] when `seen` is null, so a browser with no stored list announces nothing. This matches the doc comment and REVIEW-GUIDE item 16."
+          }
+        ],
+        "tests": [
+          {
+            "path": "src/lib/models/seen.test.ts",
+            "at": [
+              "8-9"
+            ],
+            "why": "Add a case: `unseenModels(null, [\"a\", \"b\"])` returns `[]` (first visit or old build). Keep the existing cases for a stored list, including an empty stored list `[]`, which should still return every id."
+          }
+        ],
+        "plan": [
+          "In `unseenModels`, return [] early when `seen === null`; otherwise filter `catalogIds` against `seen`.",
+          "Add the null case to `seen.test.ts`, plus a case showing that an explicitly stored empty list still counts every id as unseen.",
+          "Leave `App.tsx` as it is: it still calls `writeSeenModels(ids)` on the first chat, so later catalog additions are announced.",
+          "Run `pnpm check-types && pnpm lint && pnpm test`. Then check by hand with a fresh browser profile (`pnpm build && pnpm preview`): start a model, no toast. Then remove one id from the stored `local-ai-chat:seen-models` value, reload, and the toast should name that model."
+        ],
+        "assumptions": [
+          "The behaviour in the doc comment and REVIEW-GUIDE item 16 is what is wanted: nothing is announced when no list is stored, including for users coming from a build that did not have the feature yet.",
+          "If localStorage is blocked, `readSeenModels` returns null, so after the fix nothing is announced instead of the toast repeating on every visit. That is acceptable."
+        ],
+        "open_questions": [],
+        "size": "S"
+      },
+      "model": "claude-opus-5-5",
+      "cost_usd": 0.0826246,
+      "turns": 8,
+      "latency_ms": 19735,
+      "tokens": {
+        "input": 8,
+        "output": 1943,
+        "cache_read": 32183,
+        "cache_write": 4662
+      }
+    }
+  },
+  "answer-into-its-chat": {
+    "repo": "philippmossier/local-ai-chat-playground",
+    "number": 59,
+    "commit": "50c141408e067f3a878ad49b131a40f583600034",
+    "route": "bug",
+    "spec": {
+      "problem": "If you click another chat in the sidebar while an answer is still streaming, the answer is lost. The cause is in the reducer. The `token` and `finish` cases in `src/lib/chat/store.ts:118-137` don't write to the chat the action names. They write to `state.activeId ?? action.chatId`. `send()` in `src/App.tsx:240-260` sets `chatId` correctly to the chat being written (it also records it in `writingChat`). But once the user selects another chat (`select` sets `activeId`, store.ts:87-90), every later token batch goes to the newly active chat. The assistant message id doesn't exist in that chat, so `mapMessage` matches nothing and the text is silently dropped. The original chat keeps the empty placeholder that `send` created (store.ts:115), and `finish` stats are lost the same way. Nothing throws, so there is no error, which matches the report. The `fail` case (store.ts:139) already uses `action.chatId`, so failures land in the right chat. Saving to storage is skipped while `generating` is true (App.tsx:172) and resumes after `finish`, so once the reducer is fixed the full answer is saved.",
+      "files": [
+        {
+          "path": "src/lib/chat/store.ts",
+          "why": "`token` and `finish` must target `action.chatId` (like `fail` does) instead of `state.activeId ?? action.chatId`, so streamed text goes to the chat the answer belongs to, whichever chat is on screen.",
+          "at": [
+            "118-137"
+          ]
+        }
+      ],
+      "tests": [
+        {
+          "path": "src/lib/chat/chat.test.ts",
+          "why": "Add a case after the 'streams tokens into the assistant message' test: start a chat c1 with send, create or select another chat c2, dispatch token and finish for c1/a1, and expect c1's assistant message to have the full content and stats while c2 is unchanged and still active.",
+          "at": [
+            "64"
+          ]
+        }
+      ],
+      "criteria": [],
+      "plan": [
+        "In `chatReducer`, change the `token` and `finish` cases to call `mapMessage(state, action.chatId, ...)` (store.ts:121 and 131).",
+        "Add a reducer test where the active chat changes mid-stream and the tokens still land in the original chat.",
+        "Run `pnpm check-types && pnpm lint && pnpm test`.",
+        "Check by hand in a browser (`pnpm dev`, WebGPU): start a long answer, switch to an older chat, switch back, and confirm the answer is complete and still there after a reload."
+      ],
+      "assumptions": [
+        "The expected behaviour is that the answer keeps streaming in the background into its own chat and is not stopped when the user switches chats.",
+        "The only cause is the `state.activeId ?? action.chatId` targeting. Nothing else in `send()` depends on the active chat after it starts: it captures `chatId` and `assistantId` in a closure.",
+        "It's fine that the user can't send in another chat while one answer is generating: `generating` is global (App.tsx:221) and that doesn't change here."
+      ],
+      "open_questions": [],
+      "size": "S"
+    },
+    "unknown_paths": [],
+    "run": {
+      "output": {
+        "problem": "If you click another chat in the sidebar while an answer is still streaming, the answer is lost. The cause is in the reducer. The `token` and `finish` cases in `src/lib/chat/store.ts:118-137` don't write to the chat the action names. They write to `state.activeId ?? action.chatId`. `send()` in `src/App.tsx:240-260` sets `chatId` correctly to the chat being written (it also records it in `writingChat`). But once the user selects another chat (`select` sets `activeId`, store.ts:87-90), every later token batch goes to the newly active chat. The assistant message id doesn't exist in that chat, so `mapMessage` matches nothing and the text is silently dropped. The original chat keeps the empty placeholder that `send` created (store.ts:115), and `finish` stats are lost the same way. Nothing throws, so there is no error, which matches the report. The `fail` case (store.ts:139) already uses `action.chatId`, so failures land in the right chat. Saving to storage is skipped while `generating` is true (App.tsx:172) and resumes after `finish`, so once the reducer is fixed the full answer is saved.",
+        "files": [
+          {
+            "path": "src/lib/chat/store.ts",
+            "at": [
+              "118-137"
+            ],
+            "why": "`token` and `finish` must target `action.chatId` (like `fail` does) instead of `state.activeId ?? action.chatId`, so streamed text goes to the chat the answer belongs to, whichever chat is on screen."
+          }
+        ],
+        "tests": [
+          {
+            "path": "src/lib/chat/chat.test.ts",
+            "at": [
+              "64"
+            ],
+            "why": "Add a case after the 'streams tokens into the assistant message' test: start a chat c1 with send, create or select another chat c2, dispatch token and finish for c1/a1, and expect c1's assistant message to have the full content and stats while c2 is unchanged and still active."
+          }
+        ],
+        "plan": [
+          "In `chatReducer`, change the `token` and `finish` cases to call `mapMessage(state, action.chatId, ...)` (store.ts:121 and 131).",
+          "Add a reducer test where the active chat changes mid-stream and the tokens still land in the original chat.",
+          "Run `pnpm check-types && pnpm lint && pnpm test`.",
+          "Check by hand in a browser (`pnpm dev`, WebGPU): start a long answer, switch to an older chat, switch back, and confirm the answer is complete and still there after a reload."
+        ],
+        "assumptions": [
+          "The expected behaviour is that the answer keeps streaming in the background into its own chat and is not stopped when the user switches chats.",
+          "The only cause is the `state.activeId ?? action.chatId` targeting. Nothing else in `send()` depends on the active chat after it starts: it captures `chatId` and `assistantId` in a closure.",
+          "It's fine that the user can't send in another chat while one answer is generating: `generating` is global (App.tsx:221) and that doesn't change here."
+        ],
+        "open_questions": [],
+        "size": "S"
+      },
+      "model": "claude-opus-5-5",
+      "cost_usd": 0.1534316,
+      "turns": 7,
+      "latency_ms": 20750,
+      "tokens": {
+        "input": 10,
+        "output": 1832,
+        "cache_read": 58478,
+        "cache_write": 13132
+      }
+    }
+  },
+  "sync-other-tab": {
+    "repo": "philippmossier/local-ai-chat-playground",
+    "number": 60,
+    "commit": "50c141408e067f3a878ad49b131a40f583600034",
+    "route": "bug",
+    "spec": {
+      "problem": "The cross-tab sync merges chats the wrong way. When tab 1 saves, tab 2's `storage` listener (`src/App.tsx:143-164`) dispatches `{ type: \"sync\" }`. The reducer's `sync` case (`src/lib/chat/store.ts:100-106`) builds a union of the incoming chats and this tab's chats, and this tab's copy wins on every id clash (line 103: `for (const c of state.chats) byId.set(c.id, c)`). That causes both symptoms in the issue:\n1. Deleted chats come back. Chats deleted in tab 1 are missing from `incoming`, but tab 2 still has them in `state.chats`, so they survive the merge. The persist effect skips this one state change (`fromOtherTab`, `src/App.tsx:168-171`). The next local change in tab 2 (select, send, new) writes the whole stale list back to localStorage. Tab 1 then merges it back in too.\n2. New messages don't show up. If tab 2 already had the chat, its older copy overwrites tab 1's newer one, so tab 2 never shows the new messages, and its next save also removes them from storage.\nOnly \"delete everything\" works, because it takes the separate `clear` path (`src/App.tsx:148-153`). The existing tests (`src/lib/chat/chat.test.ts:155-181`) only cover adding chats and keeping the chat being streamed into, so the bug went unnoticed.",
+      "files": [
+        {
+          "path": "src/lib/chat/store.ts",
+          "why": "Change the sync semantics: the incoming state is authoritative for which chats exist and what they contain. The only exception is `keepChatId`, the chat this tab is still streaming into: keep the local version and put it into the list. Fall back to the first chat for `activeId` when the open chat was deleted elsewhere. Update the comments on the action type and in the reducer to match.",
+          "at": [
+            "32-33",
+            "100-106"
+          ]
+        }
+      ],
+      "tests": [
+        {
+          "path": "src/lib/chat/chat.test.ts",
+          "why": "Inside `describe(\"sync from another tab\")`, add cases: (a) a chat missing from `incoming` is removed locally; (b) when a chat exists in both, the incoming copy with more messages replaces the local one; (c) if the active chat was deleted in the other tab, `activeId` falls back to the first remaining chat, or null if none are left; (d) a `keepChatId` chat missing from `incoming` is still kept with its local content, if that is the decided behaviour. Keep the existing two cases passing.",
+          "at": [
+            "180"
+          ]
+        }
+      ],
+      "criteria": [],
+      "plan": [
+        "In `chatReducer`'s `sync` case, start from `action.incoming.chats`. If `keepChatId` is set and that chat exists locally, put the local version in place of the incoming one, or add it if the incoming list doesn't have it. Sort by `updatedAt` descending, as now.",
+        "Keep `state.activeId` if that chat is still in the result. Otherwise use `chats[0]?.id ?? null`.",
+        "Update the comments at `store.ts:32` and `store.ts:101`. Check that the comment at `App.tsx:141-142` is still accurate; no logic change is expected in App.tsx.",
+        "Add the reducer tests listed above to `chat.test.ts`.",
+        "Run `pnpm check-types && pnpm lint && pnpm test`. Then check by hand in two tabs of `pnpm preview`: delete a chat in tab 1, act in tab 2, and confirm it stays deleted; send in tab 1 to a chat that is open in tab 2, and confirm the message appears in tab 2."
+      ],
+      "assumptions": [
+        "Last writer wins across tabs is acceptable. Every local change except streamed tokens is saved straight away (`App.tsx:167-178`), so localStorage always holds the newest committed state, and the incoming value can replace the local one without losing work.",
+        "The only unsaved local state is the answer being streamed (saving is paused while `generating`). That chat is identified by `writingChat`/`keepChatId`, so protecting it alone is enough.",
+        "There's a smaller race this fix doesn't cover: if both tabs stream at the same time, the second save overwrites the first tab's answer. That is out of scope for this issue."
+      ],
+      "open_questions": [
+        "If the other tab deletes the chat this tab is still streaming into, should this tab keep the chat (it reappears in the other tab when the answer is saved) or drop it and interrupt the engine, as the wipe-all path already does? The spec assumes keeping it, to match the current `keepChatId` contract."
+      ],
+      "size": "M"
+    },
+    "unknown_paths": [],
+    "run": {
+      "output": {
+        "problem": "The cross-tab sync merges chats the wrong way. When tab 1 saves, tab 2's `storage` listener (`src/App.tsx:143-164`) dispatches `{ type: \"sync\" }`. The reducer's `sync` case (`src/lib/chat/store.ts:100-106`) builds a union of the incoming chats and this tab's chats, and this tab's copy wins on every id clash (line 103: `for (const c of state.chats) byId.set(c.id, c)`). That causes both symptoms in the issue:\n1. Deleted chats come back. Chats deleted in tab 1 are missing from `incoming`, but tab 2 still has them in `state.chats`, so they survive the merge. The persist effect skips this one state change (`fromOtherTab`, `src/App.tsx:168-171`). The next local change in tab 2 (select, send, new) writes the whole stale list back to localStorage. Tab 1 then merges it back in too.\n2. New messages don't show up. If tab 2 already had the chat, its older copy overwrites tab 1's newer one, so tab 2 never shows the new messages, and its next save also removes them from storage.\nOnly \"delete everything\" works, because it takes the separate `clear` path (`src/App.tsx:148-153`). The existing tests (`src/lib/chat/chat.test.ts:155-181`) only cover adding chats and keeping the chat being streamed into, so the bug went unnoticed.",
+        "files": [
+          {
+            "path": "src/lib/chat/store.ts",
+            "at": [
+              "32-33",
+              "100-106"
+            ],
+            "why": "Change the sync semantics: the incoming state is authoritative for which chats exist and what they contain. The only exception is `keepChatId`, the chat this tab is still streaming into: keep the local version and put it into the list. Fall back to the first chat for `activeId` when the open chat was deleted elsewhere. Update the comments on the action type and in the reducer to match."
+          }
+        ],
+        "tests": [
+          {
+            "path": "src/lib/chat/chat.test.ts",
+            "at": [
+              "180"
+            ],
+            "why": "Inside `describe(\"sync from another tab\")`, add cases: (a) a chat missing from `incoming` is removed locally; (b) when a chat exists in both, the incoming copy with more messages replaces the local one; (c) if the active chat was deleted in the other tab, `activeId` falls back to the first remaining chat, or null if none are left; (d) a `keepChatId` chat missing from `incoming` is still kept with its local content, if that is the decided behaviour. Keep the existing two cases passing."
+          }
+        ],
+        "plan": [
+          "In `chatReducer`'s `sync` case, start from `action.incoming.chats`. If `keepChatId` is set and that chat exists locally, put the local version in place of the incoming one, or add it if the incoming list doesn't have it. Sort by `updatedAt` descending, as now.",
+          "Keep `state.activeId` if that chat is still in the result. Otherwise use `chats[0]?.id ?? null`.",
+          "Update the comments at `store.ts:32` and `store.ts:101`. Check that the comment at `App.tsx:141-142` is still accurate; no logic change is expected in App.tsx.",
+          "Add the reducer tests listed above to `chat.test.ts`.",
+          "Run `pnpm check-types && pnpm lint && pnpm test`. Then check by hand in two tabs of `pnpm preview`: delete a chat in tab 1, act in tab 2, and confirm it stays deleted; send in tab 1 to a chat that is open in tab 2, and confirm the message appears in tab 2."
+        ],
+        "assumptions": [
+          "Last writer wins across tabs is acceptable. Every local change except streamed tokens is saved straight away (`App.tsx:167-178`), so localStorage always holds the newest committed state, and the incoming value can replace the local one without losing work.",
+          "The only unsaved local state is the answer being streamed (saving is paused while `generating`). That chat is identified by `writingChat`/`keepChatId`, so protecting it alone is enough.",
+          "There's a smaller race this fix doesn't cover: if both tabs stream at the same time, the second save overwrites the first tab's answer. That is out of scope for this issue."
+        ],
+        "open_questions": [
+          "If the other tab deletes the chat this tab is still streaming into, should this tab keep the chat (it reappears in the other tab when the answer is saved) or drop it and interrupt the engine, as the wipe-all path already does? The spec assumes keeping it, to match the current `keepChatId` contract."
+        ],
+        "size": "M"
+      },
+      "model": "claude-opus-5-5",
+      "cost_usd": 0.1455118,
+      "turns": 7,
+      "latency_ms": 28660,
+      "tokens": {
+        "input": 10,
+        "output": 2644,
+        "cache_read": 54799,
+        "cache_write": 10204
+      }
+    }
+  },
+  "shift-enter-newline": {
+    "repo": "philippmossier/local-ai-chat-playground",
+    "number": 61,
+    "commit": "50c141408e067f3a878ad49b131a40f583600034",
+    "route": "bug",
+    "spec": {
+      "problem": "The composer's keydown handler in `src/components/chat-composer.tsx:54-59` sends on any Enter that is not part of an IME composition. It never checks `e.shiftKey`, so Shift+Enter is swallowed (`preventDefault`) and sends the message. That breaks the promise in the component doc comment (line 14) and in the desktop placeholder (lines 69-70): \"Shift+Enter for a new line\" / \"Umschalt+Enter für eine neue Zeile\". The browser and OS don't matter: the check is missing on every platform. Pasting text that already has line breaks still works, because paste doesn't fire Enter keydown. What breaks is typing a line break by hand. Separately, while reading the file I noticed that the Stop button (line 98) uses `disabled={!canSend}`, and `canSend` is always false while `generating` is true, so it looks like Stop can never be clicked. That is outside this issue (see open questions).",
+      "files": [
+        {
+          "path": "src/components/chat-composer.tsx",
+          "why": "Add `!e.shiftKey` to the Enter condition (or call a small helper) so Shift+Enter falls through to the textarea's default behaviour and inserts a newline.",
+          "at": [
+            "54-59"
+          ]
+        },
+        {
+          "path": "src/lib/chat/keys.ts",
+          "why": "New file, optional: a pure `isSendKey({ key, shiftKey, isComposing })` helper, so the rule can be unit-tested in the node-only vitest setup (there is no DOM or testing-library setup, and vitest only picks up `src/**/*.test.ts`).",
+          "at": []
+        }
+      ],
+      "tests": [
+        {
+          "path": "src/lib/chat/keys.test.ts",
+          "why": "New file. Cases: Enter returns true; Shift+Enter returns false; Enter during IME composition returns false; any other key returns false.",
+          "at": []
+        }
+      ],
+      "criteria": [],
+      "plan": [
+        "Add `isSendKey` in `src/lib/chat/keys.ts`: returns `key === \"Enter\" && !shiftKey && !isComposing`.",
+        "In `chat-composer.tsx:54-59`, call `isSendKey({ key: e.key, shiftKey: e.shiftKey, isComposing: e.nativeEvent.isComposing })`. Only when it returns true, call `preventDefault()` and `onSend()` if `canSend`. Otherwise leave the event alone so the textarea inserts the newline.",
+        "Add `src/lib/chat/keys.test.ts` with the four cases.",
+        "Run `pnpm check-types && pnpm lint && pnpm test`. Then in `pnpm dev` (Chrome), check that Shift+Enter adds a line, the textarea grows, and Enter still sends. Report this browser check as done by hand."
+      ],
+      "assumptions": [
+        "The intended behaviour is the one the placeholder and the doc comment describe: Enter sends, Shift+Enter adds a new line.",
+        "Ctrl, Cmd and Alt with Enter keep their current behaviour (they send). The issue only covers Shift.",
+        "A pure helper plus a node unit test is acceptable instead of adding a DOM test environment just for this. Inlining `!e.shiftKey` and checking it in the browser would also be fine."
+      ],
+      "open_questions": [
+        "Not part of this issue: the Stop button at `chat-composer.tsx:98` is `disabled={!canSend}`, and `canSend` is false whenever `generating` is true, so it looks like Stop can never be clicked. Should this be fixed here (probably by removing the `disabled` prop) or in a separate issue?"
+      ],
+      "size": "S"
+    },
+    "unknown_paths": [
+      "src/lib/chat/keys.ts",
+      "src/lib/chat/keys.test.ts"
+    ],
+    "run": {
+      "output": {
+        "problem": "The composer's keydown handler in `src/components/chat-composer.tsx:54-59` sends on any Enter that is not part of an IME composition. It never checks `e.shiftKey`, so Shift+Enter is swallowed (`preventDefault`) and sends the message. That breaks the promise in the component doc comment (line 14) and in the desktop placeholder (lines 69-70): \"Shift+Enter for a new line\" / \"Umschalt+Enter für eine neue Zeile\". The browser and OS don't matter: the check is missing on every platform. Pasting text that already has line breaks still works, because paste doesn't fire Enter keydown. What breaks is typing a line break by hand. Separately, while reading the file I noticed that the Stop button (line 98) uses `disabled={!canSend}`, and `canSend` is always false while `generating` is true, so it looks like Stop can never be clicked. That is outside this issue (see open questions).",
+        "files": [
+          {
+            "path": "src/components/chat-composer.tsx",
+            "at": [
+              "54-59"
+            ],
+            "why": "Add `!e.shiftKey` to the Enter condition (or call a small helper) so Shift+Enter falls through to the textarea's default behaviour and inserts a newline."
+          },
+          {
+            "path": "src/lib/chat/keys.ts",
+            "at": [],
+            "why": "New file, optional: a pure `isSendKey({ key, shiftKey, isComposing })` helper, so the rule can be unit-tested in the node-only vitest setup (there is no DOM or testing-library setup, and vitest only picks up `src/**/*.test.ts`)."
+          }
+        ],
+        "tests": [
+          {
+            "path": "src/lib/chat/keys.test.ts",
+            "at": [],
+            "why": "New file. Cases: Enter returns true; Shift+Enter returns false; Enter during IME composition returns false; any other key returns false."
+          }
+        ],
+        "plan": [
+          "Add `isSendKey` in `src/lib/chat/keys.ts`: returns `key === \"Enter\" && !shiftKey && !isComposing`.",
+          "In `chat-composer.tsx:54-59`, call `isSendKey({ key: e.key, shiftKey: e.shiftKey, isComposing: e.nativeEvent.isComposing })`. Only when it returns true, call `preventDefault()` and `onSend()` if `canSend`. Otherwise leave the event alone so the textarea inserts the newline.",
+          "Add `src/lib/chat/keys.test.ts` with the four cases.",
+          "Run `pnpm check-types && pnpm lint && pnpm test`. Then in `pnpm dev` (Chrome), check that Shift+Enter adds a line, the textarea grows, and Enter still sends. Report this browser check as done by hand."
+        ],
+        "assumptions": [
+          "The intended behaviour is the one the placeholder and the doc comment describe: Enter sends, Shift+Enter adds a new line.",
+          "Ctrl, Cmd and Alt with Enter keep their current behaviour (they send). The issue only covers Shift.",
+          "A pure helper plus a node unit test is acceptable instead of adding a DOM test environment just for this. Inlining `!e.shiftKey` and checking it in the browser would also be fine."
+        ],
+        "open_questions": [
+          "Not part of this issue: the Stop button at `chat-composer.tsx:98` is `disabled={!canSend}`, and `canSend` is false whenever `generating` is true, so it looks like Stop can never be clicked. Should this be fixed here (probably by removing the `disabled` prop) or in a separate issue?"
+        ],
+        "size": "S"
+      },
+      "model": "claude-opus-5-5",
+      "cost_usd": 0.078377,
+      "turns": 7,
+      "latency_ms": 20508,
+      "tokens": {
+        "input": 8,
+        "output": 1954,
+        "cache_read": 32045,
+        "cache_write": 4107
+      }
+    }
+  },
+  "input-cleared-after-send": {
+    "repo": "philippmossier/local-ai-chat-playground",
+    "number": 62,
+    "commit": "50c141408e067f3a878ad49b131a40f583600034",
+    "route": "bug",
+    "spec": {
+      "problem": "After a message is sent, the text stays in the input box. The draft text is state in `Chat` (`src/components/chat.tsx:58`, `const [draft, setDraft] = useState(\"\")`) and goes to `ChatComposer` as `value` (`chat.tsx:117`). Enter (`src/components/chat-composer.tsx:54-58`) and the Send button (`chat-composer.tsx:109`) both call `send()` (`chat.tsx:68-72`). `send()` trims the draft and passes it to `onSend(text)`, but it never calls `setDraft(\"\")`, and nothing else does either. The controlled textarea keeps showing the old text. That is the whole cause.\n\nA separate bug turned up nearby and is not part of this issue: the Stop button has `disabled={!canSend}` (`chat-composer.tsx:98`). `canSend` already requires `!generating` (`chat-composer.tsx:40`), so Stop is always disabled while an answer is being generated, which is the only time it shows.",
+      "files": [
+        {
+          "path": "src/components/chat.tsx",
+          "why": "In send(), clear the draft with setDraft(\"\") after onSend(text) is called, so the box empties on both Enter and the Send button. The early return for empty text or a running answer stays as it is, so a send that is refused keeps the text.",
+          "at": [
+            "68-72"
+          ]
+        }
+      ],
+      "tests": [],
+      "criteria": [],
+      "plan": [
+        "In `src/components/chat.tsx` `send()`, add `setDraft(\"\")` right after `onSend(text)`.",
+        "Run `pnpm check-types && pnpm lint && pnpm test`.",
+        "Check by hand in `pnpm dev`: type a message and press Enter, and the box empties; send with the button, and it empties; press Shift+Enter, and it still adds a new line; press Enter while an answer is generating, and the text stays.",
+        "Say in the PR that this was checked by running the app. The test setup has no way to render components: vitest runs with `environment: \"node\"` and only picks up `src/**/*.test.ts` (`vitest.config.ts:6`), and testing-library is not installed."
+      ],
+      "assumptions": [
+        "The box should empty as soon as the message is accepted, not after the answer finishes, as in other chat apps.",
+        "onSend should not hand the text back if sending fails later. It returns `unknown`, and nobody looks at what it returns. Clearing the box before the result is known matches how it works today and loses nothing that matters, because the sent message appears in the conversation.",
+        "No automated test is added, because adding a DOM test setup (jsdom plus testing-library) for one line is out of scope. The fix is checked by running the app."
+      ],
+      "open_questions": [
+        "Should the Stop button bug (`chat-composer.tsx:98`, `disabled={!canSend}` is always true while generating) be fixed in the same PR or tracked as its own issue? It is not needed for this fix."
+      ],
+      "size": "S"
+    },
+    "unknown_paths": [],
+    "run": {
+      "output": {
+        "problem": "After a message is sent, the text stays in the input box. The draft text is state in `Chat` (`src/components/chat.tsx:58`, `const [draft, setDraft] = useState(\"\")`) and goes to `ChatComposer` as `value` (`chat.tsx:117`). Enter (`src/components/chat-composer.tsx:54-58`) and the Send button (`chat-composer.tsx:109`) both call `send()` (`chat.tsx:68-72`). `send()` trims the draft and passes it to `onSend(text)`, but it never calls `setDraft(\"\")`, and nothing else does either. The controlled textarea keeps showing the old text. That is the whole cause.\n\nA separate bug turned up nearby and is not part of this issue: the Stop button has `disabled={!canSend}` (`chat-composer.tsx:98`). `canSend` already requires `!generating` (`chat-composer.tsx:40`), so Stop is always disabled while an answer is being generated, which is the only time it shows.",
+        "files": [
+          {
+            "path": "src/components/chat.tsx",
+            "at": [
+              "68-72"
+            ],
+            "why": "In send(), clear the draft with setDraft(\"\") after onSend(text) is called, so the box empties on both Enter and the Send button. The early return for empty text or a running answer stays as it is, so a send that is refused keeps the text."
+          }
+        ],
+        "tests": [],
+        "plan": [
+          "In `src/components/chat.tsx` `send()`, add `setDraft(\"\")` right after `onSend(text)`.",
+          "Run `pnpm check-types && pnpm lint && pnpm test`.",
+          "Check by hand in `pnpm dev`: type a message and press Enter, and the box empties; send with the button, and it empties; press Shift+Enter, and it still adds a new line; press Enter while an answer is generating, and the text stays.",
+          "Say in the PR that this was checked by running the app. The test setup has no way to render components: vitest runs with `environment: \"node\"` and only picks up `src/**/*.test.ts` (`vitest.config.ts:6`), and testing-library is not installed."
+        ],
+        "assumptions": [
+          "The box should empty as soon as the message is accepted, not after the answer finishes, as in other chat apps.",
+          "onSend should not hand the text back if sending fails later. It returns `unknown`, and nobody looks at what it returns. Clearing the box before the result is known matches how it works today and loses nothing that matters, because the sent message appears in the conversation.",
+          "No automated test is added, because adding a DOM test setup (jsdom plus testing-library) for one line is out of scope. The fix is checked by running the app."
+        ],
+        "open_questions": [
+          "Should the Stop button bug (`chat-composer.tsx:98`, `disabled={!canSend}` is always true while generating) be fixed in the same PR or tracked as its own issue? It is not needed for this fix."
+        ],
+        "size": "S"
+      },
+      "model": "claude-opus-5-5",
+      "cost_usd": 0.09532840000000001,
+      "turns": 7,
+      "latency_ms": 19643,
+      "tokens": {
+        "input": 10,
+        "output": 1729,
+        "cache_read": 47102,
+        "cache_write": 6411
+      }
+    }
+  },
+  "stop-long-answer": {
+    "repo": "philippmossier/local-ai-chat-playground",
+    "number": 63,
+    "commit": "50c141408e067f3a878ad49b131a40f583600034",
+    "route": "bug",
+    "spec": {
+      "problem": "The Stop button can never be clicked. In `src/components/chat-composer.tsx:40`, `canSend` is `value.trim().length > 0 && !generating && ready`. The Stop button only renders while `generating` is true (line 92), but it reuses `disabled={!canSend}` (line 98). Because `canSend` contains `!generating`, it is always false while Stop is on screen, so Stop is always disabled. This looks like the Send button's condition copied over. The stop path behind it works: `onStop` is passed through `src/components/chat.tsx:120`, `App.tsx:357` calls `getEngine().interrupt()`, and `worker.ts:238` handles the interrupt.",
+      "files": [
+        {
+          "path": "src/components/chat-composer.tsx",
+          "why": "Stop button uses the Send condition `disabled={!canSend}`, which is always true while generating. Remove that prop (or use `disabled={!ready}`) so Stop is clickable while an answer is being written.",
+          "at": [
+            "98"
+          ]
+        }
+      ],
+      "tests": [],
+      "criteria": [],
+      "plan": [
+        "In src/components/chat-composer.tsx line 98, remove `disabled={!canSend}` from the Stop InputGroupButton. Stop should be enabled whenever it is shown, which is whenever `generating` is true.",
+        "Run pnpm check-types && pnpm lint && pnpm test.",
+        "Check by hand in Chrome with pnpm build && pnpm preview (or the fake worker in dev): send a prompt, click Stop while the answer streams, and confirm generation stops and the message shows 'Stopped' (message.tsx:81)."
+      ],
+      "assumptions": [
+        "No automated test is added. Vitest runs only `src/**/*.test.ts` in a node environment (vitest.config.ts:6), with no DOM or testing-library, so a component test would need new test infrastructure. Following CLAUDE.md, the fix is checked by running the app.",
+        "Stop should work even when the composer textarea is empty. It is independent of what the user has typed."
+      ],
+      "open_questions": [],
+      "size": "S"
+    },
+    "unknown_paths": [],
+    "run": {
+      "output": {
+        "problem": "The Stop button can never be clicked. In `src/components/chat-composer.tsx:40`, `canSend` is `value.trim().length > 0 && !generating && ready`. The Stop button only renders while `generating` is true (line 92), but it reuses `disabled={!canSend}` (line 98). Because `canSend` contains `!generating`, it is always false while Stop is on screen, so Stop is always disabled. This looks like the Send button's condition copied over. The stop path behind it works: `onStop` is passed through `src/components/chat.tsx:120`, `App.tsx:357` calls `getEngine().interrupt()`, and `worker.ts:238` handles the interrupt.",
+        "files": [
+          {
+            "path": "src/components/chat-composer.tsx",
+            "at": [
+              "98"
+            ],
+            "why": "Stop button uses the Send condition `disabled={!canSend}`, which is always true while generating. Remove that prop (or use `disabled={!ready}`) so Stop is clickable while an answer is being written."
+          }
+        ],
+        "tests": [],
+        "plan": [
+          "In src/components/chat-composer.tsx line 98, remove `disabled={!canSend}` from the Stop InputGroupButton. Stop should be enabled whenever it is shown, which is whenever `generating` is true.",
+          "Run pnpm check-types && pnpm lint && pnpm test.",
+          "Check by hand in Chrome with pnpm build && pnpm preview (or the fake worker in dev): send a prompt, click Stop while the answer streams, and confirm generation stops and the message shows 'Stopped' (message.tsx:81)."
+        ],
+        "assumptions": [
+          "No automated test is added. Vitest runs only `src/**/*.test.ts` in a node environment (vitest.config.ts:6), with no DOM or testing-library, so a component test would need new test infrastructure. Following CLAUDE.md, the fix is checked by running the app.",
+          "Stop should work even when the composer textarea is empty. It is independent of what the user has typed."
+        ],
+        "open_questions": [],
+        "size": "S"
+      },
+      "model": "claude-opus-5-5",
+      "cost_usd": 0.08195000000000001,
+      "turns": 8,
+      "latency_ms": 17414,
+      "tokens": {
+        "input": 10,
+        "output": 1522,
+        "cache_read": 43790,
+        "cache_write": 5339
+      }
+    }
+  },
+  "delete-chat-in-sidebar": {
+    "repo": "philippmossier/local-ai-chat-playground",
+    "number": 64,
+    "commit": "50c141408e067f3a878ad49b131a40f583600034",
+    "route": "bug",
+    "spec": {
+      "problem": "In the sidebar, the button that confirms a delete removes the chat that is open, not the chat in that row. At src/components/chat-sidebar.tsx:99 the handler calls `onDelete(activeId ?? c.id)`. Whenever a chat is open (`activeId` is not null), that ID is used, so the open conversation is deleted and the old chat the user picked stays in the list. Only when no chat is open does the row's own ID `c.id` get used. The reducer is correct: src/lib/chat/store.ts:91-96 deletes the ID it is given and picks a new active chat if needed. App.tsx:343 passes the ID through unchanged. The bug is only in the sidebar callback, and it deletes data permanently.",
+      "files": [
+        {
+          "path": "src/components/chat-sidebar.tsx",
+          "why": "Change `onDelete(activeId ?? c.id)` to `onDelete(c.id)` so the confirmed row is the one deleted. `c.id` is the same as `confirming`, which the trash button set at line 118.",
+          "at": [
+            "99"
+          ]
+        }
+      ],
+      "tests": [
+        {
+          "path": "src/components/chat-sidebar.test.tsx",
+          "why": "New test: render ChatSidebar with two chats and activeId set to the first, click the trash and confirm buttons on the second row, and assert that onDelete was called with the second chat's ID. The repo has no component tests yet and no DOM testing library is installed (no @testing-library, jsdom or happy-dom found), so this needs new dev dependencies. Otherwise skip it and check the fix by hand in the app.",
+          "at": []
+        },
+        {
+          "path": "src/lib/chat/chat.test.ts",
+          "why": "Optional: a reducer case showing that deleting a chat that is not open leaves activeId unchanged. This documents that the store is correct and the fault was in the sidebar.",
+          "at": [
+            "70-72"
+          ]
+        }
+      ],
+      "criteria": [],
+      "plan": [
+        "Replace `activeId ?? c.id` with `c.id` at src/components/chat-sidebar.tsx:99.",
+        "Optionally add a reducer test: deleting a chat that is not open keeps activeId.",
+        "If maintainers accept a DOM test setup, add the sidebar component test. Otherwise, in `pnpm dev`, open chat A, delete chat B from the sidebar, and confirm that A stays open and B is gone.",
+        "Run `pnpm check-types && pnpm lint && pnpm test`."
+      ],
+      "assumptions": [
+        "The trash and confirm buttons should always act on their own row, whichever chat is open.",
+        "Recovering chats that were already deleted is out of scope. There is no undo or trash folder, and the deleted chat is gone from localStorage."
+      ],
+      "open_questions": [
+        "Should the repo add a DOM test setup (for example @testing-library/react with jsdom) for component tests, or is checking this fix by hand in the browser enough?"
+      ],
+      "size": "S"
+    },
+    "unknown_paths": [
+      "src/components/chat-sidebar.test.tsx"
+    ],
+    "run": {
+      "output": {
+        "problem": "In the sidebar, the button that confirms a delete removes the chat that is open, not the chat in that row. At src/components/chat-sidebar.tsx:99 the handler calls `onDelete(activeId ?? c.id)`. Whenever a chat is open (`activeId` is not null), that ID is used, so the open conversation is deleted and the old chat the user picked stays in the list. Only when no chat is open does the row's own ID `c.id` get used. The reducer is correct: src/lib/chat/store.ts:91-96 deletes the ID it is given and picks a new active chat if needed. App.tsx:343 passes the ID through unchanged. The bug is only in the sidebar callback, and it deletes data permanently.",
+        "files": [
+          {
+            "path": "src/components/chat-sidebar.tsx",
+            "at": [
+              "99"
+            ],
+            "why": "Change `onDelete(activeId ?? c.id)` to `onDelete(c.id)` so the confirmed row is the one deleted. `c.id` is the same as `confirming`, which the trash button set at line 118."
+          }
+        ],
+        "tests": [
+          {
+            "path": "src/components/chat-sidebar.test.tsx",
+            "at": [],
+            "why": "New test: render ChatSidebar with two chats and activeId set to the first, click the trash and confirm buttons on the second row, and assert that onDelete was called with the second chat's ID. The repo has no component tests yet and no DOM testing library is installed (no @testing-library, jsdom or happy-dom found), so this needs new dev dependencies. Otherwise skip it and check the fix by hand in the app."
+          },
+          {
+            "path": "src/lib/chat/chat.test.ts",
+            "at": [
+              "70-72"
+            ],
+            "why": "Optional: a reducer case showing that deleting a chat that is not open leaves activeId unchanged. This documents that the store is correct and the fault was in the sidebar."
+          }
+        ],
+        "plan": [
+          "Replace `activeId ?? c.id` with `c.id` at src/components/chat-sidebar.tsx:99.",
+          "Optionally add a reducer test: deleting a chat that is not open keeps activeId.",
+          "If maintainers accept a DOM test setup, add the sidebar component test. Otherwise, in `pnpm dev`, open chat A, delete chat B from the sidebar, and confirm that A stays open and B is gone.",
+          "Run `pnpm check-types && pnpm lint && pnpm test`."
+        ],
+        "assumptions": [
+          "The trash and confirm buttons should always act on their own row, whichever chat is open.",
+          "Recovering chats that were already deleted is out of scope. There is no undo or trash folder, and the deleted chat is gone from localStorage."
+        ],
+        "open_questions": [
+          "Should the repo add a DOM test setup (for example @testing-library/react with jsdom) for component tests, or is checking this fix by hand in the browser enough?"
+        ],
+        "size": "S"
+      },
+      "model": "claude-opus-5-5",
+      "cost_usd": 0.0775358,
+      "turns": 7,
+      "latency_ms": 18381,
+      "tokens": {
+        "input": 8,
+        "output": 1726,
+        "cache_read": 33799,
+        "cache_write": 4528
+      }
+    }
+  },
+  "sidebar-newest-first": {
+    "repo": "philippmossier/local-ai-chat-playground",
+    "number": 65,
+    "commit": "50c141408e067f3a878ad49b131a40f583600034",
+    "route": "bug",
+    "spec": {
+      "problem": "The sidebar re-sorts the chat list oldest first. `src/components/chat-sidebar.tsx:44-46` filters out empty chats and then sorts with `(a, b) => a.updatedAt - b.updatedAt`, which is ascending. The most recently used chat therefore ends up at the bottom. The store already keeps chats newest first: `src/lib/chat/store.ts:104` sorts with `b.updatedAt - a.updatedAt`, and `chat.test.ts:76` says \"so the history orders by last use\". The sidebar's own sort reverses that order. Users with many chats have to scroll to the bottom to find today's chat.",
+      "files": [
+        {
+          "path": "src/components/chat-sidebar.tsx",
+          "why": "Sort descending (b.updatedAt - a.updatedAt) so the newest chat is first. Preferably call a small pure helper so the order can be unit-tested without a DOM.",
+          "at": [
+            "44-46"
+          ]
+        },
+        {
+          "path": "src/lib/chat/store.ts",
+          "why": "Optional: export a pure `historyChats(chats)` helper next to the store (drop empty chats, newest updatedAt first) for the sidebar to use. No existing lines change; the helper is appended.",
+          "at": []
+        }
+      ],
+      "tests": [
+        {
+          "path": "src/lib/chat/chat.test.ts",
+          "why": "Add a case: given chats with updatedAt 1, 50 and 10 and one empty chat, the helper returns the non-empty chats in the order 50, 10, 1. There are no component tests (no src/components/*.test.*), so the test goes against the pure helper.",
+          "at": []
+        }
+      ],
+      "criteria": [],
+      "plan": [
+        "Add an exported `historyChats(chats: Chat[]): Chat[]` to src/lib/chat/store.ts. It filters out chats with no messages and returns a copy sorted by updatedAt, newest first.",
+        "In src/components/chat-sidebar.tsx:44-46, replace the inline filter and ascending sort with `historyChats(chats)`.",
+        "Add a unit test in src/lib/chat/chat.test.ts for the order and the filtering of empty chats.",
+        "Run pnpm check-types && pnpm lint && pnpm test. Then check in the browser that a newly used chat moves to the top of the sidebar."
+      ],
+      "assumptions": [
+        "\"Newest\" means last used (updatedAt), the same order the store and its test already use, not creation time (createdAt).",
+        "Moving a chat to the top as soon as it gets a new message is acceptable, even though the list reorders while the user works in it.",
+        "A smaller fix is fine too: just flip the comparator on line 46, without the helper or a test.",
+        "Out of scope but noticed: `chat-sidebar.tsx:99` calls `onDelete(activeId ?? c.id)`. This appears to delete the active chat instead of the row being confirmed. It deserves its own issue."
+      ],
+      "open_questions": [],
+      "size": "S"
+    },
+    "unknown_paths": [],
+    "run": {
+      "output": {
+        "problem": "The sidebar re-sorts the chat list oldest first. `src/components/chat-sidebar.tsx:44-46` filters out empty chats and then sorts with `(a, b) => a.updatedAt - b.updatedAt`, which is ascending. The most recently used chat therefore ends up at the bottom. The store already keeps chats newest first: `src/lib/chat/store.ts:104` sorts with `b.updatedAt - a.updatedAt`, and `chat.test.ts:76` says \"so the history orders by last use\". The sidebar's own sort reverses that order. Users with many chats have to scroll to the bottom to find today's chat.",
+        "files": [
+          {
+            "path": "src/components/chat-sidebar.tsx",
+            "at": [
+              "44-46"
+            ],
+            "why": "Sort descending (b.updatedAt - a.updatedAt) so the newest chat is first. Preferably call a small pure helper so the order can be unit-tested without a DOM."
+          },
+          {
+            "path": "src/lib/chat/store.ts",
+            "at": [],
+            "why": "Optional: export a pure `historyChats(chats)` helper next to the store (drop empty chats, newest updatedAt first) for the sidebar to use. No existing lines change; the helper is appended."
+          }
+        ],
+        "tests": [
+          {
+            "path": "src/lib/chat/chat.test.ts",
+            "at": [
+              "after the 'keeps updatedAt current' case near line 76-88"
+            ],
+            "why": "Add a case: given chats with updatedAt 1, 50 and 10 and one empty chat, the helper returns the non-empty chats in the order 50, 10, 1. There are no component tests (no src/components/*.test.*), so the test goes against the pure helper."
+          }
+        ],
+        "plan": [
+          "Add an exported `historyChats(chats: Chat[]): Chat[]` to src/lib/chat/store.ts. It filters out chats with no messages and returns a copy sorted by updatedAt, newest first.",
+          "In src/components/chat-sidebar.tsx:44-46, replace the inline filter and ascending sort with `historyChats(chats)`.",
+          "Add a unit test in src/lib/chat/chat.test.ts for the order and the filtering of empty chats.",
+          "Run pnpm check-types && pnpm lint && pnpm test. Then check in the browser that a newly used chat moves to the top of the sidebar."
+        ],
+        "assumptions": [
+          "\"Newest\" means last used (updatedAt), the same order the store and its test already use, not creation time (createdAt).",
+          "Moving a chat to the top as soon as it gets a new message is acceptable, even though the list reorders while the user works in it.",
+          "A smaller fix is fine too: just flip the comparator on line 46, without the helper or a test.",
+          "Out of scope but noticed: `chat-sidebar.tsx:99` calls `onDelete(activeId ?? c.id)`. This appears to delete the active chat instead of the row being confirmed. It deserves its own issue."
+        ],
+        "open_questions": [],
+        "size": "S"
+      },
+      "model": "claude-opus-5-5",
+      "cost_usd": 0.0693288,
+      "turns": 5,
+      "latency_ms": 17120,
+      "tokens": {
+        "input": 6,
+        "output": 1624,
+        "cache_read": 22724,
+        "cache_write": 4035
+      }
+    }
+  },
+  "copy-button-under-answer": {
+    "repo": "philippmossier/local-ai-chat-playground",
+    "number": 66,
+    "commit": "50c141408e067f3a878ad49b131a40f583600034",
+    "route": "bug",
+    "spec": {
+      "problem": "The footer under assistant answers (speed line \"X tokens/s · first word after Y s\" plus the Copy button) is rendered behind the condition `stats && streaming` in src/components/message.tsx:74. That condition can never be true. `stats` is only set by the reducer's `finish` action (src/lib/chat/store.ts:135), which App dispatches after `generate()` resolves (src/App.tsx:254-260). At that point `generating` is false, so `streaming` (src/components/chat.tsx:103, `generating && i === messages.length - 1`) is false. While streaming, `stats` is undefined. The footer therefore never shows, for old or new answers. The condition is inverted. It should be `stats && !streaming`: show speed and Copy once the answer has finished. This also covers interrupted answers, which still get stats with `interrupted: true` (message.tsx:81).",
+      "files": [
+        {
+          "path": "src/components/message.tsx",
+          "why": "Inverted render condition hides the stats/Copy footer; change `stats && streaming` to `stats && !streaming`.",
+          "at": [
+            "74"
+          ]
+        }
+      ],
+      "tests": [
+        {
+          "path": "src/components/message.test.ts",
+          "why": "New test: render ChatMessage with react-dom/server renderToStaticMarkup (via React.createElement, since vitest only includes *.test.ts and runs in the node environment). Check that an assistant message with stats and streaming=false contains the tokens/s text and the Copy button, and that streaming=true or missing stats renders neither.",
+          "at": []
+        }
+      ],
+      "criteria": [],
+      "plan": [
+        "In src/components/message.tsx:74 change `{stats && streaming && (` to `{stats && !streaming && (`.",
+        "Add src/components/message.test.ts that renders ChatMessage to static markup and checks the footer appears for a finished answer with stats and not while streaming or without stats.",
+        "Run pnpm check-types && pnpm lint && pnpm test.",
+        "Check in the browser (pnpm dev): after an answer finishes, the speed line and Copy button appear, Copy puts the text on the clipboard, and a reloaded old chat shows them too."
+      ],
+      "assumptions": [
+        "The intended behaviour is to show the footer only after generation finishes, not during streaming. Stats only exist after finish anyway.",
+        "Old answers already have `stats` saved with the message (Message.stats in store.ts:9), so the one-line fix brings back the footer on them too. Answers saved without stats (for example, cut off by an error before finish) will still have no footer. That matches the current design.",
+        "react-dom/server can be imported in the node test environment without adding new dev dependencies."
+      ],
+      "open_questions": [],
+      "size": "S"
+    },
+    "unknown_paths": [
+      "src/components/message.test.ts"
+    ],
+    "run": {
+      "output": {
+        "problem": "The footer under assistant answers (speed line \"X tokens/s · first word after Y s\" plus the Copy button) is rendered behind the condition `stats && streaming` in src/components/message.tsx:74. That condition can never be true. `stats` is only set by the reducer's `finish` action (src/lib/chat/store.ts:135), which App dispatches after `generate()` resolves (src/App.tsx:254-260). At that point `generating` is false, so `streaming` (src/components/chat.tsx:103, `generating && i === messages.length - 1`) is false. While streaming, `stats` is undefined. The footer therefore never shows, for old or new answers. The condition is inverted. It should be `stats && !streaming`: show speed and Copy once the answer has finished. This also covers interrupted answers, which still get stats with `interrupted: true` (message.tsx:81).",
+        "files": [
+          {
+            "path": "src/components/message.tsx",
+            "at": [
+              "74"
+            ],
+            "why": "Inverted render condition hides the stats/Copy footer; change `stats && streaming` to `stats && !streaming`."
+          }
+        ],
+        "tests": [
+          {
+            "path": "src/components/message.test.ts",
+            "at": [],
+            "why": "New test: render ChatMessage with react-dom/server renderToStaticMarkup (via React.createElement, since vitest only includes *.test.ts and runs in the node environment). Check that an assistant message with stats and streaming=false contains the tokens/s text and the Copy button, and that streaming=true or missing stats renders neither."
+          }
+        ],
+        "plan": [
+          "In src/components/message.tsx:74 change `{stats && streaming && (` to `{stats && !streaming && (`.",
+          "Add src/components/message.test.ts that renders ChatMessage to static markup and checks the footer appears for a finished answer with stats and not while streaming or without stats.",
+          "Run pnpm check-types && pnpm lint && pnpm test.",
+          "Check in the browser (pnpm dev): after an answer finishes, the speed line and Copy button appear, Copy puts the text on the clipboard, and a reloaded old chat shows them too."
+        ],
+        "assumptions": [
+          "The intended behaviour is to show the footer only after generation finishes, not during streaming. Stats only exist after finish anyway.",
+          "Old answers already have `stats` saved with the message (Message.stats in store.ts:9), so the one-line fix brings back the footer on them too. Answers saved without stats (for example, cut off by an error before finish) will still have no footer. That matches the current design.",
+          "react-dom/server can be imported in the node test environment without adding new dev dependencies."
+        ],
+        "open_questions": [],
+        "size": "S"
+      },
+      "model": "claude-opus-5-5",
+      "cost_usd": 0.10701960000000002,
+      "turns": 10,
+      "latency_ms": 23145,
+      "tokens": {
+        "input": 14,
+        "output": 2047,
+        "cache_read": 70278,
+        "cache_write": 6496
+      }
+    }
+  },
+  "new-chat-button": {
+    "repo": "philippmossier/local-ai-chat-playground",
+    "number": 67,
+    "commit": "50c141408e067f3a878ad49b131a40f583600034",
+    "route": "bug",
+    "spec": {
+      "problem": "Clicking \"Neuer Chat\" / \"New chat\" does nothing once the current chat has messages. It only works when no chat is active or the active chat is empty. The cause is an inverted condition in `newChat` at `src/App.tsx:322-325`:\n\n```ts\nif (!active || active.messages.length === 0)\n  dispatch({ type: \"new\", ... });\n```\n\nIt creates a chat only when there is no active chat or the active chat is empty, which is the opposite of what was meant. The intent is clearly \"do not stack up empty chats\". So the button should do nothing only when the active chat is already empty, and create a new chat in every other case. Both buttons call this one handler: the sidebar button (`src/components/chat-sidebar.tsx:61`, wired at `src/App.tsx:342`) and the collapsed-sidebar chrome button (`src/components/sidebar-chrome.tsx:29`, wired at `src/App.tsx:345`). The reducer case `\"new\"` in `src/lib/chat/store.ts:73-85` works correctly (it prepends a chat and makes it active) and needs no change.",
+      "files": [
+        {
+          "path": "src/App.tsx",
+          "why": "Invert the guard. Return early when `active?.messages.length === 0`, otherwise dispatch `new`. If the decision is pulled into a pure helper so it can be unit-tested, call that helper here.",
+          "at": [
+            "322-325"
+          ]
+        },
+        {
+          "path": "src/lib/chat/store.ts",
+          "why": "Optional: add a small exported pure helper (e.g. `canStartNewChat(state: ChatState): boolean`, true unless the active chat exists and has no messages). The test suite has no component tests, so this makes the rule testable without a GPU or DOM.",
+          "at": []
+        }
+      ],
+      "tests": [
+        {
+          "path": "src/lib/chat/chat.test.ts",
+          "why": "Cover three cases: with no chats the helper returns true; with an active empty chat it returns false; after a `send` into the active chat (use `started()`) it returns true. Then check that dispatching `new` makes the new chat active and leaves the old one in `chats`.",
+          "at": []
+        }
+      ],
+      "criteria": [],
+      "plan": [
+        "Add `canStartNewChat(state)` to src/lib/chat/store.ts: return false only when the active chat exists and has zero messages.",
+        "In src/App.tsx `newChat`, call `canStartNewChat(chat)` and return early if it is false, otherwise dispatch `{ type: \"new\", id: crypto.randomUUID(), now: Date.now() }`.",
+        "Add unit tests to src/lib/chat/chat.test.ts for the three cases.",
+        "Run `pnpm check-types && pnpm lint && pnpm test`.",
+        "Check by hand in `pnpm dev` (needs WebGPU and a model, so the automated tests cannot cover it): send a message, click New chat in the sidebar and in the collapsed chrome. An empty chat should open and the old one should stay in the history. Click again and no second empty chat should appear."
+      ],
+      "assumptions": [
+        "The guard was meant to stop repeated empty chats piling up, not to block new chats after messages exist. When the active chat is already empty, clicking New chat should keep it as it is.",
+        "Clicking New chat while an answer is still generating is allowed. `writingChat` / `chatId` keep sending tokens to the original chat (src/App.tsx:238, 243), so switching away is safe, as it already is through `select`.",
+        "No new user-facing text is needed, so labels.ts and tr() are unchanged."
+      ],
+      "open_questions": [],
+      "size": "S"
+    },
+    "unknown_paths": [],
+    "run": {
+      "output": {
+        "problem": "Clicking \"Neuer Chat\" / \"New chat\" does nothing once the current chat has messages. It only works when no chat is active or the active chat is empty. The cause is an inverted condition in `newChat` at `src/App.tsx:322-325`:\n\n```ts\nif (!active || active.messages.length === 0)\n  dispatch({ type: \"new\", ... });\n```\n\nIt creates a chat only when there is no active chat or the active chat is empty, which is the opposite of what was meant. The intent is clearly \"do not stack up empty chats\". So the button should do nothing only when the active chat is already empty, and create a new chat in every other case. Both buttons call this one handler: the sidebar button (`src/components/chat-sidebar.tsx:61`, wired at `src/App.tsx:342`) and the collapsed-sidebar chrome button (`src/components/sidebar-chrome.tsx:29`, wired at `src/App.tsx:345`). The reducer case `\"new\"` in `src/lib/chat/store.ts:73-85` works correctly (it prepends a chat and makes it active) and needs no change.",
+        "files": [
+          {
+            "path": "src/App.tsx",
+            "at": [
+              "322-325"
+            ],
+            "why": "Invert the guard. Return early when `active?.messages.length === 0`, otherwise dispatch `new`. If the decision is pulled into a pure helper so it can be unit-tested, call that helper here."
+          },
+          {
+            "path": "src/lib/chat/store.ts",
+            "at": [],
+            "why": "Optional: add a small exported pure helper (e.g. `canStartNewChat(state: ChatState): boolean`, true unless the active chat exists and has no messages). The test suite has no component tests, so this makes the rule testable without a GPU or DOM."
+          }
+        ],
+        "tests": [
+          {
+            "path": "src/lib/chat/chat.test.ts",
+            "at": [
+              "after line 74 (the delete test), inside describe(\"chatReducer\") or in a new describe for the helper"
+            ],
+            "why": "Cover three cases: with no chats the helper returns true; with an active empty chat it returns false; after a `send` into the active chat (use `started()`) it returns true. Then check that dispatching `new` makes the new chat active and leaves the old one in `chats`."
+          }
+        ],
+        "plan": [
+          "Add `canStartNewChat(state)` to src/lib/chat/store.ts: return false only when the active chat exists and has zero messages.",
+          "In src/App.tsx `newChat`, call `canStartNewChat(chat)` and return early if it is false, otherwise dispatch `{ type: \"new\", id: crypto.randomUUID(), now: Date.now() }`.",
+          "Add unit tests to src/lib/chat/chat.test.ts for the three cases.",
+          "Run `pnpm check-types && pnpm lint && pnpm test`.",
+          "Check by hand in `pnpm dev` (needs WebGPU and a model, so the automated tests cannot cover it): send a message, click New chat in the sidebar and in the collapsed chrome. An empty chat should open and the old one should stay in the history. Click again and no second empty chat should appear."
+        ],
+        "assumptions": [
+          "The guard was meant to stop repeated empty chats piling up, not to block new chats after messages exist. When the active chat is already empty, clicking New chat should keep it as it is.",
+          "Clicking New chat while an answer is still generating is allowed. `writingChat` / `chatId` keep sending tokens to the original chat (src/App.tsx:238, 243), so switching away is safe, as it already is through `select`.",
+          "No new user-facing text is needed, so labels.ts and tr() are unchanged."
+        ],
+        "open_questions": [],
+        "size": "S"
+      },
+      "model": "claude-opus-5-5",
+      "cost_usd": 0.11215739999999999,
+      "turns": 6,
+      "latency_ms": 23550,
+      "tokens": {
+        "input": 10,
+        "output": 2118,
+        "cache_read": 46267,
+        "cache_write": 7563
+      }
+    }
+  },
+  "answer-link-new-tab": {
+    "repo": "philippmossier/local-ai-chat-playground",
+    "number": 68,
+    "commit": "50c141408e067f3a878ad49b131a40f583600034",
+    "route": "bug",
+    "spec": {
+      "problem": "Links in assistant answers open in the same tab, so clicking one replaces the app. When the user goes back, the app restarts and the model has to load again. The cause is the custom anchor renderer passed to react-markdown in `src/components/message.tsx:13-19`. Its doc comment says \"Model output is untrusted: links open in a new tab.\", but the `<a>` it renders at line 15 only sets `href` and `rel=\"noopener noreferrer\"`. It never sets `target=\"_blank\"`, so the browser follows the link in the current tab. Assistant messages are rendered through it at line 55. User messages are plain text (line 34), so no links appear there.",
+      "files": [
+        {
+          "path": "src/components/message.tsx",
+          "why": "Add target=\"_blank\" to the anchor in markdownComponents, keeping rel=\"noopener noreferrer\". Optionally export markdownComponents so a test can render it.",
+          "at": [
+            "13-19"
+          ]
+        }
+      ],
+      "tests": [
+        {
+          "path": "src/components/message.test.ts",
+          "why": "New test. Render an assistant message containing a Markdown link (\"[docs](https://example.com)\") with react-dom/server renderToStaticMarkup and React.createElement, then check that the output has target=\"_blank\" and rel=\"noopener noreferrer\". The file uses the .test.ts extension and createElement instead of JSX because vitest.config.ts:6 only includes src/**/*.test.ts and runs in the node environment.",
+          "at": []
+        }
+      ],
+      "criteria": [],
+      "plan": [
+        "In src/components/message.tsx:15, render <a href={href} target=\"_blank\" rel=\"noopener noreferrer\">.",
+        "Add src/components/message.test.ts. It renders ChatMessage with role \"assistant\" and Markdown link content (streaming false) to static markup and checks target=\"_blank\" and rel=\"noopener noreferrer\".",
+        "Run pnpm check-types && pnpm lint && pnpm test.",
+        "Check by hand in pnpm build && pnpm preview: a link in an answer opens in a new tab and the chat stays loaded."
+      ],
+      "assumptions": [
+        "All links should open in a new tab, including in-page anchors (#...) and relative URLs. The model has no reason to link inside the app.",
+        "react-markdown's default urlTransform already strips unsafe schemes such as javascript:, so this fix does not need to add URL sanitising.",
+        "react-dom/server can be imported in the node test environment without adding new dependencies."
+      ],
+      "open_questions": [],
+      "size": "S"
+    },
+    "unknown_paths": [
+      "src/components/message.test.ts"
+    ],
+    "run": {
+      "output": {
+        "problem": "Links in assistant answers open in the same tab, so clicking one replaces the app. When the user goes back, the app restarts and the model has to load again. The cause is the custom anchor renderer passed to react-markdown in `src/components/message.tsx:13-19`. Its doc comment says \"Model output is untrusted: links open in a new tab.\", but the `<a>` it renders at line 15 only sets `href` and `rel=\"noopener noreferrer\"`. It never sets `target=\"_blank\"`, so the browser follows the link in the current tab. Assistant messages are rendered through it at line 55. User messages are plain text (line 34), so no links appear there.",
+        "files": [
+          {
+            "path": "src/components/message.tsx",
+            "at": [
+              "13-19"
+            ],
+            "why": "Add target=\"_blank\" to the anchor in markdownComponents, keeping rel=\"noopener noreferrer\". Optionally export markdownComponents so a test can render it."
+          }
+        ],
+        "tests": [
+          {
+            "path": "src/components/message.test.ts",
+            "at": [],
+            "why": "New test. Render an assistant message containing a Markdown link (\"[docs](https://example.com)\") with react-dom/server renderToStaticMarkup and React.createElement, then check that the output has target=\"_blank\" and rel=\"noopener noreferrer\". The file uses the .test.ts extension and createElement instead of JSX because vitest.config.ts:6 only includes src/**/*.test.ts and runs in the node environment."
+          }
+        ],
+        "plan": [
+          "In src/components/message.tsx:15, render <a href={href} target=\"_blank\" rel=\"noopener noreferrer\">.",
+          "Add src/components/message.test.ts. It renders ChatMessage with role \"assistant\" and Markdown link content (streaming false) to static markup and checks target=\"_blank\" and rel=\"noopener noreferrer\".",
+          "Run pnpm check-types && pnpm lint && pnpm test.",
+          "Check by hand in pnpm build && pnpm preview: a link in an answer opens in a new tab and the chat stays loaded."
+        ],
+        "assumptions": [
+          "All links should open in a new tab, including in-page anchors (#...) and relative URLs. The model has no reason to link inside the app.",
+          "react-markdown's default urlTransform already strips unsafe schemes such as javascript:, so this fix does not need to add URL sanitising.",
+          "react-dom/server can be imported in the node test environment without adding new dependencies."
+        ],
+        "open_questions": [],
+        "size": "S",
+        "criteria": [
+          "A Markdown link in an assistant message renders as an <a> with target=\"_blank\".",
+          "That <a> keeps rel=\"noopener noreferrer\"."
+        ]
+      },
+      "model": "claude-opus-5-5",
+      "cost_usd": 0.0701382,
+      "turns": 6,
+      "latency_ms": 17303,
+      "tokens": {
+        "input": 8,
+        "output": 1589,
+        "cache_read": 32271,
+        "cache_write": 3984
+      }
+    }
+  },
+  "picker-back-to-chat": {
+    "repo": "philippmossier/local-ai-chat-playground",
+    "number": 69,
+    "commit": "50c141408e067f3a878ad49b131a40f583600034",
+    "route": "bug",
+    "spec": {
+      "problem": "The \"Back\" button in the model picker is meant to return to the chat when a model is loaded. In `src/App.tsx:401-403` it does `setStage(loaded ? { name: \"chat\", option: loaded } : { name: \"welcome\" })`, and `docs/ARCHITECTURE.md:20` describes the same thing (\"picker --> chat: back (a model is loaded)\"). The bug is that `loaded`, declared at `src/App.tsx:66` with the comment \"Lets 'back' from the picker return to the chat\", is only ever set to `null`: at `src/App.tsx:188` in `startModel` and at `src/App.tsx:314` after a wipe. Nothing sets it to the loaded option. When `getEngine().load` succeeds, `startModel` only calls `setStage({ name: \"chat\", option })` (`src/App.tsx:199`). So `loaded` is always null, and Back from the picker (opened via `onChangeModel` at `src/App.tsx:354` or the \"Switch model\" toast at `src/App.tsx:130`) always goes to the welcome page. The engine still holds the model, but the user has to start it again.",
+      "files": [
+        {
+          "path": "src/App.tsx",
+          "why": "After a successful load, record the model with `setLoaded(option)` next to `setStage({ name: \"chat\", option })`, so the existing Back handler at 401-403 returns to the chat.",
+          "at": [
+            "199"
+          ]
+        }
+      ],
+      "tests": [],
+      "criteria": [],
+      "plan": [
+        "In `startModel` (`src/App.tsx:196-199`), call `setLoaded(option)` once the load succeeds, next to `setStage({ name: \"chat\", option })`.",
+        "Keep the existing resets: `setLoaded(null)` at the start of a new load (188) and after a wipe (314). The engine frees the old model when a new load starts, so going back to it would be wrong.",
+        "Run `pnpm check-types && pnpm lint && pnpm test`.",
+        "Check by hand in Chrome with `pnpm dev`: load a model, send a message, click the model name, then Back. You should land on the same chat with the model ready and no reload. Also check that Back goes to the welcome page when no model has loaded yet (picker opened from the welcome page)."
+      ],
+      "assumptions": [
+        "The reporter opened the picker from the chat (model name or the \"Switch model\" toast) after the model had finished loading, not while it was still starting from cache.",
+        "No automated test is added. `App.tsx` has no component tests, and the existing suites (`src/lib/**/*.test.ts`) cover pure logic only. Loading needs a GPU or WebGPU, so this is checked by running the app, as CLAUDE.md asks.",
+        "The active chat survives the trip through the picker because the chat state is not touched. Only the stage was wrong."
+      ],
+      "open_questions": [],
+      "size": "S"
+    },
+    "unknown_paths": [],
+    "run": {
+      "output": {
+        "problem": "The \"Back\" button in the model picker is meant to return to the chat when a model is loaded. In `src/App.tsx:401-403` it does `setStage(loaded ? { name: \"chat\", option: loaded } : { name: \"welcome\" })`, and `docs/ARCHITECTURE.md:20` describes the same thing (\"picker --> chat: back (a model is loaded)\"). The bug is that `loaded`, declared at `src/App.tsx:66` with the comment \"Lets 'back' from the picker return to the chat\", is only ever set to `null`: at `src/App.tsx:188` in `startModel` and at `src/App.tsx:314` after a wipe. Nothing sets it to the loaded option. When `getEngine().load` succeeds, `startModel` only calls `setStage({ name: \"chat\", option })` (`src/App.tsx:199`). So `loaded` is always null, and Back from the picker (opened via `onChangeModel` at `src/App.tsx:354` or the \"Switch model\" toast at `src/App.tsx:130`) always goes to the welcome page. The engine still holds the model, but the user has to start it again.",
+        "files": [
+          {
+            "path": "src/App.tsx",
+            "at": [
+              "199"
+            ],
+            "why": "After a successful load, record the model with `setLoaded(option)` next to `setStage({ name: \"chat\", option })`, so the existing Back handler at 401-403 returns to the chat."
+          }
+        ],
+        "tests": [],
+        "plan": [
+          "In `startModel` (`src/App.tsx:196-199`), call `setLoaded(option)` once the load succeeds, next to `setStage({ name: \"chat\", option })`.",
+          "Keep the existing resets: `setLoaded(null)` at the start of a new load (188) and after a wipe (314). The engine frees the old model when a new load starts, so going back to it would be wrong.",
+          "Run `pnpm check-types && pnpm lint && pnpm test`.",
+          "Check by hand in Chrome with `pnpm dev`: load a model, send a message, click the model name, then Back. You should land on the same chat with the model ready and no reload. Also check that Back goes to the welcome page when no model has loaded yet (picker opened from the welcome page)."
+        ],
+        "assumptions": [
+          "The reporter opened the picker from the chat (model name or the \"Switch model\" toast) after the model had finished loading, not while it was still starting from cache.",
+          "No automated test is added. `App.tsx` has no component tests, and the existing suites (`src/lib/**/*.test.ts`) cover pure logic only. Loading needs a GPU or WebGPU, so this is checked by running the app, as CLAUDE.md asks.",
+          "The active chat survives the trip through the picker because the chat state is not touched. Only the stage was wrong."
+        ],
+        "open_questions": [],
+        "size": "S"
+      },
+      "model": "claude-opus-5-5",
+      "cost_usd": 0.1290686,
+      "turns": 6,
+      "latency_ms": 20116,
+      "tokens": {
+        "input": 8,
+        "output": 1765,
+        "cache_read": 38523,
+        "cache_write": 10754
+      }
+    }
+  },
+  "model-remembers-earlier-turns": {
+    "repo": "philippmossier/local-ai-chat-playground",
+    "number": 70,
+    "commit": "50c141408e067f3a878ad49b131a40f583600034",
+    "route": "bug",
+    "spec": {
+      "problem": "Each new message reaches the model with only the last stored message of the conversation. That last message is the assistant's previous reply, so every earlier user message is lost. `send()` in src/App.tsx:249-253 builds the prompt as [system, ...toModelMessages(history).slice(-HISTORY_TURNS), new user message], and `HISTORY_TURNS = 1` (src/App.tsx:52). `toModelMessages` (src/lib/chat/store.ts:193-199) returns one entry per message, not per turn, so `slice(-1)` keeps a single message. In the issue's example, the model gets [system, assistant \"Nice to meet you...\", user \"what's my name?\"] and never sees the message with the name. This doesn't depend on the model, which matches the report that two models behave the same. The rest of the pipeline already supports full history. The comment at src/App.tsx:51 says \"the worker trims further to fit the context window\". `fitToContext` in src/lib/engine/worker.ts:161-179 drops the oldest turns once the prompt is over MAX_PROMPT_TOKENS (4096). docs/REVIEW-GUIDE.md:67-68 says \"History is re-sent in full each turn\". So the cap of 1 is the bug, either a leftover debugging value or the confusion between turns and messages.",
+      "files": [
+        {
+          "path": "src/App.tsx",
+          "why": "Remove the HISTORY_TURNS cap (or move prompt assembly into a pure, testable helper) so the whole conversation is sent and the worker's fitToContext does the trimming.",
+          "at": [
+            "51-52",
+            "249-253"
+          ]
+        },
+        {
+          "path": "src/lib/chat/store.ts",
+          "why": "Optional: add a pure `buildPrompt(system, chat, text)` helper next to toModelMessages so the history the model receives can be unit-tested without a GPU.",
+          "at": [
+            "192-199"
+          ]
+        }
+      ],
+      "tests": [
+        {
+          "path": "src/lib/chat/chat.test.ts",
+          "why": "In the toModelMessages describe block, add a case: after two exchanges, the prompt for a third message contains system, user1, assistant1, user2, assistant2, user3 in order (through the new helper, or toModelMessages without any slice).",
+          "at": [
+            "145-153"
+          ]
+        },
+        {
+          "path": "e2e/smoke.spec.ts",
+          "why": "Add a test with the fake engine: send 'hello there', then '/history', and expect 'Fake history: system user assistant user'. src/lib/engine/fake-worker.ts:44-45 already supports this command, but no test uses it yet.",
+          "at": [
+            "22"
+          ]
+        }
+      ],
+      "criteria": [],
+      "plan": [
+        "Extract the prompt assembly at src/App.tsx:249-253 into a pure helper in src/lib/chat/store.ts that returns [system, ...toModelMessages(chat), user text] with no slice.",
+        "Delete HISTORY_TURNS and its comment (src/App.tsx:51-52) and call the helper from send().",
+        "Add the unit case in src/lib/chat/chat.test.ts and the /history e2e case in e2e/smoke.spec.ts.",
+        "Run pnpm check-types && pnpm lint && pnpm test, plus the e2e suite with VITE_FAKE_ENGINE=1.",
+        "In a real browser with a real model, tell it your name, then ask for it, and confirm it answers correctly. Unit and e2e tests can't check what a real model does."
+      ],
+      "assumptions": [
+        "The full history is intended, with trimming left to the worker's fitToContext, because the comment at App.tsx:51 and REVIEW-GUIDE.md:67-68 both say so. A cap of 1 message was never deliberate.",
+        "`history` in send() is read from the render-time state before the 'send' dispatch, so it holds the earlier messages but not the new user message or the empty assistant placeholder. That's correct, and the new message is appended explicitly.",
+        "Re-sending the whole history every turn is slower on long chats (no KV cache reuse). That cost is already documented and accepted."
+      ],
+      "open_questions": [],
+      "size": "S"
+    },
+    "unknown_paths": [],
+    "run": {
+      "output": {
+        "problem": "Each new message reaches the model with only the last stored message of the conversation. That last message is the assistant's previous reply, so every earlier user message is lost. `send()` in src/App.tsx:249-253 builds the prompt as [system, ...toModelMessages(history).slice(-HISTORY_TURNS), new user message], and `HISTORY_TURNS = 1` (src/App.tsx:52). `toModelMessages` (src/lib/chat/store.ts:193-199) returns one entry per message, not per turn, so `slice(-1)` keeps a single message. In the issue's example, the model gets [system, assistant \"Nice to meet you...\", user \"what's my name?\"] and never sees the message with the name. This doesn't depend on the model, which matches the report that two models behave the same. The rest of the pipeline already supports full history. The comment at src/App.tsx:51 says \"the worker trims further to fit the context window\". `fitToContext` in src/lib/engine/worker.ts:161-179 drops the oldest turns once the prompt is over MAX_PROMPT_TOKENS (4096). docs/REVIEW-GUIDE.md:67-68 says \"History is re-sent in full each turn\". So the cap of 1 is the bug, either a leftover debugging value or the confusion between turns and messages.",
+        "files": [
+          {
+            "path": "src/App.tsx",
+            "at": [
+              "51-52",
+              "249-253"
+            ],
+            "why": "Remove the HISTORY_TURNS cap (or move prompt assembly into a pure, testable helper) so the whole conversation is sent and the worker's fitToContext does the trimming."
+          },
+          {
+            "path": "src/lib/chat/store.ts",
+            "at": [
+              "192-199"
+            ],
+            "why": "Optional: add a pure `buildPrompt(system, chat, text)` helper next to toModelMessages so the history the model receives can be unit-tested without a GPU."
+          }
+        ],
+        "tests": [
+          {
+            "path": "src/lib/chat/chat.test.ts",
+            "at": [
+              "145-153"
+            ],
+            "why": "In the toModelMessages describe block, add a case: after two exchanges, the prompt for a third message contains system, user1, assistant1, user2, assistant2, user3 in order (through the new helper, or toModelMessages without any slice)."
+          },
+          {
+            "path": "e2e/smoke.spec.ts",
+            "at": [
+              "22"
+            ],
+            "why": "Add a test with the fake engine: send 'hello there', then '/history', and expect 'Fake history: system user assistant user'. src/lib/engine/fake-worker.ts:44-45 already supports this command, but no test uses it yet."
+          }
+        ],
+        "plan": [
+          "Extract the prompt assembly at src/App.tsx:249-253 into a pure helper in src/lib/chat/store.ts that returns [system, ...toModelMessages(chat), user text] with no slice.",
+          "Delete HISTORY_TURNS and its comment (src/App.tsx:51-52) and call the helper from send().",
+          "Add the unit case in src/lib/chat/chat.test.ts and the /history e2e case in e2e/smoke.spec.ts.",
+          "Run pnpm check-types && pnpm lint && pnpm test, plus the e2e suite with VITE_FAKE_ENGINE=1.",
+          "In a real browser with a real model, tell it your name, then ask for it, and confirm it answers correctly. Unit and e2e tests can't check what a real model does."
+        ],
+        "assumptions": [
+          "The full history is intended, with trimming left to the worker's fitToContext, because the comment at App.tsx:51 and REVIEW-GUIDE.md:67-68 both say so. A cap of 1 message was never deliberate.",
+          "`history` in send() is read from the render-time state before the 'send' dispatch, so it holds the earlier messages but not the new user message or the empty assistant placeholder. That's correct, and the new message is appended explicitly.",
+          "Re-sending the whole history every turn is slower on long chats (no KV cache reuse). That cost is already documented and accepted."
+        ],
+        "open_questions": [],
+        "size": "S"
+      },
+      "model": "claude-opus-5-5",
+      "cost_usd": 0.1856824,
+      "turns": 17,
+      "latency_ms": 37332,
+      "tokens": {
+        "input": 20,
+        "output": 3737,
+        "cache_read": 122352,
+        "cache_write": 10799
+      }
+    }
+  },
+  "send-after-error": {
+    "repo": "philippmossier/local-ai-chat-playground",
+    "number": 71,
+    "commit": "50c141408e067f3a878ad49b131a40f583600034",
+    "route": "bug",
+    "spec": {
+      "problem": "When a generation fails, the chat never leaves the \"generating\" state. In `src/App.tsx`, `send()` calls `setGenerating(true)` at line 237. It calls `setGenerating(false)` only on the success path, at line 261 inside the `try`. The `catch` block (276-284) records the error on the message with the `fail` action, which is why \"Something went wrong: ...\" appears (`src/components/message.tsx:64-69`). It never resets `generating`, and neither does the `finally` (285-288). So `generating` stays `true` for good. As a result:\n- the composer keeps showing the Stop button and blocks sending (`src/components/chat-composer.tsx:40,80,92`);\n- `send()` returns early (`App.tsx:221`);\n- chats are no longer saved to localStorage (`App.tsx:172`).\n\nOnly a reload clears it, which matches the report. Stop cannot help because `inFlight` is already `null` after the `finally`.",
+      "files": [
+        {
+          "path": "src/App.tsx",
+          "why": "Move `setGenerating(false)` out of the success path into the `finally` block, so a failed generation also returns the composer to the Send state and turns persistence back on.",
+          "at": [
+            "261",
+            "285-288"
+          ]
+        }
+      ],
+      "tests": [
+        {
+          "path": "e2e/smoke.spec.ts",
+          "why": "Add a Playwright case against the fake engine. Send \"/error\" (fake-worker.ts:40 throws), check that the \"Something went wrong\" text is visible, check that the Send button is back (no Stop), then send \"hello there\" and check that \"Fake answer to: hello there\" appears. There are no component unit tests; App needs the worker, so the regression belongs in e2e.",
+          "at": []
+        }
+      ],
+      "criteria": [],
+      "plan": [
+        "In `src/App.tsx` `send()`, remove `setGenerating(false)` at line 261 and call it in the `finally` block (285-288), next to `writingChat.current = null`. Keep it before the advice logic, or accept that it runs after: the advice only sets separate state, so the order does not matter.",
+        "Add the e2e case to `e2e/smoke.spec.ts` that sends `/error`, checks the error message and the Send button, then sends a normal message and checks the answer.",
+        "Run `pnpm check-types && pnpm lint && pnpm test` and the Playwright suite with the fake engine (`VITE_FAKE_ENGINE=1`)."
+      ],
+      "assumptions": [
+        "The reporter's error came through the `catch` in `send()`, either a worker `error` message (client.ts:122) or a worker crash (`failAll`, client.ts:35/134), not through a model load failure. The message text matches `message.tsx:68`.",
+        "After an out-of-memory error the engine may still be broken. This fix only unblocks the UI. If the next send fails again, the user sees another error message instead of a stuck chat, which is acceptable for this issue.",
+        "The Playwright config already runs the dev server with `VITE_FAKE_ENGINE=1` on port 5199, as the existing smoke test implies."
+      ],
+      "open_questions": [],
+      "size": "S"
+    },
+    "unknown_paths": [],
+    "run": {
+      "output": {
+        "problem": "When a generation fails, the chat never leaves the \"generating\" state. In `src/App.tsx`, `send()` calls `setGenerating(true)` at line 237. It calls `setGenerating(false)` only on the success path, at line 261 inside the `try`. The `catch` block (276-284) records the error on the message with the `fail` action, which is why \"Something went wrong: ...\" appears (`src/components/message.tsx:64-69`). It never resets `generating`, and neither does the `finally` (285-288). So `generating` stays `true` for good. As a result:\n- the composer keeps showing the Stop button and blocks sending (`src/components/chat-composer.tsx:40,80,92`);\n- `send()` returns early (`App.tsx:221`);\n- chats are no longer saved to localStorage (`App.tsx:172`).\n\nOnly a reload clears it, which matches the report. Stop cannot help because `inFlight` is already `null` after the `finally`.",
+        "files": [
+          {
+            "path": "src/App.tsx",
+            "at": [
+              "261",
+              "285-288"
+            ],
+            "why": "Move `setGenerating(false)` out of the success path into the `finally` block, so a failed generation also returns the composer to the Send state and turns persistence back on."
+          }
+        ],
+        "tests": [
+          {
+            "path": "e2e/smoke.spec.ts",
+            "at": [
+              "23"
+            ],
+            "why": "Add a Playwright case against the fake engine. Send \"/error\" (fake-worker.ts:40 throws), check that the \"Something went wrong\" text is visible, check that the Send button is back (no Stop), then send \"hello there\" and check that \"Fake answer to: hello there\" appears. There are no component unit tests; App needs the worker, so the regression belongs in e2e."
+          }
+        ],
+        "plan": [
+          "In `src/App.tsx` `send()`, remove `setGenerating(false)` at line 261 and call it in the `finally` block (285-288), next to `writingChat.current = null`. Keep it before the advice logic, or accept that it runs after: the advice only sets separate state, so the order does not matter.",
+          "Add the e2e case to `e2e/smoke.spec.ts` that sends `/error`, checks the error message and the Send button, then sends a normal message and checks the answer.",
+          "Run `pnpm check-types && pnpm lint && pnpm test` and the Playwright suite with the fake engine (`VITE_FAKE_ENGINE=1`)."
+        ],
+        "assumptions": [
+          "The reporter's error came through the `catch` in `send()`, either a worker `error` message (client.ts:122) or a worker crash (`failAll`, client.ts:35/134), not through a model load failure. The message text matches `message.tsx:68`.",
+          "After an out-of-memory error the engine may still be broken. This fix only unblocks the UI. If the next send fails again, the user sees another error message instead of a stuck chat, which is acceptable for this issue.",
+          "The Playwright config already runs the dev server with `VITE_FAKE_ENGINE=1` on port 5199, as the existing smoke test implies."
+        ],
+        "open_questions": [],
+        "size": "S",
+        "criteria": [
+          "When a generation fails, the composer shows Send instead of Stop.",
+          "When a generation fails, the user can send another message and gets an answer without reloading.",
+          "Chats are saved to localStorage again after a failed generation."
+        ]
+      },
+      "model": "claude-opus-5-5",
+      "cost_usd": 0.1303492,
+      "turns": 11,
+      "latency_ms": 28390,
+      "tokens": {
+        "input": 18,
+        "output": 2463,
+        "cache_read": 95126,
+        "cache_write": 7749
+      }
+    }
+  },
+  "answer-image-no-request": {
+    "repo": "philippmossier/local-ai-chat-playground",
+    "number": 72,
+    "commit": "50c141408e067f3a878ad49b131a40f583600034",
+    "route": "bug",
+    "spec": {
+      "problem": "Model output is rendered with react-markdown in `src/components/message.tsx:55`. The custom `markdownComponents` (`src/components/message.tsx:12-19`) only override `a`. Nothing overrides `img`, so a reply like `![x](https://host/a.png)` becomes a real `<img src=\"https://host/a.png\">` and the browser fetches it. That is a request to a third-party host, triggered by model output and possibly carrying data in the URL. In production the CSP `img-src 'self' data: blob:` (`vite.config.ts:19`) blocks it. `pnpm dev` has no CSP (`vite.config.ts:33`, CLAUDE.md), so the request goes out, which matches the report. `docs/REVIEW-GUIDE.md:52-53` says \"Images are replaced by their alt text in code\", but the code does not do this, so code and docs disagree. The code should never create the request in any build. It should not rely on the production CSP. Side finding, not the cause: the comment at `message.tsx:12` says links open in a new tab, but the `a` override sets no `target=\"_blank\"`.",
+      "files": [
+        {
+          "path": "src/components/message.tsx",
+          "why": "Add an `img` override to `markdownComponents` that renders the alt text (for example as a span, perhaps with the URL as plain text) and no <img>, so no image is ever fetched. Export `markdownComponents` so it can be tested. Optionally add the missing target=\"_blank\" to the link to match the comment and the docs.",
+          "at": [
+            "12-19"
+          ]
+        },
+        {
+          "path": "docs/REVIEW-GUIDE.md",
+          "why": "Keep the statement true after the fix. Change 'Not tested with hostile output' once the test exists.",
+          "at": [
+            "52-54"
+          ]
+        }
+      ],
+      "tests": [
+        {
+          "path": "src/components/message.test.ts",
+          "why": "New file. Vitest runs in node with `src/**/*.test.ts` (vitest.config.ts:6), so use react-dom/server `renderToStaticMarkup(createElement(Markdown, { components: markdownComponents }, '![cat](https://example.com/cat.png)'))`. Assert that the output has no `<img` and no `example.com/cat.png` in a src attribute, and that it contains the alt text 'cat'. Also cover a reference-style image (`![cat][r]` with `[r]: https://...`).",
+          "at": []
+        }
+      ],
+      "criteria": [],
+      "plan": [
+        "Add an `img: ({ alt }) => <span>{alt}</span>` override (or alt plus the URL as non-loading text) to `markdownComponents` in src/components/message.tsx, and export the object.",
+        "Optionally fix the link override to add target=\"_blank\" so it matches its comment and REVIEW-GUIDE.",
+        "Add src/components/message.test.ts that renders inline and reference-style images through react-markdown in node and asserts that no <img> is produced.",
+        "Update docs/REVIEW-GUIDE.md item 5 to describe the behaviour as it now is.",
+        "Run pnpm check-types && pnpm lint && pnpm test. Then, in pnpm dev, ask the model for an image and check that the Network tab shows no request."
+      ],
+      "assumptions": [
+        "Inline images in model output have no legitimate use. Showing the alt text instead is acceptable UX.",
+        "The production CSP already blocks the request, so this affects only `pnpm dev` and any deployment that does not send the CSP. The fix belongs in code anyway, as REVIEW-GUIDE claims.",
+        "react-markdown's default skipHtml behaviour stays as it is, so raw `<img>` HTML is not a second path.",
+        "react-dom/server is available for a node-environment test with no new dependency."
+      ],
+      "open_questions": [
+        "Should the replacement show only the alt text, or also the image URL as plain, non-clickable text so the user can see what the model pointed to?"
+      ],
+      "size": "S"
+    },
+    "unknown_paths": [
+      "src/components/message.test.ts"
+    ],
+    "run": {
+      "output": {
+        "problem": "Model output is rendered with react-markdown in `src/components/message.tsx:55`. The custom `markdownComponents` (`src/components/message.tsx:12-19`) only override `a`. Nothing overrides `img`, so a reply like `![x](https://host/a.png)` becomes a real `<img src=\"https://host/a.png\">` and the browser fetches it. That is a request to a third-party host, triggered by model output and possibly carrying data in the URL. In production the CSP `img-src 'self' data: blob:` (`vite.config.ts:19`) blocks it. `pnpm dev` has no CSP (`vite.config.ts:33`, CLAUDE.md), so the request goes out, which matches the report. `docs/REVIEW-GUIDE.md:52-53` says \"Images are replaced by their alt text in code\", but the code does not do this, so code and docs disagree. The code should never create the request in any build. It should not rely on the production CSP. Side finding, not the cause: the comment at `message.tsx:12` says links open in a new tab, but the `a` override sets no `target=\"_blank\"`.",
+        "files": [
+          {
+            "path": "src/components/message.tsx",
+            "at": [
+              "12-19"
+            ],
+            "why": "Add an `img` override to `markdownComponents` that renders the alt text (for example as a span, perhaps with the URL as plain text) and no <img>, so no image is ever fetched. Export `markdownComponents` so it can be tested. Optionally add the missing target=\"_blank\" to the link to match the comment and the docs."
+          },
+          {
+            "path": "docs/REVIEW-GUIDE.md",
+            "at": [
+              "52-54"
+            ],
+            "why": "Keep the statement true after the fix. Change 'Not tested with hostile output' once the test exists."
+          }
+        ],
+        "tests": [
+          {
+            "path": "src/components/message.test.ts",
+            "at": [],
+            "why": "New file. Vitest runs in node with `src/**/*.test.ts` (vitest.config.ts:6), so use react-dom/server `renderToStaticMarkup(createElement(Markdown, { components: markdownComponents }, '![cat](https://example.com/cat.png)'))`. Assert that the output has no `<img` and no `example.com/cat.png` in a src attribute, and that it contains the alt text 'cat'. Also cover a reference-style image (`![cat][r]` with `[r]: https://...`)."
+          }
+        ],
+        "plan": [
+          "Add an `img: ({ alt }) => <span>{alt}</span>` override (or alt plus the URL as non-loading text) to `markdownComponents` in src/components/message.tsx, and export the object.",
+          "Optionally fix the link override to add target=\"_blank\" so it matches its comment and REVIEW-GUIDE.",
+          "Add src/components/message.test.ts that renders inline and reference-style images through react-markdown in node and asserts that no <img> is produced.",
+          "Update docs/REVIEW-GUIDE.md item 5 to describe the behaviour as it now is.",
+          "Run pnpm check-types && pnpm lint && pnpm test. Then, in pnpm dev, ask the model for an image and check that the Network tab shows no request."
+        ],
+        "assumptions": [
+          "Inline images in model output have no legitimate use. Showing the alt text instead is acceptable UX.",
+          "The production CSP already blocks the request, so this affects only `pnpm dev` and any deployment that does not send the CSP. The fix belongs in code anyway, as REVIEW-GUIDE claims.",
+          "react-markdown's default skipHtml behaviour stays as it is, so raw `<img>` HTML is not a second path.",
+          "react-dom/server is available for a node-environment test with no new dependency."
+        ],
+        "open_questions": [
+          "Should the replacement show only the alt text, or also the image URL as plain, non-clickable text so the user can see what the model pointed to?"
+        ],
+        "size": "S"
+      },
+      "model": "claude-opus-5-5",
+      "cost_usd": 0.109747,
+      "turns": 8,
+      "latency_ms": 24066,
+      "tokens": {
+        "input": 8,
+        "output": 2343,
+        "cache_read": 37275,
+        "cache_write": 6925
+      }
+    }
+  }
+}

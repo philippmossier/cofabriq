@@ -1,0 +1,17 @@
+{
+  "repo": "philippmossier/local-ai-chat-playground",
+  "number": 24,
+  "title": "README model sizes don't match the download on CPU",
+  "body": "The README says the smallest model is 570 MB. On my laptop without WebGPU the picker shows 919 MB for Qwen3 0.6B and that is what it downloaded. The README table only seems to list the GPU sizes; please add the CPU ones.",
+  "state": "open",
+  "state_reason": null,
+  "author": "philippmossier",
+  "labels": [],
+  "created_at": "2026-10-13T13:09:39Z",
+  "updated_at": "2026-10-13T13:09:39Z",
+  "closed_at": null,
+  "comment_count": 0,
+  "comments": [],
+  "duplicate_of": [],
+  "duplicates": []
+}

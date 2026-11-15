@@ -1,0 +1,18 @@
+{
+  "repo": "philippmossier/local-ai-chat-playground",
+  "number": 56,
+  "title": "Low storage warning on a model that's already on my laptop",
+  "body": "My disk is almost full. The model picker warns \"not enough free space\" on the model I downloaded last week and use every day. It shows \"Already on this device\" right next to the warning. Which one is true?",
+  "state": "open",
+  "state_reason": null,
+  "author": "philippmossier",
+  "labels": [],
+  "created_at": "2026-10-16T09:55:04Z",
+  "updated_at": "2026-10-16T09:55:04Z",
+  "closed_at": null,
+  "closed_by": null,
+  "comment_count": 0,
+  "comments": [],
+  "duplicate_of": [],
+  "duplicates": []
+}

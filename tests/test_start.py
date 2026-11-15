@@ -2,6 +2,7 @@
 background thread, and the refusals that come back at once."""
 
 import time
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -10,7 +11,7 @@ from fastapi.testclient import TestClient
 from cofabriq.issues.fetch import fetch_issues
 from cofabriq.issues.model import Issue
 from cofabriq.loop.graph import FlowRunner, FlowStatus, GateAnswer, Refused
-from cofabriq.serve import build
+from cofabriq.serve import _flow_summary, build  # pyright: ignore[reportPrivateUsage]
 from tests.builders import REPO, issue
 from tests.fakes import EditingAgent, deps
 from tests.test_issues import ListSource
@@ -87,6 +88,27 @@ def test_start_again_replaces_an_ended_flow_and_hands_on_why_it_ended(
     again = settled(r, thread)
     assert (again.state.route, again.waiting) == ("feature", "plan")
     assert again.state.earlier == "plan rejected: it's a regression"
+
+
+class Down:
+    """A sandbox whose process is gone: what a server stopped mid-run leaves."""
+
+    def __call__(self, *args: object, **kwargs: object) -> object:
+        raise RuntimeError("the server stopped")
+
+
+def test_a_run_stopped_mid_way_is_cut_off_not_done(tmp_path: Path, pg_dsn: str) -> None:
+    d = replace(deps(tmp_path, EditingAgent(), []), sandbox=Down())
+    r = FlowRunner(pg_dsn, lambda repo, spent: d, prepare=PrepareFake())
+    thread = r.start(REPO, 3, "bug")
+    settled(r, thread)  # at the plan gate
+    r.answer(thread, GateAnswer(approve=True))
+
+    stopped = settled(r, thread)  # setup raised: steps left, no gate
+
+    assert (stopped.cut_off, stopped.waiting) == (True, None)
+    assert _flow_summary(stopped).outcome.startswith("cut off")
+    r.start(REPO, 3, "bug", again=True)  # and it can be started again
 
 
 def test_what_prepare_refuses_starts_nothing(tmp_path: Path, pg_dsn: str) -> None:

@@ -1,0 +1,18 @@
+{
+  "repo": "philippmossier/local-ai-chat-playground",
+  "number": 31,
+  "title": "Privacy panel shows 2 requests after my first message",
+  "body": "The README says the counter should stay at 0 after the first message. After sending \"hello\" the privacy panel showed **2 requests**, both to huggingface.co (`/api/models/...` and a `.json` file).\n\nThe model was already downloaded before. Is the app still checking for updates? That would break the \"nothing leaves the device\" promise.\n\nChrome 141, Windows 11.",
+  "state": "open",
+  "state_reason": null,
+  "author": "philippmossier",
+  "labels": [],
+  "created_at": "2026-10-16T09:53:46Z",
+  "updated_at": "2026-10-16T09:53:46Z",
+  "closed_at": null,
+  "closed_by": null,
+  "comment_count": 0,
+  "comments": [],
+  "duplicate_of": [],
+  "duplicates": []
+}

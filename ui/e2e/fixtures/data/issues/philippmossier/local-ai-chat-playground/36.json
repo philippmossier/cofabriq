@@ -1,0 +1,18 @@
+{
+  "repo": "philippmossier/local-ai-chat-playground",
+  "number": 36,
+  "title": "Rename conversations in the sidebar",
+  "body": "All my chats are named after the first message, so I have five called \"Hi\". Let me rename a conversation (double click or a menu entry in the sidebar).",
+  "state": "open",
+  "state_reason": null,
+  "author": "philippmossier",
+  "labels": [],
+  "created_at": "2026-10-16T09:54:02Z",
+  "updated_at": "2026-10-16T09:54:02Z",
+  "closed_at": null,
+  "closed_by": null,
+  "comment_count": 0,
+  "comments": [],
+  "duplicate_of": [],
+  "duplicates": []
+}

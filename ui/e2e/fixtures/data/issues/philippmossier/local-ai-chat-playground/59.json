@@ -1,0 +1,18 @@
+{
+  "repo": "philippmossier/local-ai-chat-playground",
+  "number": 59,
+  "title": "Answer gets lost if I click another chat while it's writing",
+  "body": "Asked a long question, and while the answer was being written I clicked an older chat in the sidebar to look something up. When I went back, my question was there but the answer was empty. No error. Happens every time.",
+  "state": "open",
+  "state_reason": null,
+  "author": "philippmossier",
+  "labels": [],
+  "created_at": "2026-10-16T09:55:13Z",
+  "updated_at": "2026-10-16T09:55:13Z",
+  "closed_at": null,
+  "closed_by": null,
+  "comment_count": 0,
+  "comments": [],
+  "duplicate_of": [],
+  "duplicates": []
+}

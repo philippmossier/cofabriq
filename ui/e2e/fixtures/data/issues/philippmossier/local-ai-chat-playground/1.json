@@ -1,0 +1,17 @@
+{
+  "repo": "philippmossier/local-ai-chat-playground",
+  "number": 1,
+  "title": "Model download starts from zero after reloading the page",
+  "body": "I started the download of Gemma 4 E4B (4.9 GB) and accidentally reloaded the tab at about 70%. After the reload the progress bar started again at 0% and it downloaded everything again.\n\n**Steps**\n1. Open the app, click \"Download and start\" on Gemma 4 E4B\n2. Wait until the progress bar is past half\n3. Reload the page\n\n**Expected:** the download continues where it stopped, or at least the finished files are kept.\n**Actual:** starts over at 0%.\n\nChrome 141, macOS 15.",
+  "state": "open",
+  "state_reason": null,
+  "author": "philippmossier",
+  "labels": [],
+  "created_at": "2026-10-13T13:08:23Z",
+  "updated_at": "2026-10-13T13:08:23Z",
+  "closed_at": null,
+  "comment_count": 0,
+  "comments": [],
+  "duplicate_of": [],
+  "duplicates": []
+}

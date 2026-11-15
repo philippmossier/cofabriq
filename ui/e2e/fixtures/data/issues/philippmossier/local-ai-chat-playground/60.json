@@ -1,0 +1,18 @@
+{
+  "repo": "philippmossier/local-ai-chat-playground",
+  "number": 60,
+  "title": "Deleted chats come back when the app is open in another tab",
+  "body": "I had the app open in two tabs. Deleted some old chats in one tab, and the next time I used the other tab they were all back. Also, messages I wrote in tab 1 don't show up in tab 2 if that chat was already open there.",
+  "state": "open",
+  "state_reason": null,
+  "author": "philippmossier",
+  "labels": [],
+  "created_at": "2026-10-16T09:55:16Z",
+  "updated_at": "2026-10-16T09:55:16Z",
+  "closed_at": null,
+  "closed_by": null,
+  "comment_count": 0,
+  "comments": [],
+  "duplicate_of": [],
+  "duplicates": []
+}

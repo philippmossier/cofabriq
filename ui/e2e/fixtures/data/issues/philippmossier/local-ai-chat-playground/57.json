@@ -1,0 +1,18 @@
+{
+  "repo": "philippmossier/local-ai-chat-playground",
+  "number": 57,
+  "title": "Privacy panel files an unknown host under model downloads",
+  "body": "I was testing the privacy panel with a proxy that rewrites some requests and noticed a request to `evilhf.co` (not a real HF domain) was listed under \"Model files (download only, nothing is uploaded)\". Shouldn't anything that isn't Hugging Face be in \"Other\"? For a panel that's supposed to prove what leaves the device this seems important.",
+  "state": "open",
+  "state_reason": null,
+  "author": "philippmossier",
+  "labels": [],
+  "created_at": "2026-10-16T09:55:07Z",
+  "updated_at": "2026-10-16T09:55:07Z",
+  "closed_at": null,
+  "closed_by": null,
+  "comment_count": 0,
+  "comments": [],
+  "duplicate_of": [],
+  "duplicates": []
+}

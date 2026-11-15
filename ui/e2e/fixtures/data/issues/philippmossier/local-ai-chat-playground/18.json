@@ -1,0 +1,17 @@
+{
+  "repo": "philippmossier/local-ai-chat-playground",
+  "number": 18,
+  "title": "Conversations disappear when I reopen the app",
+  "body": "Every time I come back the chat list on the left is empty. The model loads from cache, only the conversations are lost. I'm on Brave with shields up.",
+  "state": "open",
+  "state_reason": null,
+  "author": "philippmossier",
+  "labels": [],
+  "created_at": "2026-10-13T13:09:19Z",
+  "updated_at": "2026-10-13T13:09:19Z",
+  "closed_at": null,
+  "comment_count": 0,
+  "comments": [],
+  "duplicate_of": [],
+  "duplicates": []
+}

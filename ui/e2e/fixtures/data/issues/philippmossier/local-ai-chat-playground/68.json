@@ -1,0 +1,18 @@
+{
+  "repo": "philippmossier/local-ai-chat-playground",
+  "number": 68,
+  "title": "Clicking a link in an answer navigates away from my chat",
+  "body": "The model gave me a link to the docs, I clicked it and the whole app was replaced by that page. Going back in the browser restarts the app and the model has to load again. Links should open in a new tab.",
+  "state": "open",
+  "state_reason": null,
+  "author": "philippmossier",
+  "labels": [],
+  "created_at": "2026-10-16T09:55:40Z",
+  "updated_at": "2026-10-16T09:55:40Z",
+  "closed_at": null,
+  "closed_by": null,
+  "comment_count": 0,
+  "comments": [],
+  "duplicate_of": [],
+  "duplicates": []
+}

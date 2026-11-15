@@ -1,0 +1,339 @@
+[
+  {
+    "key": "reload-active-chat",
+    "kind": "right",
+    "gated": {
+      "status": "approved",
+      "result": {
+        "repo": "philippmossier/local-ai-chat-playground",
+        "number": 53,
+        "commit": "50c141408e067f3a878ad49b131a40f583600034",
+        "status": "green",
+        "setup_s": 59.2,
+        "repro": [
+          "src/lib/chat/chat.test.ts"
+        ],
+        "planted": false,
+        "reproduce": [
+          {
+            "n": 1,
+            "summary": "I added cases to the `persistence` block in src/lib/chat/chat.test.ts, which together cover both parts of the spec. They check that `deserialize` brings back a saved `activeId` that points at an older chat that is not first in the list, including after a `select` followed by a `serialize` round trip. They also check that an `activeId` that is unknown, numeric or null falls back to the first chat. I could not run them. They should fail now because `deserialize` always sets `activeId` to `chats[0]?.id` (store.ts:164) and ignores the saved value.",
+            "run": {
+              "output": {
+                "summary": "I added cases to the `persistence` block in src/lib/chat/chat.test.ts, which together cover both parts of the spec. They check that `deserialize` brings back a saved `activeId` that points at an older chat that is not first in the list, including after a `select` followed by a `serialize` round trip. They also check that an `activeId` that is unknown, numeric or null falls back to the first chat. I could not run them. They should fail now because `deserialize` always sets `activeId` to `chats[0]?.id` (store.ts:164) and ignores the saved value."
+              },
+              "model": "claude-opus-5-5",
+              "cost_usd": 0.1304248,
+              "turns": 5,
+              "latency_ms": 23016
+            },
+            "error": "",
+            "reverted": [],
+            "checks": [
+              {
+                "name": "red",
+                "ok": true,
+                "seconds": 1.5,
+                "output": ""
+              },
+              {
+                "name": "types",
+                "ok": true,
+                "seconds": 6.0,
+                "output": ""
+              },
+              {
+                "name": "lint",
+                "ok": true,
+                "seconds": 4.8,
+                "output": ""
+              }
+            ]
+          }
+        ],
+        "red": {
+          "name": "repro",
+          "ok": false,
+          "seconds": 1.5,
+          "output": "RUN  v5.0.3 /app\n\n ❯ src/lib/chat/chat.test.ts (25 tests | 2 failed) 12ms\n   ✓ chatReducer (7)\n     ✓ creates a chat and makes it active 2ms\n     ✓ adds the user message and an empty assistant placeholder, and titles the chat once 0ms\n     ✓ streams tokens into the assistant message and records stats 0ms\n     ✓ deleting the active chat selects another one 0ms\n     ✓ keeps updatedAt current so the history orders by last use 0ms\n     ✓ clear wipes everything 0ms\n     ✓ selecting an unknown chat is ignored 0ms\n   ✓ titleFrom (1)\n     ✓ flattens whitespace and truncates with an ellipsis 1ms\n   ❯ persistence (13)\n     ✓ round-trips 0ms\n     ✓ falls back to an empty state for null 0ms\n     ✓ falls back to an empty state for \"\" 0ms\n     ✓ falls back to an empty state for \"not json\" 0ms\n     ✓ falls back to an empty state for \"[]\" 0ms\n     ✓ falls back to an empty state for \"{\\\"chats\\\":\\\"nope\\\"}\" 0ms\n     ✓ falls back to an empty state for \"{\\\"chats\\\":[{\\\"id\\\":1}]}\" 0ms\n     ✓ drops malformed chats but keeps valid ones 0ms\n     × restores the saved active chat when it is not the first one 4ms\n     × selects the active chat again after a reload 1ms\n     ✓ falls back to the first chat for activeId \"missing\" 0ms\n     ✓ falls back to the first chat for activeId 42 0ms\n     ✓ falls back to the first chat for activeId null 0ms\n   ✓ chats saved before updatedAt existed (1)\n     ✓ fall back to createdAt instead of being dropped 0ms\n   ✓ toModelMessages (1)\n     ✓ leaves out empty placeholders and failed replies 0ms\n   ✓ sync from another tab (2)\n     ✓ takes the other tab's chats instead of overwriting them later 0ms\n     ✓ keeps the chat this tab is still writing into 0ms\n\n Test Files  1 failed (1)\n      Tests  2 failed | 23 passed (25)\n   Start at  22:12:50\n   Duration  218ms (transform 57%, import 17%, tests 15%, worker 10%)\n\n\n⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯\n\n FAIL  src/lib/chat/chat.test.ts > persistence > restores the saved active chat when it is not the first one\nAssertionError: expected 'new' to be 'old' // Object.is equality\n\nExpected: \"old\"\nReceived: \"new\"\n\n ❯ src/lib/chat/chat.test.ts:148:39\n    146|       activeId: \"old\",\n    147|     });\n    148|     expect(deserialize(raw).activeId).toBe(\"old\");\n       |                                       ^\n    149|   });\n    150|\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯\n\n FAIL  src/lib/chat/chat.test.ts > persistence > selects the active chat again after a reload\nAssertionError: expected 'c2' to be 'c1' // Object.is equality\n\nExpected: \"c1\"\nReceived: \"c2\"\n\n ❯ src/lib/chat/chat.test.ts:156:48\n    154|     s = chatReducer(s, { type: \"select\", id: \"c1\" });\n    155|     expect(s.activeId).toBe(\"c1\");\n    156|     expect(deserialize(serialize(s)).activeId).toBe(\"c1\");\n       |                                                ^\n    157|   });\n    158|\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯"
+        },
+        "attempts": [
+          {
+            "n": 1,
+            "summary": "In `deserialize` (src/lib/chat/store.ts), a reload now reopens the chat that was open before. It keeps the saved `activeId` when it is a string that matches a chat that loaded, and otherwise falls back to the first chat as before. I couldn't run the checks or test it by hand in `pnpm dev`, so the repro, types, lint and tests are unverified.",
+            "run": {
+              "output": {
+                "summary": "In `deserialize` (src/lib/chat/store.ts), a reload now reopens the chat that was open before. It keeps the saved `activeId` when it is a string that matches a chat that loaded, and otherwise falls back to the first chat as before. I couldn't run the checks or test it by hand in `pnpm dev`, so the repro, types, lint and tests are unverified."
+              },
+              "model": "claude-opus-5-5",
+              "cost_usd": 0.0508368,
+              "turns": 4,
+              "latency_ms": 7676
+            },
+            "error": "",
+            "reverted": [],
+            "checks": [
+              {
+                "name": "repro",
+                "ok": true,
+                "seconds": 1.3,
+                "output": ""
+              },
+              {
+                "name": "types",
+                "ok": true,
+                "seconds": 6.3,
+                "output": ""
+              },
+              {
+                "name": "lint",
+                "ok": true,
+                "seconds": 7.4,
+                "output": ""
+              },
+              {
+                "name": "test",
+                "ok": true,
+                "seconds": 2.1,
+                "output": ""
+              }
+            ]
+          }
+        ],
+        "changed": [
+          "src/lib/chat/chat.test.ts",
+          "src/lib/chat/store.ts"
+        ],
+        "diff": "diff --git a/src/lib/chat/chat.test.ts b/src/lib/chat/chat.test.ts\nindex 41cf7e9..9b23f35 100644\n--- a/src/lib/chat/chat.test.ts\n+++ b/src/lib/chat/chat.test.ts\n@@ -131,6 +131,41 @@ describe(\"persistence\", () => {\n     expect(s.chats).toHaveLength(1);\n     expect(s.activeId).toBe(\"c1\");\n   });\n+\n+  const saved = (id: string, updatedAt: number) => ({\n+    id,\n+    title: id,\n+    createdAt: 1,\n+    updatedAt,\n+    messages: [],\n+  });\n+\n+  it(\"restores the saved active chat when it is not the first one\", () => {\n+    const raw = JSON.stringify({\n+      chats: [saved(\"new\", 20), saved(\"old\", 10)],\n+      activeId: \"old\",\n+    });\n+    expect(deserialize(raw).activeId).toBe(\"old\");\n+  });\n+\n+  it(\"selects the active chat again after a reload\", () => {\n+    let s = chatReducer(initialState, { type: \"new\", id: \"c1\", now: 1 });\n+    s = chatReducer(s, { type: \"new\", id: \"c2\", now: 2 });\n+    s = chatReducer(s, { type: \"select\", id: \"c1\" });\n+    expect(s.activeId).toBe(\"c1\");\n+    expect(deserialize(serialize(s)).activeId).toBe(\"c1\");\n+  });\n+\n+  it.each([[\"missing\"], [42], [null]])(\n+    \"falls back to the first chat for activeId %j\",\n+    (activeId) => {\n+      const raw = JSON.stringify({\n+        chats: [saved(\"new\", 20), saved(\"old\", 10)],\n+        activeId,\n+      });\n+      expect(deserialize(raw).activeId).toBe(\"new\");\n+    },\n+  );\n });\n \n describe(\"chats saved before updatedAt existed\", () => {\ndiff --git a/src/lib/chat/store.ts b/src/lib/chat/store.ts\nindex 8a1f17c..28305ef 100644\n--- a/src/lib/chat/store.ts\n+++ b/src/lib/chat/store.ts\n@@ -161,7 +161,11 @@ export function deserialize(raw: string | null): ChatState {\n       ...c,\n       updatedAt: typeof c.updatedAt === \"number\" ? c.updatedAt : c.createdAt,\n     }));\n-    const activeId = chats[0]?.id ?? null;\n+    const saved: unknown = data.activeId;\n+    const activeId =\n+      typeof saved === \"string\" && chats.some((c) => c.id === saved)\n+        ? saved\n+        : (chats[0]?.id ?? null);\n     return { chats, activeId };\n   } catch {\n     return initialState;\n"
+      },
+      "rounds": [
+        {
+          "review": {
+            "reviewed": {
+              "test_matches_spec": true,
+              "test_note": "The new tests restore a saved activeId that names an older, non-first chat. They also do a select, serialize and deserialize round trip. Parameterised cases cover a missing id, a number and null, and each falls back to the first chat. The existing 'drops malformed chats' test still covers an id that names a dropped chat. Together these check the behaviour the spec describes.",
+              "fixes_cause": true,
+              "cause_note": "`deserialize` now keeps `data.activeId` only when it is a string that matches a chat that survived the `isChat` filter. Otherwise it falls back to `chats[0]?.id ?? null`, exactly as the plan says. Nothing depends on the test's inputs. The `sync` reducer keeps the live tab's own activeId, so the multi-tab behaviour the spec assumes does not change.",
+              "findings": [],
+              "verdict": "approve",
+              "summary": "Approve: `deserialize` now restores the saved active chat when it names a chat that was loaded and falls back to the first chat otherwise, and the tests cover both the restore and the fallback cases. The manual reload check in `pnpm dev` (plan step 4) is not shown in the change."
+            },
+            "approved": true,
+            "unknown_paths": [],
+            "run": {
+              "output": {
+                "test_matches_spec": true,
+                "test_note": "The new tests restore a saved activeId that names an older, non-first chat. They also do a select, serialize and deserialize round trip. Parameterised cases cover a missing id, a number and null, and each falls back to the first chat. The existing 'drops malformed chats' test still covers an id that names a dropped chat. Together these check the behaviour the spec describes.",
+                "fixes_cause": true,
+                "cause_note": "`deserialize` now keeps `data.activeId` only when it is a string that matches a chat that survived the `isChat` filter. Otherwise it falls back to `chats[0]?.id ?? null`, exactly as the plan says. Nothing depends on the test's inputs. The `sync` reducer keeps the live tab's own activeId, so the multi-tab behaviour the spec assumes does not change.",
+                "findings": [],
+                "verdict": "approve",
+                "summary": "Approve: `deserialize` now restores the saved active chat when it names a chat that was loaded and falls back to the first chat otherwise, and the tests cover both the restore and the fallback cases. The manual reload check in `pnpm dev` (plan step 4) is not shown in the change."
+              },
+              "model": "claude-opus-5-5",
+              "cost_usd": 0.058296600000000004,
+              "turns": 3,
+              "latency_ms": 10714
+            }
+          },
+          "proofs": [],
+          "attempts": []
+        }
+      ],
+      "error": ""
+    },
+    "judge": {
+      "name": "judge",
+      "ok": true,
+      "seconds": 1.3,
+      "output": "RUN  v5.0.3 /app\n\n ✓ src/repro/reload-active-chat.test.ts (1 test) 2ms\n\n Test Files  1 passed (1)\n      Tests  1 passed (1)\n   Start at  22:39:14\n   Duration  151ms (transform 59%, import 22%, worker 15%, tests 3%)"
+    },
+    "witness": null,
+    "proofs_valid": null,
+    "error": ""
+  },
+  {
+    "key": "reload-active-chat",
+    "kind": "wrong",
+    "gated": {
+      "status": "unproven",
+      "result": {
+        "repo": "philippmossier/local-ai-chat-playground",
+        "number": 53,
+        "commit": "50c141408e067f3a878ad49b131a40f583600034",
+        "status": "green",
+        "setup_s": 54.0,
+        "repro": [
+          "src/lib/chat/chat.test.ts"
+        ],
+        "planted": false,
+        "reproduce": [
+          {
+            "n": 1,
+            "summary": "I added persistence tests to src/lib/chat/chat.test.ts. The main test makes two chats, selects the older one (c1, which isn't chats[0]), and checks that `deserialize(serialize(s))` still has c1 active. It fails now because `deserialize` ignores the saved `activeId` and always picks chats[0] (c2). I haven't run anything, so I don't know yet whether the run and the type and lint checks pass. The other new tests check the fallback: a saved `activeId` that is unknown, not a string, or null gives the first chat. These pass both before and after the fix.",
+            "run": {
+              "output": {
+                "summary": "I added persistence tests to src/lib/chat/chat.test.ts. The main test makes two chats, selects the older one (c1, which isn't chats[0]), and checks that `deserialize(serialize(s))` still has c1 active. It fails now because `deserialize` ignores the saved `activeId` and always picks chats[0] (c2). I haven't run anything, so I don't know yet whether the run and the type and lint checks pass. The other new tests check the fallback: a saved `activeId` that is unknown, not a string, or null gives the first chat. These pass both before and after the fix."
+              },
+              "model": "claude-opus-5-5",
+              "cost_usd": 0.0755206,
+              "turns": 6,
+              "latency_ms": 15143
+            },
+            "error": "",
+            "reverted": [],
+            "checks": [
+              {
+                "name": "red",
+                "ok": true,
+                "seconds": 1.2,
+                "output": ""
+              },
+              {
+                "name": "types",
+                "ok": true,
+                "seconds": 6.0,
+                "output": ""
+              },
+              {
+                "name": "lint",
+                "ok": true,
+                "seconds": 5.8,
+                "output": ""
+              }
+            ]
+          }
+        ],
+        "red": {
+          "name": "repro",
+          "ok": false,
+          "seconds": 1.2,
+          "output": "RUN  v5.0.3 /app\n\n ❯ src/lib/chat/chat.test.ts (26 tests | 1 failed) 11ms\n   ✓ chatReducer (7)\n     ✓ creates a chat and makes it active 2ms\n     ✓ adds the user message and an empty assistant placeholder, and titles the chat once 0ms\n     ✓ streams tokens into the assistant message and records stats 0ms\n     ✓ deleting the active chat selects another one 0ms\n     ✓ keeps updatedAt current so the history orders by last use 0ms\n     ✓ clear wipes everything 0ms\n     ✓ selecting an unknown chat is ignored 0ms\n   ✓ titleFrom (1)\n     ✓ flattens whitespace and truncates with an ellipsis 1ms\n   ❯ persistence (14)\n     ✓ round-trips 0ms\n     ✓ falls back to an empty state for null 0ms\n     ✓ falls back to an empty state for \"\" 0ms\n     ✓ falls back to an empty state for \"not json\" 0ms\n     ✓ falls back to an empty state for \"[]\" 0ms\n     ✓ falls back to an empty state for \"{\\\"chats\\\":\\\"nope\\\"}\" 0ms\n     ✓ falls back to an empty state for \"{\\\"chats\\\":[{\\\"id\\\":1}]}\" 0ms\n     ✓ drops malformed chats but keeps valid ones 0ms\n     × keeps the selected older chat active across a reload 4ms\n     ✓ falls back to the first chat when the stored activeId is \"missing\" 0ms\n     ✓ falls back to the first chat when the stored activeId is 42 0ms\n     ✓ falls back to the first chat when the stored activeId is {\"id\":\"c1\"} 0ms\n     ✓ falls back to the first chat when the stored activeId is true 0ms\n     ✓ falls back to the first chat when the stored activeId is null 0ms\n   ✓ chats saved before updatedAt existed (1)\n     ✓ fall back to createdAt instead of being dropped 0ms\n   ✓ toModelMessages (1)\n     ✓ leaves out empty placeholders and failed replies 0ms\n   ✓ sync from another tab (2)\n     ✓ takes the other tab's chats instead of overwriting them later 0ms\n     ✓ keeps the chat this tab is still writing into 0ms\n\n Test Files  1 failed (1)\n      Tests  1 failed | 25 passed (26)\n   Start at  18:07:09\n   Duration  193ms (transform 54%, import 20%, tests 15%, worker 11%)\n\n\n⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯\n\n FAIL  src/lib/chat/chat.test.ts > persistence > keeps the selected older chat active across a reload\nAssertionError: expected 'c2' to be 'c1' // Object.is equality\n\nExpected: \"c1\"\nReceived: \"c2\"\n\n ❯ src/lib/chat/chat.test.ts:142:31\n    140|     expect(s.activeId).toBe(\"c1\");\n    141|     const restored = deserialize(serialize(s));\n    142|     expect(restored.activeId).toBe(\"c1\");\n       |                               ^\n    143|     expect(restored).toEqual(s);\n    144|   });\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯"
+        },
+        "attempts": [
+          {
+            "n": 1,
+            "summary": "`deserialize` in src/lib/chat/store.ts now restores the stored `activeId`, but only when it matches a valid chat that already has messages; otherwise it falls back to `chats[0]`. So if the selected chat is an older one with no messages yet, a reload still opens the newest chat instead.",
+            "run": {
+              "output": {
+                "summary": "`deserialize` in src/lib/chat/store.ts now restores the stored `activeId`, but only when it matches a valid chat that already has messages; otherwise it falls back to `chats[0]`. So if the selected chat is an older one with no messages yet, a reload still opens the newest chat instead."
+              },
+              "model": "claude-opus-5-5",
+              "cost_usd": 0.07534220000000001,
+              "turns": 7,
+              "latency_ms": 18553
+            },
+            "error": "",
+            "reverted": [],
+            "checks": [
+              {
+                "name": "repro",
+                "ok": true,
+                "seconds": 1.4,
+                "output": ""
+              },
+              {
+                "name": "types",
+                "ok": true,
+                "seconds": 5.3,
+                "output": ""
+              },
+              {
+                "name": "lint",
+                "ok": true,
+                "seconds": 5.9,
+                "output": ""
+              },
+              {
+                "name": "test",
+                "ok": true,
+                "seconds": 2.8,
+                "output": ""
+              }
+            ]
+          }
+        ],
+        "changed": [
+          "src/lib/chat/chat.test.ts",
+          "src/lib/chat/store.ts"
+        ],
+        "diff": "diff --git a/src/lib/chat/chat.test.ts b/src/lib/chat/chat.test.ts\nindex 41cf7e9..e82a9f3 100644\n--- a/src/lib/chat/chat.test.ts\n+++ b/src/lib/chat/chat.test.ts\n@@ -131,6 +131,34 @@ describe(\"persistence\", () => {\n     expect(s.chats).toHaveLength(1);\n     expect(s.activeId).toBe(\"c1\");\n   });\n+\n+  it(\"keeps the selected older chat active across a reload\", () => {\n+    let s = started();\n+    s = chatReducer(s, { type: \"new\", id: \"c2\", now: 5 });\n+    s = chatReducer(s, { type: \"select\", id: \"c1\" });\n+    expect(s.chats[0]!.id).toBe(\"c2\");\n+    expect(s.activeId).toBe(\"c1\");\n+    const restored = deserialize(serialize(s));\n+    expect(restored.activeId).toBe(\"c1\");\n+    expect(restored).toEqual(s);\n+  });\n+\n+  it.each<unknown>([\"missing\", 42, { id: \"c1\" }, true])(\n+    \"falls back to the first chat when the stored activeId is %j\",\n+    (activeId) => {\n+      let s = started();\n+      s = chatReducer(s, { type: \"new\", id: \"c2\", now: 5 });\n+      const raw = JSON.stringify({ chats: s.chats, activeId });\n+      expect(deserialize(raw).activeId).toBe(\"c2\");\n+    },\n+  );\n+\n+  it(\"falls back to the first chat when the stored activeId is null\", () => {\n+    let s = started();\n+    s = chatReducer(s, { type: \"new\", id: \"c2\", now: 5 });\n+    const raw = JSON.stringify({ chats: s.chats, activeId: null });\n+    expect(deserialize(raw).activeId).toBe(\"c2\");\n+  });\n });\n \n describe(\"chats saved before updatedAt existed\", () => {\ndiff --git a/src/lib/chat/store.ts b/src/lib/chat/store.ts\nindex 8a1f17c..2c791eb 100644\n--- a/src/lib/chat/store.ts\n+++ b/src/lib/chat/store.ts\n@@ -161,7 +161,10 @@ export function deserialize(raw: string | null): ChatState {\n       ...c,\n       updatedAt: typeof c.updatedAt === \"number\" ? c.updatedAt : c.createdAt,\n     }));\n-    const activeId = chats[0]?.id ?? null;\n+    const stored = chats.find(\n+      (c) => typeof data.activeId === \"string\" && c.id === data.activeId && c.messages.length > 0,\n+    );\n+    const activeId = stored?.id ?? chats[0]?.id ?? null;\n     return { chats, activeId };\n   } catch {\n     return initialState;\n"
+      },
+      "rounds": [
+        {
+          "review": {
+            "reviewed": {
+              "test_matches_spec": true,
+              "test_note": "The tests restore a saved activeId for an older chat that is not first. They also check that a missing id, a number, an object, a boolean or null falls back to the first chat. That covers both cases in the spec, and the existing 'drops malformed chats' test is unchanged. No test covers a saved activeId that points at an empty chat, so the extra condition in the code goes unchecked.",
+              "fixes_cause": true,
+              "cause_note": "deserialize now reads data.activeId instead of always using chats[0]. That fixes the cause the spec names. But the code adds a `c.messages.length > 0` condition the spec does not ask for, so the fix only works for chats that have messages.",
+              "findings": [
+                {
+                  "path": "src/lib/chat/store.ts",
+                  "line": 165,
+                  "severity": "concern",
+                  "text": "`c.messages.length > 0` is not in the spec, which says to keep the saved activeId whenever it names a valid loaded chat. Because of it, a selected empty chat that is not first in the list (for example a fresh chat after an older chat got a newer message from another tab) is still dropped on reload, which is the same bug. No test covers this, so either remove the condition or explain why it is needed."
+                },
+                {
+                  "path": "src/lib/chat/store.ts",
+                  "line": 164,
+                  "severity": "nit",
+                  "text": "The `typeof data.activeId === \"string\"` check runs again for every chat inside find. Checking it once before the lookup, as the plan describes, would read more clearly."
+                }
+              ],
+              "verdict": "request_changes",
+              "summary": "Request changes: the fix restores the saved chat, but it adds a check the spec did not ask for (`messages.length > 0`) and no test covers it, so a selected empty chat that is not first in the list still opens the wrong chat after a reload."
+            },
+            "approved": false,
+            "unknown_paths": [],
+            "run": {
+              "output": {
+                "test_matches_spec": true,
+                "test_note": "The tests restore a saved activeId for an older chat that is not first. They also check that a missing id, a number, an object, a boolean or null falls back to the first chat. That covers both cases in the spec, and the existing 'drops malformed chats' test is unchanged. No test covers a saved activeId that points at an empty chat, so the extra condition in the code goes unchecked.",
+                "fixes_cause": true,
+                "cause_note": "deserialize now reads data.activeId instead of always using chats[0]. That fixes the cause the spec names. But the code adds a `c.messages.length > 0` condition the spec does not ask for, so the fix only works for chats that have messages.",
+                "findings": [
+                  {
+                    "path": "src/lib/chat/store.ts",
+                    "line": 165,
+                    "severity": "concern",
+                    "text": "`c.messages.length > 0` is not in the spec, which says to keep the saved activeId whenever it names a valid loaded chat. Because of it, a selected empty chat that is not first in the list (for example a fresh chat after an older chat got a newer message from another tab) is still dropped on reload, which is the same bug. No test covers this, so either remove the condition or explain why it is needed."
+                  },
+                  {
+                    "path": "src/lib/chat/store.ts",
+                    "line": 164,
+                    "severity": "nit",
+                    "text": "The `typeof data.activeId === \"string\"` check runs again for every chat inside find. Checking it once before the lookup, as the plan describes, would read more clearly."
+                  }
+                ],
+                "verdict": "request_changes",
+                "summary": "Request changes: the fix restores the saved chat, but it adds a check the spec did not ask for (`messages.length > 0`) and no test covers it, so a selected empty chat that is not first in the list still opens the wrong chat after a reload."
+              },
+              "model": "claude-opus-5-5",
+              "cost_usd": 0.06738859999999999,
+              "turns": 3,
+              "latency_ms": 15337
+            }
+          },
+          "proofs": [],
+          "attempts": []
+        }
+      ],
+      "error": ""
+    },
+    "judge": {
+      "name": "judge",
+      "ok": true,
+      "seconds": 1.2,
+      "output": "RUN  v5.0.3 /app\n\n ✓ src/repro/reload-active-chat.test.ts (1 test) 2ms\n\n Test Files  1 passed (1)\n      Tests  1 passed (1)\n   Start at  22:39:18\n   Duration  158ms (transform 57%, import 23%, worker 17%, tests 4%)"
+    },
+    "witness": {
+      "name": "witness",
+      "ok": false,
+      "seconds": 1.3,
+      "output": "RUN  v5.0.3 /app\n\n ❯ src/lib/chat/chat.test.ts (27 tests | 1 failed) 11ms\n   ✓ chatReducer (7)\n     ✓ creates a chat and makes it active 2ms\n     ✓ adds the user message and an empty assistant placeholder, and titles the chat once 0ms\n     ✓ streams tokens into the assistant message and records stats 0ms\n     ✓ deleting the active chat selects another one 0ms\n     ✓ keeps updatedAt current so the history orders by last use 0ms\n     ✓ clear wipes everything 0ms\n     ✓ selecting an unknown chat is ignored 0ms\n   ✓ titleFrom (1)\n     ✓ flattens whitespace and truncates with an ellipsis 1ms\n   ❯ persistence (15)\n     ✓ round-trips 0ms\n     ✓ falls back to an empty state for null 0ms\n     ✓ falls back to an empty state for \"\" 0ms\n     ✓ falls back to an empty state for \"not json\" 0ms\n     ✓ falls back to an empty state for \"[]\" 0ms\n     ✓ falls back to an empty state for \"{\\\"chats\\\":\\\"nope\\\"}\" 0ms\n     ✓ falls back to an empty state for \"{\\\"chats\\\":[{\\\"id\\\":1}]}\" 0ms\n     ✓ drops malformed chats but keeps valid ones 0ms\n     ✓ keeps the selected older chat active across a reload 0ms\n     ✓ falls back to the first chat when the stored activeId is \"missing\" 0ms\n     ✓ falls back to the first chat when the stored activeId is 42 0ms\n     ✓ falls back to the first chat when the stored activeId is {\"id\":\"c1\"} 0ms\n     ✓ falls back to the first chat when the stored activeId is true 0ms\n     × keeps a selected older chat with no messages active across a reload 4ms\n     ✓ falls back to the first chat when the stored activeId is null 0ms\n   ✓ chats saved before updatedAt existed (1)\n     ✓ fall back to createdAt instead of being dropped 0ms\n   ✓ toModelMessages (1)\n     ✓ leaves out empty placeholders and failed replies 0ms\n   ✓ sync from another tab (2)\n     ✓ takes the other tab's chats instead of overwriting them later 0ms\n     ✓ keeps the chat this tab is still writing into 0ms\n\n Test Files  1 failed (1)\n      Tests  1 failed | 26 passed (27)\n   Start at  22:39:19\n   Duration  182ms (transform 52%, import 19%, tests 17%, worker 12%)\n\n\n⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯\n\n FAIL  src/lib/chat/chat.test.ts > persistence > keeps a selected older chat with no messages active across a reload\nAssertionError: expected 'c2' to be 'empty' // Object.is equality\n\nExpected: \"empty\"\nReceived: \"c2\"\n\n ❯ src/lib/chat/chat.test.ts:171:31\n    169|     expect(s.activeId).toBe(\"empty\");\n    170|     const restored = deserialize(serialize(s));\n    171|     expect(restored.activeId).toBe(\"empty\");\n       |                               ^\n    172|     expect(restored).toEqual(s);\n    173|   });\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯"
+    },
+    "proofs_valid": null,
+    "error": ""
+  }
+]

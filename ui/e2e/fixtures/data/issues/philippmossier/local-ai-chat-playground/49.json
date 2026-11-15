@@ -1,0 +1,18 @@
+{
+  "repo": "philippmossier/local-ai-chat-playground",
+  "number": 49,
+  "title": "CI: pin actions to commit SHAs",
+  "body": "`.github/workflows/ci.yml` uses `actions/checkout@v4`, `pnpm/action-setup@v4` and `actions/setup-node@v4`. A moved tag runs new code in our CI without review. Pin each action to a full commit SHA (with the version as a comment).",
+  "state": "open",
+  "state_reason": null,
+  "author": "philippmossier",
+  "labels": [],
+  "created_at": "2026-10-16T09:54:42Z",
+  "updated_at": "2026-10-16T09:54:42Z",
+  "closed_at": null,
+  "closed_by": null,
+  "comment_count": 0,
+  "comments": [],
+  "duplicate_of": [],
+  "duplicates": []
+}

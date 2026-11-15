@@ -1,0 +1,18 @@
+{
+  "repo": "philippmossier/local-ai-chat-playground",
+  "number": 54,
+  "title": "Message from last night says \"Today\"",
+  "body": "I wrote something at 11:50 PM and checked again at 12:10 AM. The message says \"Today 11:50 PM\". It was yesterday. Same thing the morning after for messages from the late evening two days ago, they show \"Yesterday\".",
+  "state": "open",
+  "state_reason": null,
+  "author": "philippmossier",
+  "labels": [],
+  "created_at": "2026-10-16T09:54:57Z",
+  "updated_at": "2026-10-16T09:54:57Z",
+  "closed_at": null,
+  "closed_by": null,
+  "comment_count": 0,
+  "comments": [],
+  "duplicate_of": [],
+  "duplicates": []
+}

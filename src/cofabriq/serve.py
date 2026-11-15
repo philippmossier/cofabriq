@@ -186,7 +186,8 @@ class FlowSummary(BaseModel):
     route: Literal["bug", "feature"]
     waiting: Literal["plan", "test"] | None
     running: bool
-    outcome: str  # e.g. "approved", "escalated", "rejected: plan rejected"
+    # e.g. "approved", "escalated", "rejected: plan rejected", "cut off: ..."
+    outcome: str
     error: str
 
 
@@ -735,6 +736,8 @@ def build(
 def _flow_summary(f: FlowStatus) -> FlowSummary:
     st = f.state
     outcome = f"{st.outcome}: {st.note}" if st.note else st.outcome
+    if f.cut_off:  # the checkpoint's stage is where it stopped, not how it ended
+        outcome = f"cut off: the server stopped during {st.stage}"
     return FlowSummary(
         thread=f.thread,
         repo=st.issue.repo,

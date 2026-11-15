@@ -1,0 +1,65 @@
+{
+  "update": {
+    "progress": {
+      "repo": "philippmossier/local-ai-chat-playground",
+      "number": 8,
+      "commit": "50c141408e067f3a878ad49b131a40f583600034",
+      "planted": [],
+      "setup_s": 12.5,
+      "repro": [
+        "e2e/code-contrast.spec.ts"
+      ],
+      "reproduced": [
+        {
+          "n": 1,
+          "summary": "e2e/code-contrast.spec.ts runs once in the dark theme and once in the light theme. It sends a message that the fake engine echoes back as markdown with inline code and a fenced code block. For both kinds of code it asserts four things: the computed `color-scheme` matches the theme, the colour equals the theme's `--foreground`, contrast is at least 4.5:1, and every request stays on localhost:5199. It should fail now because nothing sets `color-scheme`, so the computed value is \"normal\" and not \"dark\"/\"light\". The colour and contrast checks also catch the reported dark grey if Chrome's computed colour shows it. I haven't been able to run it.",
+          "run": {
+            "output": {
+              "summary": "e2e/code-contrast.spec.ts runs once in the dark theme and once in the light theme. It sends a message that the fake engine echoes back as markdown with inline code and a fenced code block. For both kinds of code it asserts four things: the computed `color-scheme` matches the theme, the colour equals the theme's `--foreground`, contrast is at least 4.5:1, and every request stays on localhost:5199. It should fail now because nothing sets `color-scheme`, so the computed value is \"normal\" and not \"dark\"/\"light\". The colour and contrast checks also catch the reported dark grey if Chrome's computed colour shows it. I haven't been able to run it."
+            },
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.2377116,
+            "turns": 9,
+            "latency_ms": 34930,
+            "tokens": {
+              "input": 10,
+              "output": 3570,
+              "cache_read": 59878,
+              "cache_write": 19287
+            }
+          },
+          "error": "",
+          "reverted": [],
+          "checks": [
+            {
+              "name": "red",
+              "ok": true,
+              "seconds": 4.0,
+              "output": ""
+            },
+            {
+              "name": "types",
+              "ok": true,
+              "seconds": 4.8,
+              "output": ""
+            },
+            {
+              "name": "lint",
+              "ok": true,
+              "seconds": 4.4,
+              "output": ""
+            }
+          ]
+        }
+      ],
+      "red": {
+        "name": "repro",
+        "ok": false,
+        "seconds": 4.0,
+        "output": "Running 2 tests using 2 workers\n\n\n\n\n\n[1/2] [chromium] › e2e/code-contrast.spec.ts:43:3 › code in answers uses the light theme foreground\n[2/2] [chromium] › e2e/code-contrast.spec.ts:43:3 › code in answers uses the dark theme foreground\n  1) [chromium] › e2e/code-contrast.spec.ts:43:3 › code in answers uses the dark theme foreground ──\n\n    Error: expect(received).toBe(expected) // Object.is equality\n\n    Expected: \"dark\"\n    Received: \"normal\"\n\n      65 |     ] as const) {\n      66 |       const s = await styleOf(code, bgSel);\n    > 67 |       expect(s.colorScheme).toBe(theme);\n         |                             ^\n      68 |       expect(s.color).toBe(foreground);\n      69 |       expect(contrast(s.color, s.background)).toBeGreaterThanOrEqual(4.5);\n      70 |     }\n        at /app/e2e/code-contrast.spec.ts:67:29\n\n    Error Context: test-results/code-contrast-code-in-answers-uses-the-dark-theme-foreground-chromium/error-context.md\n\n    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────\n    test-results/code-contrast-code-in-answers-uses-the-dark-theme-foreground-chromium/trace.zip\n    Usage:\n\n        pnpm exec playwright show-trace test-results/code-contrast-code-in-answers-uses-the-dark-theme-foreground-chromium/trace.zip\n\n    ────────────────────────────────────────────────────────────────────────────────────────────────\n\n\n  2) [chromium] › e2e/code-contrast.spec.ts:43:3 › code in answers uses the light theme foreground ─\n\n    Error: expect(received).toBe(expected) // Object.is equality\n\n    Expected: \"light\"\n    Received: \"normal\"\n\n      65 |     ] as const) {\n      66 |       const s = await styleOf(code, bgSel);\n    > 67 |       expect(s.colorScheme).toBe(theme);\n         |                             ^\n      68 |       expect(s.color).toBe(foreground);\n      69 |       expect(contrast(s.color, s.background)).toBeGreaterThanOrEqual(4.5);\n      70 |     }\n        at /app/e2e/code-contrast.spec.ts:67:29\n\n    Error Context: test-results/code-contrast-code-in-answ-e665b--the-light-theme-foreground-chromium/error-context.md\n\n    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────\n    test-results/code-contrast-code-in-answ-e665b--the-light-theme-foreground-chromium/trace.zip\n    Usage:\n\n        pnpm exec playwright show-trace test-results/code-contrast-code-in-answ-e665b--the-light-theme-foreground-chromium/trace.zip\n\n    ────────────────────────────────────────────────────────────────────────────────────────────────\n\n\n  2 failed\n    [chromium] › e2e/code-contrast.spec.ts:43:3 › code in answers uses the dark theme foreground ───\n    [chromium] › e2e/code-contrast.spec.ts:43:3 › code in answers uses the light theme foreground ──\n[WebServer] (node:43) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)\n[WebServer] (node:55) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)\n(node:92) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)\n(node:91) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n(Use `node --trace-warnings ...` to show where the warning was created)"
+      },
+      "status": null
+    },
+    "stage": "tested"
+  }
+}

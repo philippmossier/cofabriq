@@ -14,7 +14,13 @@ build/
 # Local config and data
 .env
 data/
+# recorded playground runs the viewer's browser test reads (make e2e)
+!ui/e2e/fixtures/data/
 CLAUDE.local.md
+
+# Playwright's output (make e2e, make journey)
+ui/test-results/
+ui/playwright-report/
 
 # OS / editor
 .DS_Store

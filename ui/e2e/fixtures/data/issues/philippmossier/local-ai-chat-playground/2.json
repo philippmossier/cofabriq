@@ -1,0 +1,17 @@
+{
+  "repo": "philippmossier/local-ai-chat-playground",
+  "number": 2,
+  "title": "Firefox: \"Your browser does not support WebGPU\" although it is enabled",
+  "body": "On Firefox 145 (Windows 11, RTX 3060) the hardware check says my browser has no WebGPU and only offers the CPU models. `navigator.gpu` exists in the console and other WebGPU demos work.\n\nIs the check looking for something Firefox does not expose?",
+  "state": "open",
+  "state_reason": null,
+  "author": "philippmossier",
+  "labels": [],
+  "created_at": "2026-10-13T13:08:26Z",
+  "updated_at": "2026-10-13T13:08:26Z",
+  "closed_at": null,
+  "comment_count": 0,
+  "comments": [],
+  "duplicate_of": [],
+  "duplicates": []
+}

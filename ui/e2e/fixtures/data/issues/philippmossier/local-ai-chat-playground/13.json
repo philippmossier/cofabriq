@@ -1,0 +1,17 @@
+{
+  "repo": "philippmossier/local-ai-chat-playground",
+  "number": 13,
+  "title": "CPU fallback crashes with \"RuntimeError: memory access out of bounds\"",
+  "body": "On an old laptop without WebGPU the app falls back to the CPU (WebAssembly). Loading Qwen3 0.6B finishes, but the first message fails and the console shows:\n\n```\nworker.ts: RuntimeError: memory access out of bounds\n    at ort-wasm-simd-threaded.wasm\n```\n\nChrome 141, Windows 10, Intel i5-7200U, 8 GB RAM.",
+  "state": "open",
+  "state_reason": null,
+  "author": "philippmossier",
+  "labels": [],
+  "created_at": "2026-10-13T13:09:03Z",
+  "updated_at": "2026-10-13T13:09:03Z",
+  "closed_at": null,
+  "comment_count": 0,
+  "comments": [],
+  "duplicate_of": [],
+  "duplicates": []
+}

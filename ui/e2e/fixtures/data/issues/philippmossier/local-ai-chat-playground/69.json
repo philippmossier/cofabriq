@@ -1,0 +1,18 @@
+{
+  "repo": "philippmossier/local-ai-chat-playground",
+  "number": 69,
+  "title": "Back from \"change model\" throws me out to the start page",
+  "body": "In a chat I clicked the model name to look at the other models, then \"Back\". Instead of my chat I'm on the welcome page and have to start the model again.",
+  "state": "open",
+  "state_reason": null,
+  "author": "philippmossier",
+  "labels": [],
+  "created_at": "2026-10-16T09:55:43Z",
+  "updated_at": "2026-10-16T09:55:43Z",
+  "closed_at": null,
+  "closed_by": null,
+  "comment_count": 0,
+  "comments": [],
+  "duplicate_of": [],
+  "duplicates": []
+}

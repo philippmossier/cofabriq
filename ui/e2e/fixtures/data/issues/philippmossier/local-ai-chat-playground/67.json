@@ -1,0 +1,18 @@
+{
+  "repo": "philippmossier/local-ai-chat-playground",
+  "number": 67,
+  "title": "\"Neuer Chat\" Button macht nichts",
+  "body": "Wenn ich in einem Chat schon etwas geschrieben habe und auf \"Neuer Chat\" klicke, passiert nichts. Ich bleibe im alten Chat. Nur ganz am Anfang funktioniert der Button.",
+  "state": "open",
+  "state_reason": null,
+  "author": "philippmossier",
+  "labels": [],
+  "created_at": "2026-10-16T09:55:37Z",
+  "updated_at": "2026-10-16T09:55:37Z",
+  "closed_at": null,
+  "closed_by": null,
+  "comment_count": 0,
+  "comments": [],
+  "duplicate_of": [],
+  "duplicates": []
+}
