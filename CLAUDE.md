@@ -16,7 +16,7 @@ set -> 0.7 duplicate retrieval (issues cleaned before embedding, an LLM rerank
 of the nearest 50) -> 0.8 runs started and followed in the browser (the step
 view), a test gate on every run with "write it again", `at`, sketches and
 proof in the spec -> next: a second reviewer model, risky-change routing ->
-later: a real repo with tests, self-host packaging. Current: v0.7.2.
+later: a real repo with tests, self-host packaging. Current: v0.8.0.
 Playground only.
 
 ## Commands
