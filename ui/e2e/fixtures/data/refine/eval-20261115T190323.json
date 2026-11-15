@@ -1,0 +1,2288 @@
+{
+  "title-ellipsis": {
+    "repo": "philippmossier/local-ai-chat-playground",
+    "number": 51,
+    "commit": "50c141408e067f3a878ad49b131a40f583600034",
+    "route": "bug",
+    "spec": {
+      "problem": "The chat title is built by `titleFrom` in `src/lib/chat/store.ts:48-53`. It is off by one. The check is `flat.length < TITLE_LENGTH` (TITLE_LENGTH = 42), so a question that is exactly 42 characters after whitespace is flattened fails the check. It gets cut to its first 41 characters plus \"…\". The result is still 42 characters long, so it would have fit as it was. The title ends in \"…\" with only its last character swapped out, which makes it look as if nothing is missing. Longer questions are cut as intended. The sidebar's CSS `truncate` (`src/components/chat-sidebar.tsx:88`) only adds its own ellipsis when the text overflows, so it is not the cause. The existing test (`src/lib/chat/chat.test.ts:100-106`) only covers 100 characters and very short input, never the 42-character boundary.",
+      "files": [
+        {
+          "path": "src/lib/chat/store.ts",
+          "why": "Off-by-one in the length check: text of exactly TITLE_LENGTH characters fits and should be kept whole.",
+          "at": [
+            "52"
+          ],
+          "edits": [
+            {
+              "old": "  return flat.length < TITLE_LENGTH ? flat : `${flat.slice(0, TITLE_LENGTH - 1)}…`;",
+              "new": "  return flat.length <= TITLE_LENGTH ? flat : `${flat.slice(0, TITLE_LENGTH - 1)}…`;",
+              "line": 52
+            }
+          ]
+        }
+      ],
+      "tests": [
+        {
+          "path": "src/lib/chat/chat.test.ts",
+          "why": "Add boundary cases to the titleFrom describe block. A 42-character string comes back unchanged with no ellipsis. This fails now, because the result is 41 characters plus \"…\". A 43-character string comes back as 42 characters ending in \"…\". A 42-character string with extra whitespace that flattens to 42 characters is also kept whole.",
+          "at": [
+            "106"
+          ],
+          "edits": []
+        }
+      ],
+      "criteria": [],
+      "plan": [
+        "Add a vitest case in src/lib/chat/chat.test.ts under describe(\"titleFrom\"): titleFrom(\"x\".repeat(42)) returns the string unchanged. Also add a 43-character case that is cut to 42 characters ending in \"…\". The first case fails on the current code.",
+        "Change `<` to `<=` in titleFrom at src/lib/chat/store.ts:52.",
+        "Run pnpm check-types && pnpm lint && pnpm test."
+      ],
+      "assumptions": [
+        "The reporter's question (\"What is the difference between RAM and VRAM?\" plus a few words) was exactly 42 characters after whitespace was flattened, so it hit the boundary. The quoted sentence alone is 44 characters.",
+        "Titles already stored in localStorage are not recomputed. Only new chats get the fixed title.",
+        "TITLE_LENGTH = 42 stays the intended maximum length of a title."
+      ],
+      "open_questions": [],
+      "size": "S"
+    },
+    "unknown_paths": [],
+    "run": {
+      "output": {
+        "problem": "The chat title is built by `titleFrom` in `src/lib/chat/store.ts:48-53`. It is off by one. The check is `flat.length < TITLE_LENGTH` (TITLE_LENGTH = 42), so a question that is exactly 42 characters after whitespace is flattened fails the check. It gets cut to its first 41 characters plus \"…\". The result is still 42 characters long, so it would have fit as it was. The title ends in \"…\" with only its last character swapped out, which makes it look as if nothing is missing. Longer questions are cut as intended. The sidebar's CSS `truncate` (`src/components/chat-sidebar.tsx:88`) only adds its own ellipsis when the text overflows, so it is not the cause. The existing test (`src/lib/chat/chat.test.ts:100-106`) only covers 100 characters and very short input, never the 42-character boundary.",
+        "files": [
+          {
+            "path": "src/lib/chat/store.ts",
+            "why": "Off-by-one in the length check: text of exactly TITLE_LENGTH characters fits and should be kept whole.",
+            "at": [
+              "52"
+            ],
+            "edits": [
+              {
+                "old": "  return flat.length < TITLE_LENGTH ? flat : `${flat.slice(0, TITLE_LENGTH - 1)}…`;",
+                "new": "  return flat.length <= TITLE_LENGTH ? flat : `${flat.slice(0, TITLE_LENGTH - 1)}…`;"
+              }
+            ]
+          }
+        ],
+        "tests": [
+          {
+            "path": "src/lib/chat/chat.test.ts",
+            "why": "Add boundary cases to the titleFrom describe block. A 42-character string comes back unchanged with no ellipsis. This fails now, because the result is 41 characters plus \"…\". A 43-character string comes back as 42 characters ending in \"…\". A 42-character string with extra whitespace that flattens to 42 characters is also kept whole.",
+            "at": [
+              "106"
+            ]
+          }
+        ],
+        "plan": [
+          "Add a vitest case in src/lib/chat/chat.test.ts under describe(\"titleFrom\"): titleFrom(\"x\".repeat(42)) returns the string unchanged. Also add a 43-character case that is cut to 42 characters ending in \"…\". The first case fails on the current code.",
+          "Change `<` to `<=` in titleFrom at src/lib/chat/store.ts:52.",
+          "Run pnpm check-types && pnpm lint && pnpm test."
+        ],
+        "assumptions": [
+          "The reporter's question (\"What is the difference between RAM and VRAM?\" plus a few words) was exactly 42 characters after whitespace was flattened, so it hit the boundary. The quoted sentence alone is 44 characters.",
+          "Titles already stored in localStorage are not recomputed. Only new chats get the fixed title.",
+          "TITLE_LENGTH = 42 stays the intended maximum length of a title."
+        ],
+        "open_questions": [],
+        "size": "S",
+        "criteria": [
+          "titleFrom of a 42-character string returns it unchanged, without \"…\".",
+          "titleFrom of a 43-character string returns 42 characters ending in \"…\".",
+          "titleFrom of input whose whitespace flattens to 42 characters returns the flattened text unchanged."
+        ]
+      },
+      "model": "claude-opus-5-5",
+      "cost_usd": 0.1336102,
+      "turns": 7,
+      "latency_ms": 28424,
+      "tokens": {
+        "input": 8,
+        "output": 2102,
+        "cache_read": 27051,
+        "cache_write": 10766
+      }
+    }
+  },
+  "low-memory-reason": {
+    "repo": "philippmossier/local-ai-chat-playground",
+    "number": 52,
+    "commit": "50c141408e067f3a878ad49b131a40f583600034",
+    "route": "bug",
+    "spec": {
+      "problem": "On a device with 4 GB of RAM or less, the welcome page explains the size limit with the phone/tablet text, even on a laptop such as a Chromebook. `classify` correctly gives the reason `hw.lowMemory` (src/lib/hardware/classify.ts:49-53, deviceMemoryGB <= 4 → tierCap 0). It does not set `hw.mobile`: a Chromebook user agent (`X11; CrOS`) does not match the mobile regex in src/lib/hardware/detect.ts:117-118. The bug is in `reasonText` (src/lib/labels.ts:53-58), where `case \"hw.lowMemory\":` falls through to `case \"hw.mobile\":`. Both reasons therefore print \"On phones and tablets only the smallest model is offered, to save battery and data.\" The welcome card shows each reason through `reasonText` (src/components/welcome.tsx:140-142). The limit itself is right and stays. Only the low-memory reason needs its own text.",
+      "files": [
+        {
+          "path": "src/lib/labels.ts",
+          "why": "Give hw.lowMemory its own English and German text instead of falling through to the phone/tablet text.",
+          "at": [
+            "53-54"
+          ],
+          "edits": [
+            {
+              "old": "    case \"hw.lowMemory\":\n    case \"hw.mobile\":\n      return tr(",
+              "new": "    case \"hw.lowMemory\":\n      return tr(\n        \"This device has little memory (4 GB or less), so only the smallest model is offered.\",\n        \"Dieses Gerät hat wenig Arbeitsspeicher (4 GB oder weniger), deshalb wird nur das kleinste Modell angeboten.\",\n      );\n    case \"hw.mobile\":\n      return tr(",
+              "line": 53
+            }
+          ]
+        }
+      ],
+      "tests": [
+        {
+          "path": "src/lib/labels.test.ts",
+          "why": "New vitest file. Checks that reasonText(\"hw.lowMemory\", 0) does not mention phones or tablets and does not equal reasonText(\"hw.mobile\", 0). Also checks that classify(PROFILES.lowMemoryChromebook).reasons contains hw.lowMemory and not hw.mobile, and that none of its reason texts mention phones. Tests run in English (tr falls back to English with no navigator, see src/lib/lang.test.ts:21). The first check fails now because both ids return the same phone/tablet text.",
+          "at": [],
+          "edits": []
+        }
+      ],
+      "criteria": [],
+      "plan": [
+        "Add src/lib/labels.test.ts with the checks above and confirm they fail on the current code.",
+        "In src/lib/labels.ts split the shared case: hw.lowMemory gets its own low-memory text in English and German, and hw.mobile keeps the phone/tablet text.",
+        "Run pnpm check-types && pnpm lint && pnpm test."
+      ],
+      "assumptions": [
+        "The reporter's Chromebook reports navigator.deviceMemory <= 4 and is not flagged mobile, so the text they see comes from hw.lowMemory. A Chromebook UA (X11; CrOS) does not match /Android|iPhone|iPad|iPod|Mobile/ in detect.ts:118.",
+        "The cap to the smallest model on 4 GB devices stays as it is. Only the explanation changes.",
+        "Exact wording of the new text is up to the developer. It should not name a device type and should avoid any em dash."
+      ],
+      "open_questions": [],
+      "size": "S"
+    },
+    "unknown_paths": [
+      "src/lib/labels.test.ts"
+    ],
+    "run": {
+      "output": {
+        "problem": "On a device with 4 GB of RAM or less, the welcome page explains the size limit with the phone/tablet text, even on a laptop such as a Chromebook. `classify` correctly gives the reason `hw.lowMemory` (src/lib/hardware/classify.ts:49-53, deviceMemoryGB <= 4 → tierCap 0). It does not set `hw.mobile`: a Chromebook user agent (`X11; CrOS`) does not match the mobile regex in src/lib/hardware/detect.ts:117-118. The bug is in `reasonText` (src/lib/labels.ts:53-58), where `case \"hw.lowMemory\":` falls through to `case \"hw.mobile\":`. Both reasons therefore print \"On phones and tablets only the smallest model is offered, to save battery and data.\" The welcome card shows each reason through `reasonText` (src/components/welcome.tsx:140-142). The limit itself is right and stays. Only the low-memory reason needs its own text.",
+        "files": [
+          {
+            "path": "src/lib/labels.ts",
+            "why": "Give hw.lowMemory its own English and German text instead of falling through to the phone/tablet text.",
+            "at": [
+              "53-54"
+            ],
+            "edits": [
+              {
+                "old": "    case \"hw.lowMemory\":\n    case \"hw.mobile\":\n      return tr(",
+                "new": "    case \"hw.lowMemory\":\n      return tr(\n        \"This device has little memory (4 GB or less), so only the smallest model is offered.\",\n        \"Dieses Gerät hat wenig Arbeitsspeicher (4 GB oder weniger), deshalb wird nur das kleinste Modell angeboten.\",\n      );\n    case \"hw.mobile\":\n      return tr("
+              }
+            ]
+          }
+        ],
+        "tests": [
+          {
+            "path": "src/lib/labels.test.ts",
+            "why": "New vitest file. Checks that reasonText(\"hw.lowMemory\", 0) does not mention phones or tablets and does not equal reasonText(\"hw.mobile\", 0). Also checks that classify(PROFILES.lowMemoryChromebook).reasons contains hw.lowMemory and not hw.mobile, and that none of its reason texts mention phones. Tests run in English (tr falls back to English with no navigator, see src/lib/lang.test.ts:21). The first check fails now because both ids return the same phone/tablet text.",
+            "at": []
+          }
+        ],
+        "plan": [
+          "Add src/lib/labels.test.ts with the checks above and confirm they fail on the current code.",
+          "In src/lib/labels.ts split the shared case: hw.lowMemory gets its own low-memory text in English and German, and hw.mobile keeps the phone/tablet text.",
+          "Run pnpm check-types && pnpm lint && pnpm test."
+        ],
+        "assumptions": [
+          "The reporter's Chromebook reports navigator.deviceMemory <= 4 and is not flagged mobile, so the text they see comes from hw.lowMemory. A Chromebook UA (X11; CrOS) does not match /Android|iPhone|iPad|iPod|Mobile/ in detect.ts:118.",
+          "The cap to the smallest model on 4 GB devices stays as it is. Only the explanation changes.",
+          "Exact wording of the new text is up to the developer. It should not name a device type and should avoid any em dash."
+        ],
+        "open_questions": [],
+        "size": "S",
+        "criteria": [
+          "reasonText(\"hw.lowMemory\", 0) does not mention phones or tablets.",
+          "reasonText(\"hw.lowMemory\", 0) differs from reasonText(\"hw.mobile\", 0).",
+          "reasonText(\"hw.mobile\", 0) still gives the phone/tablet text.",
+          "classify(PROFILES.lowMemoryChromebook).reasons contains hw.lowMemory and not hw.mobile."
+        ]
+      },
+      "model": "claude-opus-5-5",
+      "cost_usd": 0.23576560000000002,
+      "turns": 10,
+      "latency_ms": 34270,
+      "tokens": {
+        "input": 12,
+        "output": 2543,
+        "cache_read": 69728,
+        "cache_write": 21364
+      }
+    }
+  },
+  "reload-active-chat": {
+    "repo": "philippmossier/local-ai-chat-playground",
+    "number": 53,
+    "commit": "50c141408e067f3a878ad49b131a40f583600034",
+    "route": "bug",
+    "spec": {
+      "problem": "On reload the app always opens the newest chat, whichever one was open before. The open chat's id is saved: `App.tsx:167-178` writes the whole `ChatState`, including `activeId`, to localStorage through `serialize` (`src/lib/chat/store.ts:150-152`). Loading throws it away. `deserialize` in `src/lib/chat/store.ts:164` sets `const activeId = chats[0]?.id ?? null;` and never reads `data.activeId`. So after a reload `App.tsx:60-62` starts on the first (most recently updated) chat, not the one the user selected in the sidebar.",
+      "files": [
+        {
+          "path": "src/lib/chat/store.ts",
+          "why": "deserialize ignores the saved activeId. It should restore it when it names a chat that survived validation, and fall back to the first chat otherwise.",
+          "at": [
+            "164"
+          ],
+          "edits": [
+            {
+              "old": "    const activeId = chats[0]?.id ?? null;",
+              "new": "    const saved = chats.find((c) => c.id === data.activeId);\n    const activeId = saved?.id ?? chats[0]?.id ?? null;",
+              "line": 164
+            }
+          ]
+        }
+      ],
+      "tests": [
+        {
+          "path": "src/lib/chat/chat.test.ts",
+          "why": "New vitest case: serialize a state with two chats where activeId is the second (older) chat, then check that deserialize returns that activeId. This fails today because it returns chats[0].id. The existing 'drops malformed chats' case (activeId 'bad' falls back to 'c1') still covers the fallback.",
+          "at": [
+            "133"
+          ],
+          "edits": []
+        }
+      ],
+      "criteria": [],
+      "plan": [
+        "Add a test to the persistence describe block in src/lib/chat/chat.test.ts: two chats, activeId set to the non-first one; deserialize(serialize(state)).activeId must equal it. Confirm it fails.",
+        "In deserialize (store.ts:164), use data.activeId when it matches a valid chat in the filtered list, else chats[0]?.id ?? null.",
+        "Run pnpm check-types && pnpm lint && pnpm test."
+      ],
+      "assumptions": [
+        "The reporter's reload restores state from localStorage key local-ai-chat:v1. Selecting a chat dispatches 'select', and the persist effect then saves the new activeId (generating is false while reading).",
+        "Cross-tab sync is unaffected: the 'sync' reducer keeps this tab's activeId unless it is null. Only then would the other tab's chosen chat now become active instead of the newest one, which is acceptable."
+      ],
+      "open_questions": [],
+      "size": "S"
+    },
+    "unknown_paths": [],
+    "run": {
+      "output": {
+        "problem": "On reload the app always opens the newest chat, whichever one was open before. The open chat's id is saved: `App.tsx:167-178` writes the whole `ChatState`, including `activeId`, to localStorage through `serialize` (`src/lib/chat/store.ts:150-152`). Loading throws it away. `deserialize` in `src/lib/chat/store.ts:164` sets `const activeId = chats[0]?.id ?? null;` and never reads `data.activeId`. So after a reload `App.tsx:60-62` starts on the first (most recently updated) chat, not the one the user selected in the sidebar.",
+        "files": [
+          {
+            "path": "src/lib/chat/store.ts",
+            "why": "deserialize ignores the saved activeId. It should restore it when it names a chat that survived validation, and fall back to the first chat otherwise.",
+            "at": [
+              "164"
+            ],
+            "edits": [
+              {
+                "old": "    const activeId = chats[0]?.id ?? null;",
+                "new": "    const saved = chats.find((c) => c.id === data.activeId);\n    const activeId = saved?.id ?? chats[0]?.id ?? null;"
+              }
+            ]
+          }
+        ],
+        "tests": [
+          {
+            "path": "src/lib/chat/chat.test.ts",
+            "why": "New vitest case: serialize a state with two chats where activeId is the second (older) chat, then check that deserialize returns that activeId. This fails today because it returns chats[0].id. The existing 'drops malformed chats' case (activeId 'bad' falls back to 'c1') still covers the fallback.",
+            "at": [
+              "133"
+            ]
+          }
+        ],
+        "plan": [
+          "Add a test to the persistence describe block in src/lib/chat/chat.test.ts: two chats, activeId set to the non-first one; deserialize(serialize(state)).activeId must equal it. Confirm it fails.",
+          "In deserialize (store.ts:164), use data.activeId when it matches a valid chat in the filtered list, else chats[0]?.id ?? null.",
+          "Run pnpm check-types && pnpm lint && pnpm test."
+        ],
+        "assumptions": [
+          "The reporter's reload restores state from localStorage key local-ai-chat:v1. Selecting a chat dispatches 'select', and the persist effect then saves the new activeId (generating is false while reading).",
+          "Cross-tab sync is unaffected: the 'sync' reducer keeps this tab's activeId unless it is null. Only then would the other tab's chosen chat now become active instead of the newest one, which is acceptable."
+        ],
+        "open_questions": [],
+        "size": "S",
+        "criteria": [
+          "After deserialize(serialize(state)), activeId equals the saved activeId when that chat exists.",
+          "If the saved activeId is missing or names a dropped chat, activeId falls back to the first chat (or null when there are no chats)."
+        ]
+      },
+      "model": "claude-opus-5-5",
+      "cost_usd": 0.164715,
+      "turns": 7,
+      "latency_ms": 31893,
+      "tokens": {
+        "input": 10,
+        "output": 1881,
+        "cache_read": 45395,
+        "cache_write": 14747
+      }
+    }
+  },
+  "yesterday-near-midnight": {
+    "repo": "philippmossier/local-ai-chat-playground",
+    "number": 54,
+    "commit": "50c141408e067f3a878ad49b131a40f583600034",
+    "route": "bug",
+    "spec": {
+      "problem": "`messageTime` in `src/lib/chat/time.ts:10` decides between \"Today\", \"Yesterday\" and a weekday by counting whole 24-hour periods since the message: `Math.floor((now - at) / DAY)`. It does not count calendar days. A message sent at 11:50 PM and viewed at 12:10 AM is 20 minutes old, so `days` is 0 and it shows \"Today\", even though it was yesterday. In the same way, a message from late evening two days ago, viewed the next morning, is less than 48 hours old, so `days` is 1 and it shows \"Yesterday\" instead of its weekday. The weekday-or-date cutoff at line 23 (`days < 7`) is off by the same amount. The fix is to compare the local calendar dates of `at` and `now`. Take each one's local midnight and divide the difference by `DAY`, rounding to the nearest whole number so that 23-hour and 25-hour daylight-saving days still count as one day. The label is built in `src/components/message.tsx:91`, which only calls this function.",
+      "files": [
+        {
+          "path": "src/lib/chat/time.ts",
+          "why": "Count days by local calendar date instead of elapsed 24-hour periods, so that Today, Yesterday, the weekday and the date switch at local midnight.",
+          "at": [
+            "10"
+          ],
+          "edits": [
+            {
+              "old": "  const days = Math.floor((now - at) / DAY);",
+              "new": "  const midnight = (t: number) => new Date(t).setHours(0, 0, 0, 0);\n  // Calendar days in local time, not elapsed 24h periods; round absorbs 23h/25h DST days.\n  const days = Math.round((midnight(now) - midnight(at)) / DAY);",
+              "line": 10
+            }
+          ]
+        }
+      ],
+      "tests": [
+        {
+          "path": "src/lib/chat/time.test.ts",
+          "why": "Add cases where the elapsed time and the calendar-day count disagree. Each fails on the current code for the reported reason. (1) Viewed at Tue 6 Oct 2026 00:10, a message from Mon 5 Oct 23:50 is expected to show /^Yesterday 11:50\\sPM$/; the current code gives Today. (2) Viewed at Tue 6 Oct 08:00, a message from Sun 4 Oct 23:00 is expected to show /^Sunday 11:00\\sPM$/; the current code gives Yesterday. (3) Same times in German: 'Gestern 23:50' and 'Sonntag 23:00'. (4) Optionally, the week cutoff: viewed at Mon 12 Oct 08:00, a message from Mon 5 Oct 23:00 is expected to show the date with ' at ', not 'Monday'. Use the existing `at()` helper with local-time constructors and a separate `now` value.",
+          "at": [],
+          "edits": []
+        }
+      ],
+      "criteria": [],
+      "plan": [
+        "Add the midnight-boundary cases to src/lib/chat/time.test.ts and confirm they fail on the current code (Today/Yesterday shown one day too recent).",
+        "In src/lib/chat/time.ts:10, compute `days` as the rounded difference between the local midnights of `now` and `at`.",
+        "Keep `Math.max(0, days)` so a timestamp slightly in the future still shows Today.",
+        "Run pnpm check-types && pnpm lint && pnpm test."
+      ],
+      "assumptions": [
+        "\"Today\" and \"Yesterday\" mean the viewer's local calendar day, which is what the reporter expects.",
+        "The weekday and date cutoff should also go by calendar days: a message from exactly 7 calendar days ago shows the date rather than the same weekday name, which would be ambiguous.",
+        "The label is not expected to update live after midnight. message.tsx reads \"now\" once per mount, and the issue concerns checking again later."
+      ],
+      "open_questions": [],
+      "size": "S"
+    },
+    "unknown_paths": [],
+    "run": {
+      "output": {
+        "problem": "`messageTime` in `src/lib/chat/time.ts:10` decides between \"Today\", \"Yesterday\" and a weekday by counting whole 24-hour periods since the message: `Math.floor((now - at) / DAY)`. It does not count calendar days. A message sent at 11:50 PM and viewed at 12:10 AM is 20 minutes old, so `days` is 0 and it shows \"Today\", even though it was yesterday. In the same way, a message from late evening two days ago, viewed the next morning, is less than 48 hours old, so `days` is 1 and it shows \"Yesterday\" instead of its weekday. The weekday-or-date cutoff at line 23 (`days < 7`) is off by the same amount. The fix is to compare the local calendar dates of `at` and `now`. Take each one's local midnight and divide the difference by `DAY`, rounding to the nearest whole number so that 23-hour and 25-hour daylight-saving days still count as one day. The label is built in `src/components/message.tsx:91`, which only calls this function.",
+        "files": [
+          {
+            "path": "src/lib/chat/time.ts",
+            "why": "Count days by local calendar date instead of elapsed 24-hour periods, so that Today, Yesterday, the weekday and the date switch at local midnight.",
+            "at": [
+              "10"
+            ],
+            "edits": [
+              {
+                "old": "  const days = Math.floor((now - at) / DAY);",
+                "new": "  const midnight = (t: number) => new Date(t).setHours(0, 0, 0, 0);\n  // Calendar days in local time, not elapsed 24h periods; round absorbs 23h/25h DST days.\n  const days = Math.round((midnight(now) - midnight(at)) / DAY);"
+              }
+            ]
+          }
+        ],
+        "tests": [
+          {
+            "path": "src/lib/chat/time.test.ts",
+            "why": "Add cases where the elapsed time and the calendar-day count disagree. Each fails on the current code for the reported reason. (1) Viewed at Tue 6 Oct 2026 00:10, a message from Mon 5 Oct 23:50 is expected to show /^Yesterday 11:50\\sPM$/; the current code gives Today. (2) Viewed at Tue 6 Oct 08:00, a message from Sun 4 Oct 23:00 is expected to show /^Sunday 11:00\\sPM$/; the current code gives Yesterday. (3) Same times in German: 'Gestern 23:50' and 'Sonntag 23:00'. (4) Optionally, the week cutoff: viewed at Mon 12 Oct 08:00, a message from Mon 5 Oct 23:00 is expected to show the date with ' at ', not 'Monday'. Use the existing `at()` helper with local-time constructors and a separate `now` value.",
+            "at": [
+              "after line 13 (inside the describe, after the \"today and yesterday\" case)"
+            ]
+          }
+        ],
+        "plan": [
+          "Add the midnight-boundary cases to src/lib/chat/time.test.ts and confirm they fail on the current code (Today/Yesterday shown one day too recent).",
+          "In src/lib/chat/time.ts:10, compute `days` as the rounded difference between the local midnights of `now` and `at`.",
+          "Keep `Math.max(0, days)` so a timestamp slightly in the future still shows Today.",
+          "Run pnpm check-types && pnpm lint && pnpm test."
+        ],
+        "assumptions": [
+          "\"Today\" and \"Yesterday\" mean the viewer's local calendar day, which is what the reporter expects.",
+          "The weekday and date cutoff should also go by calendar days: a message from exactly 7 calendar days ago shows the date rather than the same weekday name, which would be ambiguous.",
+          "The label is not expected to update live after midnight. message.tsx reads \"now\" once per mount, and the issue concerns checking again later."
+        ],
+        "open_questions": [],
+        "size": "S",
+        "criteria": [
+          "Viewed at 00:10, a message from 23:50 the previous day shows \"Yesterday 11:50 PM\" (German: \"Gestern 23:50\").",
+          "Viewed in the morning, a message from late evening two calendar days earlier shows its weekday name, not \"Yesterday\".",
+          "A message from earlier on the same calendar day still shows \"Today\".",
+          "A message from 7 calendar days ago shows the date with \"at\"/\"um\", not a weekday name."
+        ]
+      },
+      "model": "claude-opus-5-5",
+      "cost_usd": 0.13373240000000003,
+      "turns": 5,
+      "latency_ms": 29806,
+      "tokens": {
+        "input": 6,
+        "output": 2388,
+        "cache_read": 16902,
+        "cache_write": 10321
+      }
+    }
+  },
+  "too-slow-suggests-lighter": {
+    "repo": "philippmossier/local-ai-chat-playground",
+    "number": 55,
+    "commit": "50c141408e067f3a878ad49b131a40f583600034",
+    "route": "bug",
+    "spec": {
+      "problem": "When the first answer is too slow (under TOO_SLOW_TPS = 5 tokens/s), `adviseFromSpeed` should suggest the next lighter model, but it looks one step the wrong way. `src/lib/hardware/advice.ts:29` calls `neighbour(current, 1)`. `neighbour` (`src/lib/models/catalog.ts:118-120`) indexes CATALOG, which runs from lightest to heaviest (`qwen3-0.6b`, `qwen3-1.7b`, `gemma4-e2b`, `gemma4-e4b`), so +1 is the heavier model. The \"room-to-grow\" branch at line 35 also uses +1, which is correct there. This matches the report: a user on Gemma 4 E2B at about 3 tok/s got a \"too slow\" banner that offered Gemma 4 E4B, when it should have offered Qwen3 1.7B. A second effect of the same bug: on the heaviest model (`gemma4-e4b`), +1 runs past the end of the list, so no lighter model is ever suggested. On the lightest model (`qwen3-0.6b`) it suggests 1.7B instead of staying quiet. No existing test covers the too-slow branch (`src/lib/hardware/hardware.test.ts:120-142`).",
+      "files": [
+        {
+          "path": "src/lib/hardware/advice.ts",
+          "why": "The too-slow branch looks for the heavier neighbour (+1) instead of the lighter one (-1).",
+          "at": [
+            "29"
+          ],
+          "edits": [
+            {
+              "old": "    const lighter = neighbour(current, 1);",
+              "new": "    const lighter = neighbour(current, -1);",
+              "line": 29
+            }
+          ]
+        }
+      ],
+      "tests": [
+        {
+          "path": "src/lib/hardware/hardware.test.ts",
+          "why": "Add too-slow cases to the adviseFromSpeed describe block. (1) adviseFromSpeed(3, 80, e2b, options) returns { kind: 'too-slow', suggest: getModel('qwen3-1.7b') }. This fails now, because the code returns gemma4-e4b. (2) adviseFromSpeed(3, 80, getModel('qwen3-0.6b')!, options) returns { kind: 'ok' }. This fails now, because the code suggests qwen3-1.7b. (3) Optionally, the heaviest model (gemma4-e4b) at 3 tok/s suggests gemma4-e2b. This fails now, because the code returns ok.",
+          "at": [
+            "141"
+          ],
+          "edits": []
+        }
+      ],
+      "criteria": [],
+      "plan": [
+        "Add vitest cases for the too-slow branch in src/lib/hardware/hardware.test.ts after line 141, and confirm they fail on the current code.",
+        "Change neighbour(current, 1) to neighbour(current, -1) at src/lib/hardware/advice.ts:29.",
+        "Run pnpm check-types && pnpm lint && pnpm test."
+      ],
+      "assumptions": [
+        "The banner text in src/components/advice-banner.tsx is already correct for the too-slow case. Only the model it picks is wrong.",
+        "A lighter model does not need a hardware fit check. A lighter model always fits at least as well as the current one.",
+        "On the lightest model, staying quiet ({ kind: 'ok' }) is the intended behaviour, as the existing fallback at line 31 suggests."
+      ],
+      "open_questions": [],
+      "size": "S"
+    },
+    "unknown_paths": [],
+    "run": {
+      "output": {
+        "problem": "When the first answer is too slow (under TOO_SLOW_TPS = 5 tokens/s), `adviseFromSpeed` should suggest the next lighter model, but it looks one step the wrong way. `src/lib/hardware/advice.ts:29` calls `neighbour(current, 1)`. `neighbour` (`src/lib/models/catalog.ts:118-120`) indexes CATALOG, which runs from lightest to heaviest (`qwen3-0.6b`, `qwen3-1.7b`, `gemma4-e2b`, `gemma4-e4b`), so +1 is the heavier model. The \"room-to-grow\" branch at line 35 also uses +1, which is correct there. This matches the report: a user on Gemma 4 E2B at about 3 tok/s got a \"too slow\" banner that offered Gemma 4 E4B, when it should have offered Qwen3 1.7B. A second effect of the same bug: on the heaviest model (`gemma4-e4b`), +1 runs past the end of the list, so no lighter model is ever suggested. On the lightest model (`qwen3-0.6b`) it suggests 1.7B instead of staying quiet. No existing test covers the too-slow branch (`src/lib/hardware/hardware.test.ts:120-142`).",
+        "files": [
+          {
+            "path": "src/lib/hardware/advice.ts",
+            "why": "The too-slow branch looks for the heavier neighbour (+1) instead of the lighter one (-1).",
+            "at": [
+              "29"
+            ],
+            "edits": [
+              {
+                "old": "    const lighter = neighbour(current, 1);",
+                "new": "    const lighter = neighbour(current, -1);"
+              }
+            ]
+          }
+        ],
+        "tests": [
+          {
+            "path": "src/lib/hardware/hardware.test.ts",
+            "why": "Add too-slow cases to the adviseFromSpeed describe block. (1) adviseFromSpeed(3, 80, e2b, options) returns { kind: 'too-slow', suggest: getModel('qwen3-1.7b') }. This fails now, because the code returns gemma4-e4b. (2) adviseFromSpeed(3, 80, getModel('qwen3-0.6b')!, options) returns { kind: 'ok' }. This fails now, because the code suggests qwen3-1.7b. (3) Optionally, the heaviest model (gemma4-e4b) at 3 tok/s suggests gemma4-e2b. This fails now, because the code returns ok.",
+            "at": [
+              "141"
+            ]
+          }
+        ],
+        "plan": [
+          "Add vitest cases for the too-slow branch in src/lib/hardware/hardware.test.ts after line 141, and confirm they fail on the current code.",
+          "Change neighbour(current, 1) to neighbour(current, -1) at src/lib/hardware/advice.ts:29.",
+          "Run pnpm check-types && pnpm lint && pnpm test."
+        ],
+        "assumptions": [
+          "The banner text in src/components/advice-banner.tsx is already correct for the too-slow case. Only the model it picks is wrong.",
+          "A lighter model does not need a hardware fit check. A lighter model always fits at least as well as the current one.",
+          "On the lightest model, staying quiet ({ kind: 'ok' }) is the intended behaviour, as the existing fallback at line 31 suggests."
+        ],
+        "open_questions": [],
+        "size": "S",
+        "criteria": [
+          "When an answer of at least 24 tokens runs under 5 tok/s on gemma4-e2b, the advice is too-slow and suggests qwen3-1.7b.",
+          "When an answer runs under 5 tok/s on qwen3-0.6b, the advice is ok.",
+          "When an answer runs under 5 tok/s on gemma4-e4b, the advice suggests gemma4-e2b.",
+          "When an answer runs at or above 30 tok/s, the room-to-grow advice is unchanged."
+        ]
+      },
+      "model": "claude-opus-5-5",
+      "cost_usd": 0.11962320000000001,
+      "turns": 7,
+      "latency_ms": 28928,
+      "tokens": {
+        "input": 8,
+        "output": 2118,
+        "cache_read": 37276,
+        "cache_write": 8722
+      }
+    }
+  },
+  "low-storage-cached": {
+    "repo": "philippmossier/local-ai-chat-playground",
+    "number": 56,
+    "commit": "50c141408e067f3a878ad49b131a40f583600034",
+    "route": "bug",
+    "spec": {
+      "problem": "A model that is already in the browser cache still gets the low-storage warning. `recommend()` works out the real download for each option as `downloadMB = cached.has(model.id) ? 0 : model.downloadMB[backend.dtype]` (src/lib/hardware/recommend.ts:76 and :116). But `lowStorage` is computed from the full catalog size, `isLowStorage(p, model.downloadMB[backend.dtype])` (recommend.ts:89 and :129), not from that `downloadMB`. `isLowStorage` (recommend.ts:153-154) already returns false when the download is 0, but it never gets the 0. On a nearly full disk, a cached model therefore shows \"Already on this device\" (src/components/model-picker.tsx:61-62, src/components/welcome.tsx:192) together with `storageWarning()` (model-picker.tsx:77-78, welcome.tsx:198-199). This goes against the comment at recommend.ts:60 (\"they need no download, so no free space\"). The existing test at src/lib/hardware/hardware.test.ts:188-194 checks `downloadMB` for cached models but never checks `lowStorage`, so the bug got through.",
+      "files": [
+        {
+          "path": "src/lib/hardware/recommend.ts",
+          "why": "Pass the per-option download size (0 for cached models) to isLowStorage instead of the full catalog size, on both the heuristic path and the measured-bandwidth path.",
+          "at": [
+            "89",
+            "129"
+          ],
+          "edits": [
+            {
+              "old": "      estimatedTps,\n      lowStorage: isLowStorage(p, model.downloadMB[backend.dtype]),",
+              "new": "      estimatedTps,\n      lowStorage: isLowStorage(p, downloadMB),",
+              "line": 128
+            }
+          ]
+        }
+      ],
+      "tests": [
+        {
+          "path": "src/lib/hardware/hardware.test.ts",
+          "why": "Prove that a cached model never gets the low-storage warning, on both recommend paths. Add `expect(withCached.recommended?.lowStorage).toBe(false)` to the existing measured-path test, and add a heuristic-path case next to the test at line 93: appleSiliconMac with storageFreeMB 2000, its recommended model id passed as cached, and lowStorage expected to be false. Both fail on the current code because lowStorage stays true.",
+          "at": [
+            "93-99",
+            "188-194"
+          ],
+          "edits": []
+        }
+      ],
+      "criteria": [],
+      "plan": [
+        "Add the failing assertions to src/lib/hardware/hardware.test.ts: lowStorage is false for a cached model on the measured path (hiddenVendorFastGpu) and on the heuristic path (appleSiliconMac), both with storageFreeMB 2000.",
+        "In src/lib/hardware/recommend.ts lines 89 and 129, pass `downloadMB` to `isLowStorage` instead of `model.downloadMB[backend.dtype]`.",
+        "Run pnpm check-types && pnpm lint && pnpm test."
+      ],
+      "assumptions": [
+        "The \"cached\" set that App.tsx:73 passes to recommend() correctly marks the reporter's model as downloaded, since the UI shows \"Already on this device\" for it. The warning is the wrong half of the message.",
+        "A cached model needs no extra free space to start, which the comment at recommend.ts:60 already says. So the warning should be hidden for it and not reworded.",
+        "No UI change is needed: the picker and the welcome screen only show the warning when o.lowStorage / rec.lowStorage is true."
+      ],
+      "open_questions": [],
+      "size": "S"
+    },
+    "unknown_paths": [],
+    "run": {
+      "output": {
+        "problem": "A model that is already in the browser cache still gets the low-storage warning. `recommend()` works out the real download for each option as `downloadMB = cached.has(model.id) ? 0 : model.downloadMB[backend.dtype]` (src/lib/hardware/recommend.ts:76 and :116). But `lowStorage` is computed from the full catalog size, `isLowStorage(p, model.downloadMB[backend.dtype])` (recommend.ts:89 and :129), not from that `downloadMB`. `isLowStorage` (recommend.ts:153-154) already returns false when the download is 0, but it never gets the 0. On a nearly full disk, a cached model therefore shows \"Already on this device\" (src/components/model-picker.tsx:61-62, src/components/welcome.tsx:192) together with `storageWarning()` (model-picker.tsx:77-78, welcome.tsx:198-199). This goes against the comment at recommend.ts:60 (\"they need no download, so no free space\"). The existing test at src/lib/hardware/hardware.test.ts:188-194 checks `downloadMB` for cached models but never checks `lowStorage`, so the bug got through.",
+        "files": [
+          {
+            "path": "src/lib/hardware/recommend.ts",
+            "why": "Pass the per-option download size (0 for cached models) to isLowStorage instead of the full catalog size, on both the heuristic path and the measured-bandwidth path.",
+            "at": [
+              "89",
+              "129"
+            ],
+            "edits": [
+              {
+                "old": "      downloadMB,\n      lowStorage: isLowStorage(p, model.downloadMB[backend.dtype]),\n    };\n  });\n\n  // The sweet spot",
+                "new": "      downloadMB,\n      lowStorage: isLowStorage(p, downloadMB),\n    };\n  });\n\n  // The sweet spot"
+              },
+              {
+                "old": "      estimatedTps,\n      lowStorage: isLowStorage(p, model.downloadMB[backend.dtype]),",
+                "new": "      estimatedTps,\n      lowStorage: isLowStorage(p, downloadMB),"
+              }
+            ]
+          }
+        ],
+        "tests": [
+          {
+            "path": "src/lib/hardware/hardware.test.ts",
+            "why": "Prove that a cached model never gets the low-storage warning, on both recommend paths. Add `expect(withCached.recommended?.lowStorage).toBe(false)` to the existing measured-path test, and add a heuristic-path case next to the test at line 93: appleSiliconMac with storageFreeMB 2000, its recommended model id passed as cached, and lowStorage expected to be false. Both fail on the current code because lowStorage stays true.",
+            "at": [
+              "93-99",
+              "188-194"
+            ]
+          }
+        ],
+        "plan": [
+          "Add the failing assertions to src/lib/hardware/hardware.test.ts: lowStorage is false for a cached model on the measured path (hiddenVendorFastGpu) and on the heuristic path (appleSiliconMac), both with storageFreeMB 2000.",
+          "In src/lib/hardware/recommend.ts lines 89 and 129, pass `downloadMB` to `isLowStorage` instead of `model.downloadMB[backend.dtype]`.",
+          "Run pnpm check-types && pnpm lint && pnpm test."
+        ],
+        "assumptions": [
+          "The \"cached\" set that App.tsx:73 passes to recommend() correctly marks the reporter's model as downloaded, since the UI shows \"Already on this device\" for it. The warning is the wrong half of the message.",
+          "A cached model needs no extra free space to start, which the comment at recommend.ts:60 already says. So the warning should be hidden for it and not reworded.",
+          "No UI change is needed: the picker and the welcome screen only show the warning when o.lowStorage / rec.lowStorage is true."
+        ],
+        "open_questions": [],
+        "size": "S",
+        "criteria": [
+          "recommend(profile with storageFreeMB below the model size, cached set containing that model) returns lowStorage false for that model on the measured-bandwidth path.",
+          "The same holds on the heuristic (no bandwidth) path.",
+          "A model that is not cached still gets lowStorage true when free storage is below 1.15 times its download size."
+        ]
+      },
+      "model": "claude-opus-5-5",
+      "cost_usd": 0.1465692,
+      "turns": 8,
+      "latency_ms": 34738,
+      "tokens": {
+        "input": 10,
+        "output": 2423,
+        "cache_read": 54386,
+        "cache_write": 10899
+      }
+    }
+  },
+  "model-host-lookalike": {
+    "repo": "philippmossier/local-ai-chat-playground",
+    "number": 57,
+    "commit": "50c141408e067f3a878ad49b131a40f583600034",
+    "route": "bug",
+    "spec": {
+      "problem": "The privacy panel files hosts into groups with `classifyHost` in `src/lib/privacy/network.ts:20-24`. The list of model hosts at `src/lib/privacy/network.ts:18` is `[/(^|\\.)huggingface\\.co$/, /hf\\.co$/]`. The first pattern is anchored to a label boundary. The second is not, so any host that ends in the letters `hf.co` counts as a model host: `evilhf.co`, `notahf.co`, and so on. Those hosts end up under \"Model files (download only, nothing is uploaded)\" when they belong under \"Other\". That is the bug the reporter saw. The current tests (`src/lib/privacy/network.test.ts:24`) only check the lookalike `evilhuggingface.co`, so this case was never tested.",
+      "files": [
+        {
+          "path": "src/lib/privacy/network.ts",
+          "why": "Anchor the hf.co pattern to a label boundary, the same way as the huggingface.co pattern, so only hf.co and its subdomains count as model hosts.",
+          "at": [
+            "18"
+          ],
+          "edits": [
+            {
+              "old": "const MODEL_HOSTS = [/(^|\\.)huggingface\\.co$/, /hf\\.co$/];",
+              "new": "const MODEL_HOSTS = [/(^|\\.)huggingface\\.co$/, /(^|\\.)hf\\.co$/];",
+              "line": 18
+            }
+          ]
+        }
+      ],
+      "tests": [
+        {
+          "path": "src/lib/privacy/network.test.ts",
+          "why": "Add lookalike hosts to the classifyHost table. Each must be classified as \"other\" (`evilhf.co` fails on today's code). Also add bare `hf.co` as \"model\" so the fix can't make the pattern too strict.",
+          "at": [
+            "24"
+          ],
+          "edits": []
+        }
+      ],
+      "criteria": [],
+      "plan": [
+        "In the classifyHost it.each table in src/lib/privacy/network.test.ts, add the cases [\"evilhf.co\", own, \"other\"], [\"xethub.evilhf.co\", own, \"other\"] and [\"hf.co\", own, \"model\"]. Confirm that evilhf.co fails on the current code.",
+        "Change the second MODEL_HOSTS regex at src/lib/privacy/network.ts:18 to /(^|\\.)hf\\.co$/.",
+        "Run pnpm check-types && pnpm lint && pnpm test."
+      ],
+      "assumptions": [
+        "Only huggingface.co, hf.co and their subdomains should count as model hosts. The existing passing case cas-bridge.xethub.hf.co is still matched after the fix.",
+        "The panel takes its groups only from classifyHost, so fixing the regex also fixes the UI and no e2e test is needed."
+      ],
+      "open_questions": [],
+      "size": "S"
+    },
+    "unknown_paths": [],
+    "run": {
+      "output": {
+        "problem": "The privacy panel files hosts into groups with `classifyHost` in `src/lib/privacy/network.ts:20-24`. The list of model hosts at `src/lib/privacy/network.ts:18` is `[/(^|\\.)huggingface\\.co$/, /hf\\.co$/]`. The first pattern is anchored to a label boundary. The second is not, so any host that ends in the letters `hf.co` counts as a model host: `evilhf.co`, `notahf.co`, and so on. Those hosts end up under \"Model files (download only, nothing is uploaded)\" when they belong under \"Other\". That is the bug the reporter saw. The current tests (`src/lib/privacy/network.test.ts:24`) only check the lookalike `evilhuggingface.co`, so this case was never tested.",
+        "files": [
+          {
+            "path": "src/lib/privacy/network.ts",
+            "why": "Anchor the hf.co pattern to a label boundary, the same way as the huggingface.co pattern, so only hf.co and its subdomains count as model hosts.",
+            "at": [
+              "18"
+            ],
+            "edits": [
+              {
+                "old": "const MODEL_HOSTS = [/(^|\\.)huggingface\\.co$/, /hf\\.co$/];",
+                "new": "const MODEL_HOSTS = [/(^|\\.)huggingface\\.co$/, /(^|\\.)hf\\.co$/];"
+              }
+            ]
+          }
+        ],
+        "tests": [
+          {
+            "path": "src/lib/privacy/network.test.ts",
+            "why": "Add lookalike hosts to the classifyHost table. Each must be classified as \"other\" (`evilhf.co` fails on today's code). Also add bare `hf.co` as \"model\" so the fix can't make the pattern too strict.",
+            "at": [
+              "24"
+            ]
+          }
+        ],
+        "plan": [
+          "In the classifyHost it.each table in src/lib/privacy/network.test.ts, add the cases [\"evilhf.co\", own, \"other\"], [\"xethub.evilhf.co\", own, \"other\"] and [\"hf.co\", own, \"model\"]. Confirm that evilhf.co fails on the current code.",
+          "Change the second MODEL_HOSTS regex at src/lib/privacy/network.ts:18 to /(^|\\.)hf\\.co$/.",
+          "Run pnpm check-types && pnpm lint && pnpm test."
+        ],
+        "assumptions": [
+          "Only huggingface.co, hf.co and their subdomains should count as model hosts. The existing passing case cas-bridge.xethub.hf.co is still matched after the fix.",
+          "The panel takes its groups only from classifyHost, so fixing the regex also fixes the UI and no e2e test is needed."
+        ],
+        "open_questions": [],
+        "size": "S",
+        "criteria": [
+          "classifyHost(\"evilhf.co\", own) returns \"other\"",
+          "classifyHost(\"hf.co\", own) and classifyHost(\"cas-bridge.xethub.hf.co\", own) return \"model\"",
+          "classifyHost(\"evilhuggingface.co\", own) still returns \"other\""
+        ]
+      },
+      "model": "claude-opus-5-5",
+      "cost_usd": 0.0686784,
+      "turns": 5,
+      "latency_ms": 19611,
+      "tokens": {
+        "input": 6,
+        "output": 1487,
+        "cache_read": 23972,
+        "cache_write": 4265
+      }
+    }
+  },
+  "first-visit-new-models": {
+    "repo": "philippmossier/local-ai-chat-playground",
+    "number": 58,
+    "commit": "50c141408e067f3a878ad49b131a40f583600034",
+    "route": "bug",
+    "spec": {
+      "problem": "On a first visit, the \"New models available\" toast lists every catalog model that fits and is not cached. `unseenModels` in `src/lib/models/seen.ts:8-10` is documented (lines 4-6) to announce nothing when `seen === null`, meaning no list has ever been recorded (a first visit, or a visit from before the feature). But the code does `(seen ?? []).includes(id)`, so `null` is treated as an empty list and every catalog id counts as unseen. In a fresh profile `readSeenModels()` returns `null` (`seen.ts:14-17`). The effect in `src/App.tsx:112-133` therefore keeps every advised, uncached model in `fresh` and shows the toast as soon as the stage becomes \"chat\". The model just started is cached, so it is left out, which matches the \"list\" the reporter saw. The same thing happens after \"delete everything\", because `src/lib/privacy/wipe.ts:11` removes `SEEN_MODELS_KEY`.",
+      "files": [
+        {
+          "path": "src/lib/models/seen.ts",
+          "why": "Make the function do what its own doc comment says: when no list has been recorded (null), announce nothing.",
+          "at": [
+            "9"
+          ],
+          "edits": [
+            {
+              "old": "  return catalogIds.filter((id) => !(seen ?? []).includes(id));",
+              "new": "  if (seen === null) return [];\n  return catalogIds.filter((id) => !seen.includes(id));",
+              "line": 9
+            }
+          ]
+        }
+      ],
+      "tests": [
+        {
+          "path": "src/lib/models/seen.test.ts",
+          "why": "Add a case: unseenModels(null, [\"a\", \"b\"]) returns []. It fails now because the current code returns [\"a\", \"b\"].",
+          "at": [
+            "8"
+          ],
+          "edits": []
+        }
+      ],
+      "criteria": [],
+      "plan": [
+        "Add a vitest case to src/lib/models/seen.test.ts: `unseenModels(null, [\"a\",\"b\"])` returns `[]`. Confirm it fails on the current code.",
+        "In src/lib/models/seen.ts, return [] when `seen === null` (App.tsx already writes the current catalog afterwards, at line 122).",
+        "Run pnpm check-types && pnpm lint && pnpm test."
+      ],
+      "assumptions": [
+        "The documented behaviour in seen.ts (say nothing on a first visit, just record the catalog) is what's intended; the comment in App.tsx:110 says the same.",
+        "Silencing the toast after \"delete everything\" (the wipe removes the key) is acceptable, since that state can't be told apart from a first visit.",
+        "Users who upgrade from a version before this feature don't get an announcement, as the doc comment says."
+      ],
+      "open_questions": [],
+      "size": "S"
+    },
+    "unknown_paths": [],
+    "run": {
+      "output": {
+        "problem": "On a first visit, the \"New models available\" toast lists every catalog model that fits and is not cached. `unseenModels` in `src/lib/models/seen.ts:8-10` is documented (lines 4-6) to announce nothing when `seen === null`, meaning no list has ever been recorded (a first visit, or a visit from before the feature). But the code does `(seen ?? []).includes(id)`, so `null` is treated as an empty list and every catalog id counts as unseen. In a fresh profile `readSeenModels()` returns `null` (`seen.ts:14-17`). The effect in `src/App.tsx:112-133` therefore keeps every advised, uncached model in `fresh` and shows the toast as soon as the stage becomes \"chat\". The model just started is cached, so it is left out, which matches the \"list\" the reporter saw. The same thing happens after \"delete everything\", because `src/lib/privacy/wipe.ts:11` removes `SEEN_MODELS_KEY`.",
+        "files": [
+          {
+            "path": "src/lib/models/seen.ts",
+            "why": "Make the function do what its own doc comment says: when no list has been recorded (null), announce nothing.",
+            "at": [
+              "9"
+            ],
+            "edits": [
+              {
+                "old": "  return catalogIds.filter((id) => !(seen ?? []).includes(id));",
+                "new": "  if (seen === null) return [];\n  return catalogIds.filter((id) => !seen.includes(id));"
+              }
+            ]
+          }
+        ],
+        "tests": [
+          {
+            "path": "src/lib/models/seen.test.ts",
+            "why": "Add a case: unseenModels(null, [\"a\", \"b\"]) returns []. It fails now because the current code returns [\"a\", \"b\"].",
+            "at": [
+              "8"
+            ]
+          }
+        ],
+        "plan": [
+          "Add a vitest case to src/lib/models/seen.test.ts: `unseenModels(null, [\"a\",\"b\"])` returns `[]`. Confirm it fails on the current code.",
+          "In src/lib/models/seen.ts, return [] when `seen === null` (App.tsx already writes the current catalog afterwards, at line 122).",
+          "Run pnpm check-types && pnpm lint && pnpm test."
+        ],
+        "assumptions": [
+          "The documented behaviour in seen.ts (say nothing on a first visit, just record the catalog) is what's intended; the comment in App.tsx:110 says the same.",
+          "Silencing the toast after \"delete everything\" (the wipe removes the key) is acceptable, since that state can't be told apart from a first visit.",
+          "Users who upgrade from a version before this feature don't get an announcement, as the doc comment says."
+        ],
+        "open_questions": [],
+        "size": "S",
+        "criteria": [
+          "unseenModels(null, ids) returns [] for any ids",
+          "unseenModels(seen, ids) still returns the ids that aren't in seen when seen is an array"
+        ]
+      },
+      "model": "claude-opus-5-5",
+      "cost_usd": 0.0779038,
+      "turns": 7,
+      "latency_ms": 27626,
+      "tokens": {
+        "input": 8,
+        "output": 1761,
+        "cache_read": 34499,
+        "cache_write": 4469
+      }
+    }
+  },
+  "answer-into-its-chat": {
+    "repo": "philippmossier/local-ai-chat-playground",
+    "number": 59,
+    "commit": "50c141408e067f3a878ad49b131a40f583600034",
+    "route": "bug",
+    "spec": {
+      "problem": "If you switch chats while an answer is streaming, the answer is lost. App.tsx passes the chatId of the chat that started generating with every token, finish and fail action (src/App.tsx:243, 260, 280). But in `chatReducer` the `token` and `finish` cases look up the chat as `state.activeId ?? action.chatId` (src/lib/chat/store.ts:121 and :132) instead of `action.chatId`. So once the user selects another chat, `activeId` points at that chat. The reducer then searches it for the assistant message id, finds nothing, and `mapMessage` returns the state with no change. The tokens are dropped without an error. The original chat keeps the empty placeholder it got from `send` (store.ts:115), which matches the report: the question is there, the answer is empty. Stats from `finish` are lost the same way. The `fail` case already uses `action.chatId` (store.ts:139), so it works.",
+      "files": [
+        {
+          "path": "src/lib/chat/store.ts",
+          "why": "The token and finish cases must target the chat that started the generation (action.chatId), not the currently active chat.",
+          "at": [
+            "121",
+            "132"
+          ],
+          "edits": [
+            {
+              "old": "    case \"token\":\n      return mapMessage(\n        state,\n        state.activeId ?? action.chatId,",
+              "new": "    case \"token\":\n      return mapMessage(\n        state,\n        action.chatId,",
+              "line": 118
+            },
+            {
+              "old": "    case \"finish\":\n      return mapMessage(\n        state,\n        state.activeId ?? action.chatId,",
+              "new": "    case \"finish\":\n      return mapMessage(\n        state,\n        action.chatId,",
+              "line": 128
+            }
+          ]
+        }
+      ],
+      "tests": [
+        {
+          "path": "src/lib/chat/chat.test.ts",
+          "why": "Reducer test: start a generation in c1, create or select a second chat c2, dispatch token and finish for c1/a1. Expect c1's assistant message to have the content and stats, and c2 to be unchanged. This fails now because the tokens are applied to c2 and never reach c1.",
+          "at": [],
+          "edits": []
+        }
+      ],
+      "criteria": [],
+      "plan": [
+        "Add a vitest case in src/lib/chat/chat.test.ts: started(), then `new` c2 (or `new` c2 followed by `select` c2), then token + finish for chatId c1 / messageId a1. Assert that c1 has content \"Hi\" and stats, and that c2 has no messages.",
+        "Confirm the test fails on the current code.",
+        "In src/lib/chat/store.ts, replace `state.activeId ?? action.chatId` with `action.chatId` in the token and finish cases.",
+        "Run pnpm check-types && pnpm lint && pnpm test."
+      ],
+      "assumptions": [
+        "App.tsx always dispatches the chatId of the chat the generation started in (it is captured when the message is sent, as at src/App.tsx:243/260/280), so the reducer can trust action.chatId.",
+        "The answer is supposed to keep streaming into the original chat in the background while another chat is open. Stopping the generation on switch is not the intended behaviour."
+      ],
+      "open_questions": [],
+      "size": "S"
+    },
+    "unknown_paths": [],
+    "run": {
+      "output": {
+        "problem": "If you switch chats while an answer is streaming, the answer is lost. App.tsx passes the chatId of the chat that started generating with every token, finish and fail action (src/App.tsx:243, 260, 280). But in `chatReducer` the `token` and `finish` cases look up the chat as `state.activeId ?? action.chatId` (src/lib/chat/store.ts:121 and :132) instead of `action.chatId`. So once the user selects another chat, `activeId` points at that chat. The reducer then searches it for the assistant message id, finds nothing, and `mapMessage` returns the state with no change. The tokens are dropped without an error. The original chat keeps the empty placeholder it got from `send` (store.ts:115), which matches the report: the question is there, the answer is empty. Stats from `finish` are lost the same way. The `fail` case already uses `action.chatId` (store.ts:139), so it works.",
+        "files": [
+          {
+            "path": "src/lib/chat/store.ts",
+            "why": "The token and finish cases must target the chat that started the generation (action.chatId), not the currently active chat.",
+            "at": [
+              "121",
+              "132"
+            ],
+            "edits": [
+              {
+                "old": "    case \"token\":\n      return mapMessage(\n        state,\n        state.activeId ?? action.chatId,",
+                "new": "    case \"token\":\n      return mapMessage(\n        state,\n        action.chatId,"
+              },
+              {
+                "old": "    case \"finish\":\n      return mapMessage(\n        state,\n        state.activeId ?? action.chatId,",
+                "new": "    case \"finish\":\n      return mapMessage(\n        state,\n        action.chatId,"
+              }
+            ]
+          }
+        ],
+        "tests": [
+          {
+            "path": "src/lib/chat/chat.test.ts",
+            "why": "Reducer test: start a generation in c1, create or select a second chat c2, dispatch token and finish for c1/a1. Expect c1's assistant message to have the content and stats, and c2 to be unchanged. This fails now because the tokens are applied to c2 and never reach c1.",
+            "at": [
+              "after line 64, inside describe(\"chatReducer\") next to \"streams tokens into the assistant message and records stats\""
+            ]
+          }
+        ],
+        "plan": [
+          "Add a vitest case in src/lib/chat/chat.test.ts: started(), then `new` c2 (or `new` c2 followed by `select` c2), then token + finish for chatId c1 / messageId a1. Assert that c1 has content \"Hi\" and stats, and that c2 has no messages.",
+          "Confirm the test fails on the current code.",
+          "In src/lib/chat/store.ts, replace `state.activeId ?? action.chatId` with `action.chatId` in the token and finish cases.",
+          "Run pnpm check-types && pnpm lint && pnpm test."
+        ],
+        "assumptions": [
+          "App.tsx always dispatches the chatId of the chat the generation started in (it is captured when the message is sent, as at src/App.tsx:243/260/280), so the reducer can trust action.chatId.",
+          "The answer is supposed to keep streaming into the original chat in the background while another chat is open. Stopping the generation on switch is not the intended behaviour."
+        ],
+        "open_questions": [],
+        "size": "S",
+        "criteria": [
+          "Tokens dispatched for chat c1 while chat c2 is active are added to c1's assistant message.",
+          "Finish stats dispatched for c1 while c2 is active are recorded on c1's assistant message.",
+          "The other chat (c2) is not changed by tokens or finish actions meant for c1."
+        ]
+      },
+      "model": "claude-opus-5-5",
+      "cost_usd": 0.11272360000000001,
+      "turns": 8,
+      "latency_ms": 32612,
+      "tokens": {
+        "input": 10,
+        "output": 2022,
+        "cache_read": 48538,
+        "cache_write": 7817
+      }
+    }
+  },
+  "sync-other-tab": {
+    "repo": "philippmossier/local-ai-chat-playground",
+    "number": 60,
+    "commit": "50c141408e067f3a878ad49b131a40f583600034",
+    "route": "bug",
+    "spec": {
+      "problem": "When another tab saves, `App.tsx:141-164` dispatches `{ type: \"sync\", incoming, keepChatId }`. The reducer's `sync` case (`src/lib/chat/store.ts:100-106`) merges the two lists by id: it starts from the incoming chats and then overwrites them with every local chat (`for (const c of state.chats) byId.set(c.id, c)`). That causes both symptoms in the issue.\n1. Deleted chats come back. A chat deleted in tab 1 is missing from `incoming` but still in tab 2's state, so the merge keeps it. The next time tab 2 saves (any later action, `App.tsx:167-178`), the chat is written back to localStorage, and tab 1 gets it back through its own sync.\n2. New messages don't show up. If tab 2 already has the chat open, its own copy wins the conflict, so the new messages from tab 1 are dropped. Tab 2's next save then overwrites them in storage too.\nThe comment at line 101 says \"ours win on conflicts, so nothing in progress is lost\". But only one local chat can be in progress: the one passed as `keepChatId`, which the reducer currently ignores. Every other local chat is already saved (the persist effect writes after each change unless an answer is being generated), so `incoming` is the up-to-date copy of all the others.",
+      "files": [
+        {
+          "path": "src/lib/chat/store.ts",
+          "why": "Make the sync case treat the other tab's saved state as the truth: take its chats as they are, keep only the local copy of the chat this tab is still writing into (keepChatId), and keep this tab's activeId only if that chat still exists. Update the comment on the action type to match.",
+          "at": [
+            "100-106"
+          ],
+          "edits": [
+            {
+              "old": "    case \"sync\": {\n      // Merge by id: the other tab's chats are added, ours win on conflicts, so nothing in progress is lost.\n      const byId = new Map(action.incoming.chats.map((c) => [c.id, c]));\n      for (const c of state.chats) byId.set(c.id, c);\n      const chats = [...byId.values()].sort((a, b) => b.updatedAt - a.updatedAt);\n      return { chats, activeId: state.activeId ?? chats[0]?.id ?? null };\n    }",
+              "new": "    case \"sync\": {\n      // The other tab saved last, so its list is the truth (deletes and new messages included). Only the chat\n      // this tab is still writing an answer into keeps our copy, so the answer in progress is not lost.\n      const writing = state.chats.find((c) => c.id === action.keepChatId);\n      const chats = action.incoming.chats\n        .map((c) => (writing && c.id === writing.id ? writing : c))\n        .sort((a, b) => b.updatedAt - a.updatedAt);\n      const activeId = chats.some((c) => c.id === state.activeId)\n        ? state.activeId\n        : (chats[0]?.id ?? null);\n      return { chats, activeId };\n    }",
+              "line": 100
+            }
+          ]
+        }
+      ],
+      "tests": [
+        {
+          "path": "src/lib/chat/chat.test.ts",
+          "why": "Reducer cases for the two reported bugs. Each fails on the current merge: (1) local [a, b], incoming [a] (b deleted elsewhere), keepChatId null: the result must not contain b. (2) local has chat a with one message, incoming has chat a with an extra message, keepChatId null: the result must use the incoming messages. (3) the active chat is deleted in incoming: activeId falls back to the first remaining chat. The two existing sync tests must keep passing.",
+          "at": [
+            "180"
+          ],
+          "edits": []
+        }
+      ],
+      "criteria": [],
+      "plan": [
+        "Add the three failing cases to the `sync from another tab` describe in src/lib/chat/chat.test.ts.",
+        "Rewrite the `sync` case in src/lib/chat/store.ts so incoming wins, except for the keepChatId chat, and activeId falls back when its chat is gone.",
+        "Update the doc comment on the `sync` action (store.ts:32) and the comment in App.tsx:141-142 if needed so they match.",
+        "Run pnpm check-types && pnpm lint && pnpm test. Then check by hand in two tabs on pnpm build && pnpm preview: delete in one tab, use the other, and the chat stays deleted; send in one tab, and the message shows up in the other."
+      ],
+      "assumptions": [
+        "Every local chat except the one in keepChatId is already in localStorage when a storage event arrives, because the persist effect saves after every change unless an answer is being generated. So dropping the other local copies loses nothing.",
+        "If the other tab deletes the chat this tab is still writing into, the deletion wins: the chat is dropped, and later token/finish actions find nothing to change. This matches the full-wipe path, which already lets the delete win.",
+        "The fix stays in the reducer; App.tsx's storage listener needs no logic change."
+      ],
+      "open_questions": [],
+      "size": "M"
+    },
+    "unknown_paths": [],
+    "run": {
+      "output": {
+        "problem": "When another tab saves, `App.tsx:141-164` dispatches `{ type: \"sync\", incoming, keepChatId }`. The reducer's `sync` case (`src/lib/chat/store.ts:100-106`) merges the two lists by id: it starts from the incoming chats and then overwrites them with every local chat (`for (const c of state.chats) byId.set(c.id, c)`). That causes both symptoms in the issue.\n1. Deleted chats come back. A chat deleted in tab 1 is missing from `incoming` but still in tab 2's state, so the merge keeps it. The next time tab 2 saves (any later action, `App.tsx:167-178`), the chat is written back to localStorage, and tab 1 gets it back through its own sync.\n2. New messages don't show up. If tab 2 already has the chat open, its own copy wins the conflict, so the new messages from tab 1 are dropped. Tab 2's next save then overwrites them in storage too.\nThe comment at line 101 says \"ours win on conflicts, so nothing in progress is lost\". But only one local chat can be in progress: the one passed as `keepChatId`, which the reducer currently ignores. Every other local chat is already saved (the persist effect writes after each change unless an answer is being generated), so `incoming` is the up-to-date copy of all the others.",
+        "files": [
+          {
+            "path": "src/lib/chat/store.ts",
+            "why": "Make the sync case treat the other tab's saved state as the truth: take its chats as they are, keep only the local copy of the chat this tab is still writing into (keepChatId), and keep this tab's activeId only if that chat still exists. Update the comment on the action type to match.",
+            "at": [
+              "100-106"
+            ],
+            "edits": [
+              {
+                "old": "    case \"sync\": {\n      // Merge by id: the other tab's chats are added, ours win on conflicts, so nothing in progress is lost.\n      const byId = new Map(action.incoming.chats.map((c) => [c.id, c]));\n      for (const c of state.chats) byId.set(c.id, c);\n      const chats = [...byId.values()].sort((a, b) => b.updatedAt - a.updatedAt);\n      return { chats, activeId: state.activeId ?? chats[0]?.id ?? null };\n    }",
+                "new": "    case \"sync\": {\n      // The other tab saved last, so its list is the truth (deletes and new messages included). Only the chat\n      // this tab is still writing an answer into keeps our copy, so the answer in progress is not lost.\n      const writing = state.chats.find((c) => c.id === action.keepChatId);\n      const chats = action.incoming.chats\n        .map((c) => (writing && c.id === writing.id ? writing : c))\n        .sort((a, b) => b.updatedAt - a.updatedAt);\n      const activeId = chats.some((c) => c.id === state.activeId)\n        ? state.activeId\n        : (chats[0]?.id ?? null);\n      return { chats, activeId };\n    }"
+              }
+            ]
+          }
+        ],
+        "tests": [
+          {
+            "path": "src/lib/chat/chat.test.ts",
+            "why": "Reducer cases for the two reported bugs. Each fails on the current merge: (1) local [a, b], incoming [a] (b deleted elsewhere), keepChatId null: the result must not contain b. (2) local has chat a with one message, incoming has chat a with an extra message, keepChatId null: the result must use the incoming messages. (3) the active chat is deleted in incoming: activeId falls back to the first remaining chat. The two existing sync tests must keep passing.",
+            "at": [
+              "180"
+            ]
+          }
+        ],
+        "plan": [
+          "Add the three failing cases to the `sync from another tab` describe in src/lib/chat/chat.test.ts.",
+          "Rewrite the `sync` case in src/lib/chat/store.ts so incoming wins, except for the keepChatId chat, and activeId falls back when its chat is gone.",
+          "Update the doc comment on the `sync` action (store.ts:32) and the comment in App.tsx:141-142 if needed so they match.",
+          "Run pnpm check-types && pnpm lint && pnpm test. Then check by hand in two tabs on pnpm build && pnpm preview: delete in one tab, use the other, and the chat stays deleted; send in one tab, and the message shows up in the other."
+        ],
+        "assumptions": [
+          "Every local chat except the one in keepChatId is already in localStorage when a storage event arrives, because the persist effect saves after every change unless an answer is being generated. So dropping the other local copies loses nothing.",
+          "If the other tab deletes the chat this tab is still writing into, the deletion wins: the chat is dropped, and later token/finish actions find nothing to change. This matches the full-wipe path, which already lets the delete win.",
+          "The fix stays in the reducer; App.tsx's storage listener needs no logic change."
+        ],
+        "open_questions": [],
+        "size": "M",
+        "criteria": [
+          "A sync whose incoming state lacks a chat that this tab has (and is not writing into) removes that chat.",
+          "A sync whose incoming state has newer messages for a chat that this tab has open (not writing into) replaces this tab's copy with them.",
+          "A sync keeps this tab's copy of the keepChatId chat.",
+          "If this tab's active chat is missing from incoming, activeId becomes the first remaining chat, or null if none remain."
+        ]
+      },
+      "model": "claude-opus-5-5",
+      "cost_usd": 0.1664634,
+      "turns": 11,
+      "latency_ms": 51668,
+      "tokens": {
+        "input": 12,
+        "output": 3824,
+        "cache_read": 63997,
+        "cache_write": 9642
+      }
+    }
+  },
+  "shift-enter-newline": {
+    "repo": "philippmossier/local-ai-chat-playground",
+    "number": 61,
+    "commit": "50c141408e067f3a878ad49b131a40f583600034",
+    "route": "bug",
+    "spec": {
+      "problem": "The composer's keydown handler in `src/components/chat-composer.tsx:54-59` catches every Enter (`e.key === \"Enter\" && !e.nativeEvent.isComposing`). It calls `preventDefault()` and sends the message without checking `e.shiftKey`. So Shift+Enter sends the message instead of adding a line break. That goes against the placeholder (lines 68-71) and the doc comment (line 14), which both say \"Shift+Enter for a new line\". Pasting text with line breaks still works because paste does not go through this handler. Typing a multi-line message is impossible.",
+      "files": [
+        {
+          "path": "src/components/chat-composer.tsx",
+          "why": "Leave Shift+Enter alone so the textarea inserts its own newline; only a plain Enter sends.",
+          "at": [
+            "55"
+          ],
+          "edits": [
+            {
+              "old": "            if (e.key === \"Enter\" && !e.nativeEvent.isComposing) {",
+              "new": "            if (e.key === \"Enter\" && !e.shiftKey && !e.nativeEvent.isComposing) {",
+              "line": 55
+            }
+          ]
+        }
+      ],
+      "tests": [
+        {
+          "path": "e2e/composer.spec.ts",
+          "why": "New Playwright spec, set up like e2e/smoke.spec.ts: start the fake engine, type \"line one\" in the Message box, press Shift+Enter, type \"line two\". Expect the box to have the value \"line one\\nline two\" and no \"Fake answer to:\" text to appear. Then press Enter and expect the fake answer to show up. On the current code the test fails because Shift+Enter sends the message and clears the box.",
+          "at": [],
+          "edits": []
+        }
+      ],
+      "criteria": [],
+      "plan": [
+        "Write e2e/composer.spec.ts: Shift+Enter keeps the text and adds a newline without sending; a plain Enter still sends. Check that it fails on the current code.",
+        "Add `!e.shiftKey` to the Enter check in src/components/chat-composer.tsx:55.",
+        "Run pnpm check-types && pnpm lint && pnpm test and the e2e spec."
+      ],
+      "assumptions": [
+        "Only Shift+Enter should add a line break. Alt, Ctrl and Cmd plus Enter keep their current behaviour, which is to send.",
+        "The textarea's default Shift+Enter behaviour (inserting a newline) is enough; nothing has to insert it by hand.",
+        "The fake engine echoes \"Fake answer to: <text>\", as in e2e/smoke.spec.ts."
+      ],
+      "open_questions": [],
+      "size": "S"
+    },
+    "unknown_paths": [
+      "e2e/composer.spec.ts"
+    ],
+    "run": {
+      "output": {
+        "problem": "The composer's keydown handler in `src/components/chat-composer.tsx:54-59` catches every Enter (`e.key === \"Enter\" && !e.nativeEvent.isComposing`). It calls `preventDefault()` and sends the message without checking `e.shiftKey`. So Shift+Enter sends the message instead of adding a line break. That goes against the placeholder (lines 68-71) and the doc comment (line 14), which both say \"Shift+Enter for a new line\". Pasting text with line breaks still works because paste does not go through this handler. Typing a multi-line message is impossible.",
+        "files": [
+          {
+            "path": "src/components/chat-composer.tsx",
+            "why": "Leave Shift+Enter alone so the textarea inserts its own newline; only a plain Enter sends.",
+            "at": [
+              "55"
+            ],
+            "edits": [
+              {
+                "old": "            if (e.key === \"Enter\" && !e.nativeEvent.isComposing) {",
+                "new": "            if (e.key === \"Enter\" && !e.shiftKey && !e.nativeEvent.isComposing) {"
+              }
+            ]
+          }
+        ],
+        "tests": [
+          {
+            "path": "e2e/composer.spec.ts",
+            "why": "New Playwright spec, set up like e2e/smoke.spec.ts: start the fake engine, type \"line one\" in the Message box, press Shift+Enter, type \"line two\". Expect the box to have the value \"line one\\nline two\" and no \"Fake answer to:\" text to appear. Then press Enter and expect the fake answer to show up. On the current code the test fails because Shift+Enter sends the message and clears the box.",
+            "at": []
+          }
+        ],
+        "plan": [
+          "Write e2e/composer.spec.ts: Shift+Enter keeps the text and adds a newline without sending; a plain Enter still sends. Check that it fails on the current code.",
+          "Add `!e.shiftKey` to the Enter check in src/components/chat-composer.tsx:55.",
+          "Run pnpm check-types && pnpm lint && pnpm test and the e2e spec."
+        ],
+        "assumptions": [
+          "Only Shift+Enter should add a line break. Alt, Ctrl and Cmd plus Enter keep their current behaviour, which is to send.",
+          "The textarea's default Shift+Enter behaviour (inserting a newline) is enough; nothing has to insert it by hand.",
+          "The fake engine echoes \"Fake answer to: <text>\", as in e2e/smoke.spec.ts."
+        ],
+        "open_questions": [],
+        "size": "S",
+        "criteria": [
+          "Shift+Enter in the composer inserts a newline and does not send.",
+          "A plain Enter without Shift still sends the message.",
+          "Enter during IME composition still does not send."
+        ]
+      },
+      "model": "claude-opus-5-5",
+      "cost_usd": 0.061240600000000006,
+      "turns": 6,
+      "latency_ms": 25859,
+      "tokens": {
+        "input": 8,
+        "output": 1428,
+        "cache_read": 33123,
+        "cache_write": 3253
+      }
+    }
+  },
+  "input-cleared-after-send": {
+    "repo": "philippmossier/local-ai-chat-playground",
+    "number": 62,
+    "commit": "50c141408e067f3a878ad49b131a40f583600034",
+    "route": "bug",
+    "spec": {
+      "problem": "After a message is sent, the composer keeps the text. In `src/components/chat.tsx:68-72`, `send()` trims `draft` and calls `onSend(text)`, but never calls `setDraft(\"\")`. The draft state (`chat.tsx:58`) is only changed by typing (`onChange={setDraft}`, line 118) or by picking a greeting prompt (line 80). So the text stays in the box after Enter. The parent `send` in `src/App.tsx:220` returns the new user message id when it accepts the message (line 290) and `undefined` when it refuses it (line 221: not in the chat stage, or still generating). The return value can therefore tell the composer when to clear.",
+      "files": [
+        {
+          "path": "src/components/chat.tsx",
+          "why": "Clear the draft once the parent has accepted the message. If the send is refused, keep the text so nothing typed is lost.",
+          "at": [
+            "71"
+          ],
+          "edits": [
+            {
+              "old": "    onSend(text);\n  }",
+              "new": "    if (onSend(text) !== undefined) setDraft(\"\");\n  }",
+              "line": 71
+            }
+          ]
+        }
+      ],
+      "tests": [
+        {
+          "path": "e2e/smoke.spec.ts",
+          "why": "Only the UI shows that the textbox is empty after Enter. Add a case (or extend the existing one) that fills \"hello there\", presses Enter, waits for \"Fake answer to: hello there\", then asserts `expect(box).toHaveValue(\"\")`. On the current code this fails because the box still holds \"hello there\".",
+          "at": [],
+          "edits": []
+        }
+      ],
+      "criteria": [],
+      "plan": [
+        "Add a Playwright case to e2e/smoke.spec.ts: start the model, send with Enter, wait for the fake answer, and expect the Message textbox to have the value \"\". Confirm it fails on the current code.",
+        "In src/components/chat.tsx `send()`, call `setDraft(\"\")` when `onSend` returns a value, meaning the message was accepted.",
+        "Run pnpm check-types && pnpm lint && pnpm test and the e2e suite."
+      ],
+      "assumptions": [
+        "The draft should be cleared only when App accepts the send (it returns a userId), so a refused send does not drop what was typed.",
+        "The draft should also clear when sending with the Send button, since it calls the same `send()`."
+      ],
+      "open_questions": [],
+      "size": "S"
+    },
+    "unknown_paths": [],
+    "run": {
+      "output": {
+        "problem": "After a message is sent, the composer keeps the text. In `src/components/chat.tsx:68-72`, `send()` trims `draft` and calls `onSend(text)`, but never calls `setDraft(\"\")`. The draft state (`chat.tsx:58`) is only changed by typing (`onChange={setDraft}`, line 118) or by picking a greeting prompt (line 80). So the text stays in the box after Enter. The parent `send` in `src/App.tsx:220` returns the new user message id when it accepts the message (line 290) and `undefined` when it refuses it (line 221: not in the chat stage, or still generating). The return value can therefore tell the composer when to clear.",
+        "files": [
+          {
+            "path": "src/components/chat.tsx",
+            "why": "Clear the draft once the parent has accepted the message. If the send is refused, keep the text so nothing typed is lost.",
+            "at": [
+              "71"
+            ],
+            "edits": [
+              {
+                "old": "    onSend(text);\n  }",
+                "new": "    if (onSend(text) !== undefined) setDraft(\"\");\n  }"
+              }
+            ]
+          }
+        ],
+        "tests": [
+          {
+            "path": "e2e/smoke.spec.ts",
+            "why": "Only the UI shows that the textbox is empty after Enter. Add a case (or extend the existing one) that fills \"hello there\", presses Enter, waits for \"Fake answer to: hello there\", then asserts `expect(box).toHaveValue(\"\")`. On the current code this fails because the box still holds \"hello there\".",
+            "at": [
+              "after line 22 (new test), or after line 19 in the existing test"
+            ]
+          }
+        ],
+        "plan": [
+          "Add a Playwright case to e2e/smoke.spec.ts: start the model, send with Enter, wait for the fake answer, and expect the Message textbox to have the value \"\". Confirm it fails on the current code.",
+          "In src/components/chat.tsx `send()`, call `setDraft(\"\")` when `onSend` returns a value, meaning the message was accepted.",
+          "Run pnpm check-types && pnpm lint && pnpm test and the e2e suite."
+        ],
+        "assumptions": [
+          "The draft should be cleared only when App accepts the send (it returns a userId), so a refused send does not drop what was typed.",
+          "The draft should also clear when sending with the Send button, since it calls the same `send()`."
+        ],
+        "open_questions": [],
+        "size": "S",
+        "criteria": [
+          "After typing a message and pressing Enter, the Message textbox is empty once the message has been sent.",
+          "If the send is refused (for example while an answer is still being generated), the typed text stays in the box."
+        ]
+      },
+      "model": "claude-opus-5-5",
+      "cost_usd": 0.0835666,
+      "turns": 8,
+      "latency_ms": 28641,
+      "tokens": {
+        "input": 10,
+        "output": 1782,
+        "cache_read": 45433,
+        "cache_write": 4850
+      }
+    }
+  },
+  "stop-long-answer": {
+    "repo": "philippmossier/local-ai-chat-playground",
+    "number": 63,
+    "commit": "50c141408e067f3a878ad49b131a40f583600034",
+    "route": "bug",
+    "spec": {
+      "problem": "The Stop button can never be clicked. In `src/components/chat-composer.tsx:40`, `canSend` is `value.trim().length > 0 && !generating && ready`. The Stop button only renders while `generating` is true (line 92), and it uses `disabled={!canSend}` (line 98). While generating, `canSend` is always false, so Stop is always disabled. The handler behind it works: `onStop` reaches `getEngine().interrupt()` (`src/App.tsx:357`), and the engine and fake worker both respect the interrupt. The only problem is that the button's disabled condition was copied from the Send button.",
+      "files": [
+        {
+          "path": "src/components/chat-composer.tsx",
+          "why": "The Stop button reuses the Send button's `canSend` guard, which is false whenever `generating` is true. Stop should be clickable for the whole time an answer is streaming.",
+          "at": [
+            "98"
+          ],
+          "edits": [
+            {
+              "old": "              onClick={onStop}\n              disabled={!canSend}\n              aria-label={tr(\"Stop\", \"Stopp\")}",
+              "new": "              onClick={onStop}\n              aria-label={tr(\"Stop\", \"Stopp\")}",
+              "line": 97
+            }
+          ]
+        }
+      ],
+      "tests": [
+        {
+          "path": "e2e/stop.spec.ts",
+          "why": "The bug only shows in the UI. On the fake engine, start a model and send a long prompt (for example 40 words). The fake worker streams one word every 30 ms, so the answer takes over a second. Check that the 'Stop' button is visible and enabled, click it, then check that the 'Send' button comes back and that the message stats show 'Stopped' (`src/components/message.tsx:81`), or that the full fake answer never appears. On the current code this fails at `toBeEnabled()` or at the click.",
+          "at": [],
+          "edits": []
+        }
+      ],
+      "criteria": [],
+      "plan": [
+        "Add e2e/stop.spec.ts, using the same start flow as e2e/smoke.spec.ts: send a long prompt, wait for 'Stop' to be visible, check that it is enabled, click it, then check that 'Stopped' appears and 'Send' comes back. Confirm the test fails on the current code.",
+        "Remove `disabled={!canSend}` from the Stop button in src/components/chat-composer.tsx.",
+        "Run pnpm check-types && pnpm lint && pnpm test and the playwright suite."
+      ],
+      "assumptions": [
+        "Stop should be enabled for the whole time `generating` is true, whatever is in the text box, and whether or not `ready` is true (`ready` should already be true while generating).",
+        "The interrupt path (`getEngine().interrupt()` to the worker) works correctly. The fake worker shows this: it breaks its loop and reports `interrupted`."
+      ],
+      "open_questions": [],
+      "size": "S"
+    },
+    "unknown_paths": [
+      "e2e/stop.spec.ts"
+    ],
+    "run": {
+      "output": {
+        "problem": "The Stop button can never be clicked. In `src/components/chat-composer.tsx:40`, `canSend` is `value.trim().length > 0 && !generating && ready`. The Stop button only renders while `generating` is true (line 92), and it uses `disabled={!canSend}` (line 98). While generating, `canSend` is always false, so Stop is always disabled. The handler behind it works: `onStop` reaches `getEngine().interrupt()` (`src/App.tsx:357`), and the engine and fake worker both respect the interrupt. The only problem is that the button's disabled condition was copied from the Send button.",
+        "files": [
+          {
+            "path": "src/components/chat-composer.tsx",
+            "why": "The Stop button reuses the Send button's `canSend` guard, which is false whenever `generating` is true. Stop should be clickable for the whole time an answer is streaming.",
+            "at": [
+              "98"
+            ],
+            "edits": [
+              {
+                "old": "              onClick={onStop}\n              disabled={!canSend}\n              aria-label={tr(\"Stop\", \"Stopp\")}",
+                "new": "              onClick={onStop}\n              aria-label={tr(\"Stop\", \"Stopp\")}"
+              }
+            ]
+          }
+        ],
+        "tests": [
+          {
+            "path": "e2e/stop.spec.ts",
+            "why": "The bug only shows in the UI. On the fake engine, start a model and send a long prompt (for example 40 words). The fake worker streams one word every 30 ms, so the answer takes over a second. Check that the 'Stop' button is visible and enabled, click it, then check that the 'Send' button comes back and that the message stats show 'Stopped' (`src/components/message.tsx:81`), or that the full fake answer never appears. On the current code this fails at `toBeEnabled()` or at the click.",
+            "at": []
+          }
+        ],
+        "plan": [
+          "Add e2e/stop.spec.ts, using the same start flow as e2e/smoke.spec.ts: send a long prompt, wait for 'Stop' to be visible, check that it is enabled, click it, then check that 'Stopped' appears and 'Send' comes back. Confirm the test fails on the current code.",
+          "Remove `disabled={!canSend}` from the Stop button in src/components/chat-composer.tsx.",
+          "Run pnpm check-types && pnpm lint && pnpm test and the playwright suite."
+        ],
+        "assumptions": [
+          "Stop should be enabled for the whole time `generating` is true, whatever is in the text box, and whether or not `ready` is true (`ready` should already be true while generating).",
+          "The interrupt path (`getEngine().interrupt()` to the worker) works correctly. The fake worker shows this: it breaks its loop and reports `interrupted`."
+        ],
+        "open_questions": [],
+        "size": "S",
+        "criteria": [
+          "While an answer is streaming, the Stop button is visible and enabled.",
+          "Clicking Stop ends the answer early: the message shows 'Stopped' and the Send button comes back."
+        ]
+      },
+      "model": "claude-opus-5-5",
+      "cost_usd": 0.11005960000000001,
+      "turns": 9,
+      "latency_ms": 32343,
+      "tokens": {
+        "input": 12,
+        "output": 1990,
+        "cache_read": 60018,
+        "cache_write": 7276
+      }
+    }
+  },
+  "delete-chat-in-sidebar": {
+    "repo": "philippmossier/local-ai-chat-playground",
+    "number": 64,
+    "commit": "50c141408e067f3a878ad49b131a40f583600034",
+    "route": "bug",
+    "spec": {
+      "problem": "The delete confirmation in the sidebar deletes the wrong chat. In `src/components/chat-sidebar.tsx:97-100` the confirm (check) button calls `onDelete(activeId ?? c.id)`. Whenever a chat is open (`activeId` is set), that passes the id of the open chat, not the id of the row the user confirmed (`c.id`). `App.tsx:343` forwards the id to the reducer as `{ type: \"delete\", id }`, and the reducer (`src/lib/chat/store.ts:91-97`) correctly removes whatever id it gets. So the old chat stays and the current conversation is deleted. The reducer is fine (and already unit-tested in `src/lib/chat/chat.test.ts:70-72`). The bug is only in the sidebar's choice of id.",
+      "files": [
+        {
+          "path": "src/components/chat-sidebar.tsx",
+          "why": "The confirm button must delete the row's chat (c.id), not the active chat.",
+          "at": [
+            "99"
+          ],
+          "edits": [
+            {
+              "old": "                            onDelete(activeId ?? c.id);",
+              "new": "                            onDelete(c.id);",
+              "line": 99
+            }
+          ]
+        }
+      ],
+      "tests": [
+        {
+          "path": "e2e/chat-sidebar-delete.spec.ts",
+          "why": "The bug lives in a component's click handler, not the reducer, so a vitest of the store can't show it. A Playwright test on the fake engine starts a model and sends \"first chat\". It clicks \"New chat\" and sends \"second chat\", which is now the active chat. It hovers the \"first chat\" sidebar row, clicks \"Delete chat\" in that row, then \"Confirm delete\". It then asserts that the sidebar no longer lists \"first chat\" while \"second chat\" is still listed, and that \"Fake answer to: second chat\" is still visible in the chat area. On the current code the active (second) chat is deleted instead, so the test fails.",
+          "at": [],
+          "edits": []
+        }
+      ],
+      "criteria": [],
+      "plan": [
+        "Add e2e/chat-sidebar-delete.spec.ts as described and confirm it fails on the current code.",
+        "In src/components/chat-sidebar.tsx line 99, replace `onDelete(activeId ?? c.id)` with `onDelete(c.id)`.",
+        "Run pnpm check-types && pnpm lint && pnpm test plus the e2e suite."
+      ],
+      "assumptions": [
+        "The sidebar row title comes from the chat's first message, so the test can find rows by the text it sent. If not, the test finds rows by their position in the sidebar.",
+        "When the active chat itself is deleted, the reducer's existing fallback (open the first remaining chat) is the intended behaviour and stays as it is."
+      ],
+      "open_questions": [],
+      "size": "S"
+    },
+    "unknown_paths": [
+      "e2e/chat-sidebar-delete.spec.ts"
+    ],
+    "run": {
+      "output": {
+        "problem": "The delete confirmation in the sidebar deletes the wrong chat. In `src/components/chat-sidebar.tsx:97-100` the confirm (check) button calls `onDelete(activeId ?? c.id)`. Whenever a chat is open (`activeId` is set), that passes the id of the open chat, not the id of the row the user confirmed (`c.id`). `App.tsx:343` forwards the id to the reducer as `{ type: \"delete\", id }`, and the reducer (`src/lib/chat/store.ts:91-97`) correctly removes whatever id it gets. So the old chat stays and the current conversation is deleted. The reducer is fine (and already unit-tested in `src/lib/chat/chat.test.ts:70-72`). The bug is only in the sidebar's choice of id.",
+        "files": [
+          {
+            "path": "src/components/chat-sidebar.tsx",
+            "why": "The confirm button must delete the row's chat (c.id), not the active chat.",
+            "at": [
+              "99"
+            ],
+            "edits": [
+              {
+                "old": "                            onDelete(activeId ?? c.id);",
+                "new": "                            onDelete(c.id);"
+              }
+            ]
+          }
+        ],
+        "tests": [
+          {
+            "path": "e2e/chat-sidebar-delete.spec.ts",
+            "why": "The bug lives in a component's click handler, not the reducer, so a vitest of the store can't show it. A Playwright test on the fake engine starts a model and sends \"first chat\". It clicks \"New chat\" and sends \"second chat\", which is now the active chat. It hovers the \"first chat\" sidebar row, clicks \"Delete chat\" in that row, then \"Confirm delete\". It then asserts that the sidebar no longer lists \"first chat\" while \"second chat\" is still listed, and that \"Fake answer to: second chat\" is still visible in the chat area. On the current code the active (second) chat is deleted instead, so the test fails.",
+            "at": []
+          }
+        ],
+        "plan": [
+          "Add e2e/chat-sidebar-delete.spec.ts as described and confirm it fails on the current code.",
+          "In src/components/chat-sidebar.tsx line 99, replace `onDelete(activeId ?? c.id)` with `onDelete(c.id)`.",
+          "Run pnpm check-types && pnpm lint && pnpm test plus the e2e suite."
+        ],
+        "assumptions": [
+          "The sidebar row title comes from the chat's first message, so the test can find rows by the text it sent. If not, the test finds rows by their position in the sidebar.",
+          "When the active chat itself is deleted, the reducer's existing fallback (open the first remaining chat) is the intended behaviour and stays as it is."
+        ],
+        "open_questions": [],
+        "criteria": [
+          "When a chat is open and the user deletes a different chat, the other chat is removed and the open chat stays.",
+          "Deleting the open chat itself still works: it is removed and another chat becomes active."
+        ],
+        "size": "S"
+      },
+      "model": "claude-opus-5-5",
+      "cost_usd": 0.0856278,
+      "turns": 7,
+      "latency_ms": 26131,
+      "tokens": {
+        "input": 8,
+        "output": 1821,
+        "cache_read": 35559,
+        "cache_write": 5258
+      }
+    }
+  },
+  "sidebar-newest-first": {
+    "repo": "philippmossier/local-ai-chat-playground",
+    "number": 65,
+    "commit": "50c141408e067f3a878ad49b131a40f583600034",
+    "route": "bug",
+    "spec": {
+      "problem": "The sidebar sorts the visible chats oldest first. `src/components/chat-sidebar.tsx:44-46` filters out empty chats and then calls `.sort((a, b) => a.updatedAt - b.updatedAt)`, which is ascending, so the most recently used chat ends up at the bottom. The store means newest first: its `sync` case sorts `b.updatedAt - a.updatedAt` (`src/lib/chat/store.ts:104`), and `chat.test.ts:76` says `updatedAt` exists \"so the history orders by last use\". Only the sidebar's comparator is reversed.\n\nUnrelated, but found while reading: the confirm-delete button calls `onDelete(activeId ?? c.id)` (`src/components/chat-sidebar.tsx:99`). That deletes the active chat, not the row the user confirmed on. This spec does not fix it.",
+      "files": [
+        {
+          "path": "src/components/chat-sidebar.tsx",
+          "why": "Flip the comparator so the chat used most recently is listed first.",
+          "at": [
+            "46"
+          ],
+          "edits": [
+            {
+              "old": "    .sort((a, b) => a.updatedAt - b.updatedAt);",
+              "new": "    .sort((a, b) => b.updatedAt - a.updatedAt);",
+              "line": 46
+            }
+          ]
+        }
+      ],
+      "tests": [
+        {
+          "path": "e2e/sidebar-order.spec.ts",
+          "why": "The order is decided in the React component, not in a pure function, so only a browser test can see it. On the fake engine: start a model, send \"first chat\" and wait for the fake answer, click \"New chat\", send \"second chat\" and wait for the answer. Open the sidebar if it is folded. Then assert that the first sidebar menu button has the text \"second chat\" and the second has \"first chat\". This fails today because the order is ascending.",
+          "at": [],
+          "edits": []
+        }
+      ],
+      "criteria": [],
+      "plan": [
+        "Add e2e/sidebar-order.spec.ts using the same flow as e2e/smoke.spec.ts and check that it fails on the current code (oldest chat on top).",
+        "Change the comparator in src/components/chat-sidebar.tsx:46 to b.updatedAt - a.updatedAt.",
+        "Run pnpm check-types && pnpm lint && pnpm test, plus the playwright suite."
+      ],
+      "assumptions": [
+        "\"Newest\" means the chat used most recently (updatedAt), not the one created most recently, which matches the store and its tests.",
+        "The chat title comes from the first message (titleFrom in store.ts), so the sidebar rows can be found by the message text.",
+        "Sending a message in a chat should move it to the top. That is what updatedAt already gives, and it is how other chat apps behave."
+      ],
+      "open_questions": [],
+      "size": "S"
+    },
+    "unknown_paths": [
+      "e2e/sidebar-order.spec.ts"
+    ],
+    "run": {
+      "output": {
+        "problem": "The sidebar sorts the visible chats oldest first. `src/components/chat-sidebar.tsx:44-46` filters out empty chats and then calls `.sort((a, b) => a.updatedAt - b.updatedAt)`, which is ascending, so the most recently used chat ends up at the bottom. The store means newest first: its `sync` case sorts `b.updatedAt - a.updatedAt` (`src/lib/chat/store.ts:104`), and `chat.test.ts:76` says `updatedAt` exists \"so the history orders by last use\". Only the sidebar's comparator is reversed.\n\nUnrelated, but found while reading: the confirm-delete button calls `onDelete(activeId ?? c.id)` (`src/components/chat-sidebar.tsx:99`). That deletes the active chat, not the row the user confirmed on. This spec does not fix it.",
+        "files": [
+          {
+            "path": "src/components/chat-sidebar.tsx",
+            "why": "Flip the comparator so the chat used most recently is listed first.",
+            "at": [
+              "46"
+            ],
+            "edits": [
+              {
+                "old": "    .sort((a, b) => a.updatedAt - b.updatedAt);",
+                "new": "    .sort((a, b) => b.updatedAt - a.updatedAt);"
+              }
+            ]
+          }
+        ],
+        "tests": [
+          {
+            "path": "e2e/sidebar-order.spec.ts",
+            "why": "The order is decided in the React component, not in a pure function, so only a browser test can see it. On the fake engine: start a model, send \"first chat\" and wait for the fake answer, click \"New chat\", send \"second chat\" and wait for the answer. Open the sidebar if it is folded. Then assert that the first sidebar menu button has the text \"second chat\" and the second has \"first chat\". This fails today because the order is ascending.",
+            "at": []
+          }
+        ],
+        "plan": [
+          "Add e2e/sidebar-order.spec.ts using the same flow as e2e/smoke.spec.ts and check that it fails on the current code (oldest chat on top).",
+          "Change the comparator in src/components/chat-sidebar.tsx:46 to b.updatedAt - a.updatedAt.",
+          "Run pnpm check-types && pnpm lint && pnpm test, plus the playwright suite."
+        ],
+        "assumptions": [
+          "\"Newest\" means the chat used most recently (updatedAt), not the one created most recently, which matches the store and its tests.",
+          "The chat title comes from the first message (titleFrom in store.ts), so the sidebar rows can be found by the message text.",
+          "Sending a message in a chat should move it to the top. That is what updatedAt already gives, and it is how other chat apps behave."
+        ],
+        "open_questions": [],
+        "criteria": [
+          "With two chats, the sidebar lists the one with the later last message first.",
+          "Sending a new message in an older chat moves it to the top of the sidebar."
+        ],
+        "size": "S"
+      },
+      "model": "claude-opus-5-5",
+      "cost_usd": 0.0886708,
+      "turns": 7,
+      "latency_ms": 26587,
+      "tokens": {
+        "input": 8,
+        "output": 1842,
+        "cache_read": 35474,
+        "cache_write": 5588
+      }
+    }
+  },
+  "copy-button-under-answer": {
+    "repo": "philippmossier/local-ai-chat-playground",
+    "number": 66,
+    "commit": "50c141408e067f3a878ad49b131a40f583600034",
+    "route": "bug",
+    "spec": {
+      "problem": "The footer under an assistant answer (speed line \"N tokens/s · first word after N s\" and the Copy button) is gated on the wrong condition. `src/components/message.tsx:74` renders it only when `stats && streaming`. Stats are attached to a message only by the reducer's `finish` action (`src/lib/chat/store.ts:43,135`), which happens when generation ends. At that point `streaming`, passed from `src/components/chat.tsx:103` as `generating && i === messages.length - 1`, becomes false. Older answers are never `streaming`. So the two conditions are almost never true together and the footer disappears from every answer, old and new. The condition should be `stats && !streaming`: show the footer once the answer has finished.",
+      "files": [
+        {
+          "path": "src/components/message.tsx",
+          "why": "Inverted condition hides the stats/Copy footer on every finished answer.",
+          "at": [
+            "74"
+          ],
+          "edits": [
+            {
+              "old": "        {stats && streaming && (",
+              "new": "        {stats && !streaming && (",
+              "line": 74
+            }
+          ]
+        }
+      ],
+      "tests": [
+        {
+          "path": "e2e/copy-footer.spec.ts",
+          "why": "Only the UI shows the bug. On the fake engine (which reports tokensPerSecond: 50 in src/lib/engine/fake-worker.ts:65), send a message, wait for 'Fake answer to: hello there' and for the Send button to come back, then expect the button named 'Copy' and the text '50 tokens/s' to be visible. Both fail now because the footer never renders.",
+          "at": [],
+          "edits": []
+        }
+      ],
+      "criteria": [],
+      "plan": [
+        "Add e2e/copy-footer.spec.ts following e2e/smoke.spec.ts: start the model, send 'hello there', wait for the answer and for the Send button, then assert the 'Copy' button and the '50 tokens/s' text are visible. Confirm it fails on the current code.",
+        "Change src/components/message.tsx:74 from `stats && streaming` to `stats && !streaming`.",
+        "Run pnpm check-types && pnpm lint && pnpm test and the e2e suite."
+      ],
+      "assumptions": [
+        "The intended behaviour is to show the footer only after an answer finishes, not while it streams. Stats only exist after `finish`, so this is the only behaviour that makes sense.",
+        "The e2e app runs in English, as the smoke test's 'Message' and 'Send' names suggest, and decimal(50) renders as '50'."
+      ],
+      "open_questions": [],
+      "size": "S"
+    },
+    "unknown_paths": [
+      "e2e/copy-footer.spec.ts"
+    ],
+    "run": {
+      "output": {
+        "problem": "The footer under an assistant answer (speed line \"N tokens/s · first word after N s\" and the Copy button) is gated on the wrong condition. `src/components/message.tsx:74` renders it only when `stats && streaming`. Stats are attached to a message only by the reducer's `finish` action (`src/lib/chat/store.ts:43,135`), which happens when generation ends. At that point `streaming`, passed from `src/components/chat.tsx:103` as `generating && i === messages.length - 1`, becomes false. Older answers are never `streaming`. So the two conditions are almost never true together and the footer disappears from every answer, old and new. The condition should be `stats && !streaming`: show the footer once the answer has finished.",
+        "files": [
+          {
+            "path": "src/components/message.tsx",
+            "why": "Inverted condition hides the stats/Copy footer on every finished answer.",
+            "at": [
+              "74"
+            ],
+            "edits": [
+              {
+                "old": "        {stats && streaming && (",
+                "new": "        {stats && !streaming && ("
+              }
+            ]
+          }
+        ],
+        "tests": [
+          {
+            "path": "e2e/copy-footer.spec.ts",
+            "why": "Only the UI shows the bug. On the fake engine (which reports tokensPerSecond: 50 in src/lib/engine/fake-worker.ts:65), send a message, wait for 'Fake answer to: hello there' and for the Send button to come back, then expect the button named 'Copy' and the text '50 tokens/s' to be visible. Both fail now because the footer never renders.",
+            "at": []
+          }
+        ],
+        "plan": [
+          "Add e2e/copy-footer.spec.ts following e2e/smoke.spec.ts: start the model, send 'hello there', wait for the answer and for the Send button, then assert the 'Copy' button and the '50 tokens/s' text are visible. Confirm it fails on the current code.",
+          "Change src/components/message.tsx:74 from `stats && streaming` to `stats && !streaming`.",
+          "Run pnpm check-types && pnpm lint && pnpm test and the e2e suite."
+        ],
+        "assumptions": [
+          "The intended behaviour is to show the footer only after an answer finishes, not while it streams. Stats only exist after `finish`, so this is the only behaviour that makes sense.",
+          "The e2e app runs in English, as the smoke test's 'Message' and 'Send' names suggest, and decimal(50) renders as '50'."
+        ],
+        "open_questions": [],
+        "size": "S",
+        "criteria": [
+          "After an answer finishes, a 'Copy' button is visible under it.",
+          "After an answer finishes, the speed line '<n> tokens/s · first word after <n> s' is visible under it."
+        ]
+      },
+      "model": "claude-opus-5-5",
+      "cost_usd": 0.08894600000000001,
+      "turns": 7,
+      "latency_ms": 30968,
+      "tokens": {
+        "input": 10,
+        "output": 1743,
+        "cache_read": 46030,
+        "cache_write": 5605
+      }
+    }
+  },
+  "new-chat-button": {
+    "repo": "philippmossier/local-ai-chat-playground",
+    "number": 67,
+    "commit": "50c141408e067f3a878ad49b131a40f583600034",
+    "route": "bug",
+    "spec": {
+      "problem": "The guard in `newChat` (src/App.tsx:322-325) is inverted. It only dispatches `{ type: \"new\" }` when there is no active chat or the active chat is empty (`!active || active.messages.length === 0`). After the user has sent a message, the active chat has messages, so clicking \"Neuer Chat\" (src/components/chat-sidebar.tsx:53-62, and the icon button in src/components/sidebar-chrome.tsx:29) does nothing. The guard was most likely meant to do the opposite: skip creating another empty chat when the current one is already empty, and otherwise always create one. The reducer case `new` in src/lib/chat/store.ts:73 is correct: it adds a fresh chat at the top and makes it active.",
+      "files": [
+        {
+          "path": "src/App.tsx",
+          "why": "Invert the guard so a new chat is created whenever the active chat has messages, and no extra empty chat is created when the current one is already empty.",
+          "at": [
+            "322-325"
+          ],
+          "edits": [
+            {
+              "old": "  const newChat = () => {\n    if (!active || active.messages.length === 0)\n      dispatch({ type: \"new\", id: crypto.randomUUID(), now: Date.now() });\n  };",
+              "new": "  const newChat = () => {\n    // An empty chat is already a new chat: do not stack empty ones.\n    if (active && active.messages.length === 0) return;\n    dispatch({ type: \"new\", id: crypto.randomUUID(), now: Date.now() });\n  };",
+              "line": 322
+            }
+          ]
+        }
+      ],
+      "tests": [
+        {
+          "path": "e2e/new-chat.spec.ts",
+          "why": "The bug is in the App component's click handler, not in the reducer, so a vitest test cannot reach it. Following e2e/smoke.spec.ts on the fake engine: start a model, send \"hello there\", wait for \"Fake answer to: hello there\", click the button named \"New chat\" (the sidebar button; use .first() if the icon button in SidebarChrome also matches), then expect the text \"Fake answer to: hello there\" to be hidden and the Message textbox to be empty. On the current code the old messages stay visible, so the test fails.",
+          "at": [],
+          "edits": []
+        }
+      ],
+      "criteria": [],
+      "plan": [
+        "Write e2e/new-chat.spec.ts as described and confirm it fails on the current code because the old answer is still shown.",
+        "Invert the guard in newChat in src/App.tsx.",
+        "Run pnpm check-types && pnpm lint && pnpm test and the playwright suite."
+      ],
+      "assumptions": [
+        "The intended behaviour is to reuse an empty active chat instead of making another one. The reporter's line \"only works at the very beginning\" fits the inverted condition.",
+        "With no active chat (active null), clicking New chat should create one. The fixed guard still does that.",
+        "On desktop the sidebar is open by default in the Playwright viewport, so the \"New chat\" button is visible without opening it first."
+      ],
+      "open_questions": [],
+      "size": "S"
+    },
+    "unknown_paths": [
+      "e2e/new-chat.spec.ts"
+    ],
+    "run": {
+      "output": {
+        "problem": "The guard in `newChat` (src/App.tsx:322-325) is inverted. It only dispatches `{ type: \"new\" }` when there is no active chat or the active chat is empty (`!active || active.messages.length === 0`). After the user has sent a message, the active chat has messages, so clicking \"Neuer Chat\" (src/components/chat-sidebar.tsx:53-62, and the icon button in src/components/sidebar-chrome.tsx:29) does nothing. The guard was most likely meant to do the opposite: skip creating another empty chat when the current one is already empty, and otherwise always create one. The reducer case `new` in src/lib/chat/store.ts:73 is correct: it adds a fresh chat at the top and makes it active.",
+        "files": [
+          {
+            "path": "src/App.tsx",
+            "why": "Invert the guard so a new chat is created whenever the active chat has messages, and no extra empty chat is created when the current one is already empty.",
+            "at": [
+              "322-325"
+            ],
+            "edits": [
+              {
+                "old": "  const newChat = () => {\n    if (!active || active.messages.length === 0)\n      dispatch({ type: \"new\", id: crypto.randomUUID(), now: Date.now() });\n  };",
+                "new": "  const newChat = () => {\n    // An empty chat is already a new chat: do not stack empty ones.\n    if (active && active.messages.length === 0) return;\n    dispatch({ type: \"new\", id: crypto.randomUUID(), now: Date.now() });\n  };"
+              }
+            ]
+          }
+        ],
+        "tests": [
+          {
+            "path": "e2e/new-chat.spec.ts",
+            "why": "The bug is in the App component's click handler, not in the reducer, so a vitest test cannot reach it. Following e2e/smoke.spec.ts on the fake engine: start a model, send \"hello there\", wait for \"Fake answer to: hello there\", click the button named \"New chat\" (the sidebar button; use .first() if the icon button in SidebarChrome also matches), then expect the text \"Fake answer to: hello there\" to be hidden and the Message textbox to be empty. On the current code the old messages stay visible, so the test fails.",
+            "at": []
+          }
+        ],
+        "plan": [
+          "Write e2e/new-chat.spec.ts as described and confirm it fails on the current code because the old answer is still shown.",
+          "Invert the guard in newChat in src/App.tsx.",
+          "Run pnpm check-types && pnpm lint && pnpm test and the playwright suite."
+        ],
+        "assumptions": [
+          "The intended behaviour is to reuse an empty active chat instead of making another one. The reporter's line \"only works at the very beginning\" fits the inverted condition.",
+          "With no active chat (active null), clicking New chat should create one. The fixed guard still does that.",
+          "On desktop the sidebar is open by default in the Playwright viewport, so the \"New chat\" button is visible without opening it first."
+        ],
+        "open_questions": [],
+        "size": "S",
+        "criteria": [
+          "After a message has been sent in the active chat, clicking \"New chat\" shows an empty chat and the earlier messages are no longer visible.",
+          "Clicking \"New chat\" while the active chat is empty does not add another empty chat to the history."
+        ]
+      },
+      "model": "claude-opus-5-5",
+      "cost_usd": 0.0959076,
+      "turns": 9,
+      "latency_ms": 33219,
+      "tokens": {
+        "input": 12,
+        "output": 2128,
+        "cache_read": 55338,
+        "cache_write": 5279
+      }
+    }
+  },
+  "answer-link-new-tab": {
+    "repo": "philippmossier/local-ai-chat-playground",
+    "number": 68,
+    "commit": "50c141408e067f3a878ad49b131a40f583600034",
+    "route": "bug",
+    "spec": {
+      "problem": "Links in model answers open in the same tab. `src/components/message.tsx:13-19` overrides react-markdown's `a` renderer, and the comment on line 12 says \"links open in a new tab\", but the `<a>` on line 15 only sets `rel=\"noopener noreferrer\"` and has no `target=\"_blank\"`. A click therefore navigates the app's own tab to the linked page. That throws away the in-memory app state, so going back reloads the app and the model has to load again.",
+      "files": [
+        {
+          "path": "src/components/message.tsx",
+          "why": "Add target=\"_blank\" to the markdown link renderer so links in answers open in a new tab, as the comment above it already promises.",
+          "at": [
+            "15"
+          ],
+          "edits": [
+            {
+              "old": "    <a href={href} rel=\"noopener noreferrer\">",
+              "new": "    <a href={href} target=\"_blank\" rel=\"noopener noreferrer\">",
+              "line": 15
+            }
+          ]
+        }
+      ],
+      "tests": [
+        {
+          "path": "e2e/links.spec.ts",
+          "why": "The fake engine echoes the user's message as \"Fake answer to: <message>\" (src/lib/engine/fake-worker.ts:46), so sending the Markdown link `[docs](https://example.com/)` makes the assistant answer contain a real link. Start a model and send that message the same way e2e/smoke.spec.ts does. Then assert that the assistant answer's link `getByRole(\"link\", { name: \"docs\" })` has target=\"_blank\" and a rel that contains noopener. The test checks attributes and never clicks, so it makes no network request. On the current code it fails because the target attribute is missing.",
+          "at": [],
+          "edits": []
+        }
+      ],
+      "criteria": [],
+      "plan": [
+        "Add e2e/links.spec.ts: start the fake engine, send `[docs](https://example.com/)`, and assert that the answer's link has target=\"_blank\" and rel containing noopener. Confirm it fails on the current code.",
+        "Add target=\"_blank\" to the `a` renderer in src/components/message.tsx:15.",
+        "Run pnpm check-types && pnpm lint && pnpm test and the Playwright suite."
+      ],
+      "assumptions": [
+        "Only links in assistant answers need the change. User messages are rendered as plain text, not Markdown, so they contain no links.",
+        "The fake engine streams the echoed message word by word, and the final rendered Markdown contains the link because the link text has no spaces."
+      ],
+      "open_questions": [],
+      "size": "S"
+    },
+    "unknown_paths": [
+      "e2e/links.spec.ts"
+    ],
+    "run": {
+      "output": {
+        "problem": "Links in model answers open in the same tab. `src/components/message.tsx:13-19` overrides react-markdown's `a` renderer, and the comment on line 12 says \"links open in a new tab\", but the `<a>` on line 15 only sets `rel=\"noopener noreferrer\"` and has no `target=\"_blank\"`. A click therefore navigates the app's own tab to the linked page. That throws away the in-memory app state, so going back reloads the app and the model has to load again.",
+        "files": [
+          {
+            "path": "src/components/message.tsx",
+            "why": "Add target=\"_blank\" to the markdown link renderer so links in answers open in a new tab, as the comment above it already promises.",
+            "at": [
+              "15"
+            ],
+            "edits": [
+              {
+                "old": "    <a href={href} rel=\"noopener noreferrer\">",
+                "new": "    <a href={href} target=\"_blank\" rel=\"noopener noreferrer\">"
+              }
+            ]
+          }
+        ],
+        "tests": [
+          {
+            "path": "e2e/links.spec.ts",
+            "why": "The fake engine echoes the user's message as \"Fake answer to: <message>\" (src/lib/engine/fake-worker.ts:46), so sending the Markdown link `[docs](https://example.com/)` makes the assistant answer contain a real link. Start a model and send that message the same way e2e/smoke.spec.ts does. Then assert that the assistant answer's link `getByRole(\"link\", { name: \"docs\" })` has target=\"_blank\" and a rel that contains noopener. The test checks attributes and never clicks, so it makes no network request. On the current code it fails because the target attribute is missing.",
+            "at": []
+          }
+        ],
+        "plan": [
+          "Add e2e/links.spec.ts: start the fake engine, send `[docs](https://example.com/)`, and assert that the answer's link has target=\"_blank\" and rel containing noopener. Confirm it fails on the current code.",
+          "Add target=\"_blank\" to the `a` renderer in src/components/message.tsx:15.",
+          "Run pnpm check-types && pnpm lint && pnpm test and the Playwright suite."
+        ],
+        "assumptions": [
+          "Only links in assistant answers need the change. User messages are rendered as plain text, not Markdown, so they contain no links.",
+          "The fake engine streams the echoed message word by word, and the final rendered Markdown contains the link because the link text has no spaces."
+        ],
+        "open_questions": [],
+        "size": "S",
+        "criteria": [
+          "A Markdown link in an assistant answer renders as an <a> with target=\"_blank\" and rel=\"noopener noreferrer\"."
+        ]
+      },
+      "model": "claude-opus-5-5",
+      "cost_usd": 0.0813924,
+      "turns": 7,
+      "latency_ms": 23608,
+      "tokens": {
+        "input": 8,
+        "output": 1669,
+        "cache_read": 34582,
+        "cache_write": 5133
+      }
+    }
+  },
+  "picker-back-to-chat": {
+    "repo": "philippmossier/local-ai-chat-playground",
+    "number": 69,
+    "commit": "50c141408e067f3a878ad49b131a40f583600034",
+    "route": "bug",
+    "spec": {
+      "problem": "If you open the model picker from a chat and press \"Back\", you land on the welcome page instead of the chat. The picker's Back handler (`src/App.tsx:401-403`) goes back to the chat only when `loaded` holds an Option: `setStage(loaded ? { name: \"chat\", option: loaded } : { name: \"welcome\" })`. But nothing ever sets `loaded` to a model. `startModel` clears it with `setLoaded(null)` (`src/App.tsx:188`), and when loading succeeds it only calls `setStage({ name: \"chat\", option })` (`src/App.tsx:199`). The other two calls (`src/App.tsx:314`, the wipe) also set it to null. So `loaded` is always null, and Back always goes to welcome. The model is still running in the engine, but the user sees the welcome page and has to start it again. The \"Switch model\" action on the \"new models\" toast (`src/App.tsx:130`) opens the same picker, so it has the same bug.",
+      "files": [
+        {
+          "path": "src/App.tsx",
+          "why": "Store the loaded model when loading succeeds, so the picker's Back can return to the chat (the handler at 401-403 already does the rest).",
+          "at": [
+            "199"
+          ],
+          "edits": [
+            {
+              "old": "      setCached((c) => new Set(c).add(option.model.id));\n      setStage({ name: \"chat\", option });",
+              "new": "      setCached((c) => new Set(c).add(option.model.id));\n      setLoaded(option);\n      setStage({ name: \"chat\", option });",
+              "line": 198
+            }
+          ]
+        }
+      ],
+      "tests": [
+        {
+          "path": "e2e/smoke.spec.ts",
+          "why": "Go through the real UI on the fake engine: start a model, send a message, click the model-name button (title \"Change model\"), click \"Back\", then expect the chat to be showing again: the 'Message' textbox is visible and the earlier fake answer is still on screen. It also checks that no 'Choose a different model' heading or welcome Start button is showing. On today's code the test lands on the welcome page and fails.",
+          "at": [],
+          "edits": []
+        }
+      ],
+      "criteria": [],
+      "plan": [
+        "Write the failing Playwright test in e2e/smoke.spec.ts: start a model, send 'hello there', wait for 'Fake answer to: hello there', click page.getByTitle('Change model'), click the 'Back' button, then expect the Message textbox and the fake answer to be visible.",
+        "In src/App.tsx startModel, call setLoaded(option) after a successful load, before setStage chat.",
+        "Run pnpm check-types && pnpm lint && pnpm test and the e2e suite."
+      ],
+      "assumptions": [
+        "'Back' should go to the chat that was open before, with the same model and the same active chat. It should not reload the model. That is what the comment at src/App.tsx:65 and the handler at 401-403 already intend.",
+        "In the fake engine (e2e), the model-name button turns enabled once the answer is finished, because ready is true and generating is false.",
+        "Cancelling a load or a failed load should still go back to welcome. setLoaded(null) at line 188 keeps that working: while a new model is loading, the old one has been freed."
+      ],
+      "open_questions": [],
+      "size": "S"
+    },
+    "unknown_paths": [],
+    "run": {
+      "output": {
+        "problem": "If you open the model picker from a chat and press \"Back\", you land on the welcome page instead of the chat. The picker's Back handler (`src/App.tsx:401-403`) goes back to the chat only when `loaded` holds an Option: `setStage(loaded ? { name: \"chat\", option: loaded } : { name: \"welcome\" })`. But nothing ever sets `loaded` to a model. `startModel` clears it with `setLoaded(null)` (`src/App.tsx:188`), and when loading succeeds it only calls `setStage({ name: \"chat\", option })` (`src/App.tsx:199`). The other two calls (`src/App.tsx:314`, the wipe) also set it to null. So `loaded` is always null, and Back always goes to welcome. The model is still running in the engine, but the user sees the welcome page and has to start it again. The \"Switch model\" action on the \"new models\" toast (`src/App.tsx:130`) opens the same picker, so it has the same bug.",
+        "files": [
+          {
+            "path": "src/App.tsx",
+            "why": "Store the loaded model when loading succeeds, so the picker's Back can return to the chat (the handler at 401-403 already does the rest).",
+            "at": [
+              "199"
+            ],
+            "edits": [
+              {
+                "old": "      setCached((c) => new Set(c).add(option.model.id));\n      setStage({ name: \"chat\", option });",
+                "new": "      setCached((c) => new Set(c).add(option.model.id));\n      setLoaded(option);\n      setStage({ name: \"chat\", option });"
+              }
+            ]
+          }
+        ],
+        "tests": [
+          {
+            "path": "e2e/smoke.spec.ts",
+            "why": "Go through the real UI on the fake engine: start a model, send a message, click the model-name button (title \"Change model\"), click \"Back\", then expect the chat to be showing again: the 'Message' textbox is visible and the earlier fake answer is still on screen. It also checks that no 'Choose a different model' heading or welcome Start button is showing. On today's code the test lands on the welcome page and fails.",
+            "at": [
+              "after line 22 (new test)"
+            ]
+          }
+        ],
+        "plan": [
+          "Write the failing Playwright test in e2e/smoke.spec.ts: start a model, send 'hello there', wait for 'Fake answer to: hello there', click page.getByTitle('Change model'), click the 'Back' button, then expect the Message textbox and the fake answer to be visible.",
+          "In src/App.tsx startModel, call setLoaded(option) after a successful load, before setStage chat.",
+          "Run pnpm check-types && pnpm lint && pnpm test and the e2e suite."
+        ],
+        "assumptions": [
+          "'Back' should go to the chat that was open before, with the same model and the same active chat. It should not reload the model. That is what the comment at src/App.tsx:65 and the handler at 401-403 already intend.",
+          "In the fake engine (e2e), the model-name button turns enabled once the answer is finished, because ready is true and generating is false.",
+          "Cancelling a load or a failed load should still go back to welcome. setLoaded(null) at line 188 keeps that working: while a new model is loading, the old one has been freed."
+        ],
+        "open_questions": [],
+        "size": "S"
+      },
+      "model": "claude-opus-5-5",
+      "cost_usd": 0.16401200000000002,
+      "turns": 9,
+      "latency_ms": 39024,
+      "tokens": {
+        "input": 14,
+        "output": 2163,
+        "cache_read": 93680,
+        "cache_write": 12745
+      }
+    }
+  },
+  "model-remembers-earlier-turns": {
+    "repo": "philippmossier/local-ai-chat-playground",
+    "number": 70,
+    "commit": "50c141408e067f3a878ad49b131a40f583600034",
+    "route": "bug",
+    "spec": {
+      "problem": "Every message reaches the model with almost none of the conversation. In `src/App.tsx:249-253` the prompt is built as system prompt + `toModelMessages(history).slice(-HISTORY_TURNS)` + the new user text, and `HISTORY_TURNS = 1` (`src/App.tsx:52`). So only the single latest stored message is kept, which is the assistant's last reply. The user's earlier messages (\"my name is X\") are always dropped. The model sees its own answer with no question in front of it, then the new question, so follow-ups fail whatever model is loaded. The comment at `src/App.tsx:51` says the worker trims further to fit the context window. It does: `fitToContext` in `src/lib/engine/worker.ts:161-179` drops the oldest turns until the prompt fits under MAX_PROMPT_TOKENS, always keeping the system message and the latest turn. That means the cap in App.tsx isn't needed, and set to 1 it breaks memory. `toModelMessages` (`src/lib/chat/store.ts:193-199`) already filters out empty placeholders and failed replies.",
+      "files": [
+        {
+          "path": "src/App.tsx",
+          "why": "Send the whole finished history and let the worker's fitToContext trim it to the context window, instead of keeping only the last message.",
+          "at": [
+            "51-52",
+            "251"
+          ],
+          "edits": [
+            {
+              "old": "/** Earlier turns sent with each message; the worker trims further to fit the context window. */\nconst HISTORY_TURNS = 1;",
+              "new": "",
+              "line": 51
+            },
+            {
+              "old": "          ...(history ? toModelMessages(history).slice(-HISTORY_TURNS) : []),",
+              "new": "          // The whole chat; the worker drops the oldest turns to fit the context window.\n          ...(history ? toModelMessages(history) : []),",
+              "line": 251
+            }
+          ]
+        }
+      ],
+      "tests": [
+        {
+          "path": "e2e/history.spec.ts",
+          "why": "New playwright test on the fake engine. Start a model, send \"my name is Ann\" and wait for \"Fake answer to: my name is Ann\", then send \"/history\". The fake worker (`src/lib/engine/fake-worker.ts:44-45`) answers with the roles it received. Expect the text \"Fake history: system user assistant user\". Today it shows \"Fake history: system assistant user\" because the earlier user turn is dropped, so the test fails for the reported reason. The history is built in the App component, and no exported function covers it, so a vitest test can't reach it.",
+          "at": [],
+          "edits": []
+        }
+      ],
+      "criteria": [],
+      "plan": [
+        "Add e2e/history.spec.ts in the style of e2e/smoke.spec.ts: two turns, then /history, then assert the roles include the first user turn. Confirm it fails on the current code.",
+        "In src/App.tsx, remove HISTORY_TURNS and the .slice(...) so all of toModelMessages(history) is sent. fitToContext in the worker keeps the prompt within the context window.",
+        "Run pnpm check-types && pnpm lint && pnpm test and the e2e suite.",
+        "Check in a real browser with a real model that a follow-up question (\"what's my name?\") is answered from the earlier turn, and say that it was checked by hand."
+      ],
+      "assumptions": [
+        "fitToContext in worker.ts is the intended limit on prompt length, so sending the full history is safe. Long chats lose their oldest turns there, not in App.tsx.",
+        "HISTORY_TURNS = 1 is a mistake, not a deliberate speed tradeoff. If a cap is wanted for speed on slow hardware, it should count pairs of turns (for example 2*N messages), not single messages."
+      ],
+      "open_questions": [],
+      "size": "S"
+    },
+    "unknown_paths": [
+      "e2e/history.spec.ts"
+    ],
+    "run": {
+      "output": {
+        "problem": "Every message reaches the model with almost none of the conversation. In `src/App.tsx:249-253` the prompt is built as system prompt + `toModelMessages(history).slice(-HISTORY_TURNS)` + the new user text, and `HISTORY_TURNS = 1` (`src/App.tsx:52`). So only the single latest stored message is kept, which is the assistant's last reply. The user's earlier messages (\"my name is X\") are always dropped. The model sees its own answer with no question in front of it, then the new question, so follow-ups fail whatever model is loaded. The comment at `src/App.tsx:51` says the worker trims further to fit the context window. It does: `fitToContext` in `src/lib/engine/worker.ts:161-179` drops the oldest turns until the prompt fits under MAX_PROMPT_TOKENS, always keeping the system message and the latest turn. That means the cap in App.tsx isn't needed, and set to 1 it breaks memory. `toModelMessages` (`src/lib/chat/store.ts:193-199`) already filters out empty placeholders and failed replies.",
+        "files": [
+          {
+            "path": "src/App.tsx",
+            "why": "Send the whole finished history and let the worker's fitToContext trim it to the context window, instead of keeping only the last message.",
+            "at": [
+              "51-52",
+              "251"
+            ],
+            "edits": [
+              {
+                "old": "/** Earlier turns sent with each message; the worker trims further to fit the context window. */\nconst HISTORY_TURNS = 1;\n",
+                "new": ""
+              },
+              {
+                "old": "          ...(history ? toModelMessages(history).slice(-HISTORY_TURNS) : []),",
+                "new": "          // The whole chat; the worker drops the oldest turns to fit the context window.\n          ...(history ? toModelMessages(history) : []),"
+              }
+            ]
+          }
+        ],
+        "tests": [
+          {
+            "path": "e2e/history.spec.ts",
+            "why": "New playwright test on the fake engine. Start a model, send \"my name is Ann\" and wait for \"Fake answer to: my name is Ann\", then send \"/history\". The fake worker (`src/lib/engine/fake-worker.ts:44-45`) answers with the roles it received. Expect the text \"Fake history: system user assistant user\". Today it shows \"Fake history: system assistant user\" because the earlier user turn is dropped, so the test fails for the reported reason. The history is built in the App component, and no exported function covers it, so a vitest test can't reach it.",
+            "at": []
+          }
+        ],
+        "plan": [
+          "Add e2e/history.spec.ts in the style of e2e/smoke.spec.ts: two turns, then /history, then assert the roles include the first user turn. Confirm it fails on the current code.",
+          "In src/App.tsx, remove HISTORY_TURNS and the .slice(...) so all of toModelMessages(history) is sent. fitToContext in the worker keeps the prompt within the context window.",
+          "Run pnpm check-types && pnpm lint && pnpm test and the e2e suite.",
+          "Check in a real browser with a real model that a follow-up question (\"what's my name?\") is answered from the earlier turn, and say that it was checked by hand."
+        ],
+        "assumptions": [
+          "fitToContext in worker.ts is the intended limit on prompt length, so sending the full history is safe. Long chats lose their oldest turns there, not in App.tsx.",
+          "HISTORY_TURNS = 1 is a mistake, not a deliberate speed tradeoff. If a cap is wanted for speed on slow hardware, it should count pairs of turns (for example 2*N messages), not single messages."
+        ],
+        "open_questions": [],
+        "size": "S",
+        "criteria": [
+          "After the user sends one message and gets an answer, the next generate request contains the system message, the earlier user message, the assistant reply and the new user message, in that order."
+        ]
+      },
+      "model": "claude-opus-5-5",
+      "cost_usd": 0.16997660000000003,
+      "turns": 13,
+      "latency_ms": 46188,
+      "tokens": {
+        "input": 14,
+        "output": 3141,
+        "cache_read": 85143,
+        "cache_write": 11259
+      }
+    }
+  },
+  "send-after-error": {
+    "repo": "philippmossier/local-ai-chat-playground",
+    "number": 71,
+    "commit": "50c141408e067f3a878ad49b131a40f583600034",
+    "route": "bug",
+    "spec": {
+      "problem": "If an answer fails, the chat stays in the generating state for good. In `send()` (src/App.tsx:220-291), the success path calls `setGenerating(false)` at line 261, but the `catch` block at lines 276-284 only flushes and dispatches `fail`. The `finally` block (285-288) clears `writingChat` and `inFlight` but never resets `generating`. So after any engine error (out of memory, or \"/error\" on the fake engine), `generating` stays true:\n- the composer keeps showing Stop instead of Send (src/components/chat-composer.tsx:92);\n- the textbox stays disabled (chat-composer.tsx:80);\n- `send()` returns early at App.tsx:221.\n\nTwo side effects follow. Chats are no longer saved, because the persist effect skips while generating (App.tsx:172). The failed message also stays marked as streaming (src/components/chat.tsx:103). Only a reload resets the state.",
+      "files": [
+        {
+          "path": "src/App.tsx",
+          "why": "Reset `generating` on every way out of a generation, including errors, by moving `setGenerating(false)` into `finally`. The success path still resets it before the speed advice runs, so that behaviour does not change.",
+          "at": [
+            "276-288"
+          ],
+          "edits": [
+            {
+              "old": "      } finally {\n        writingChat.current = null;\n        inFlight.current = null;\n      }",
+              "new": "      } finally {\n        writingChat.current = null;\n        inFlight.current = null;\n        setGenerating(false);\n      }",
+              "line": 285
+            }
+          ]
+        }
+      ],
+      "tests": [
+        {
+          "path": "e2e/fail-recovers.spec.ts",
+          "why": "New Playwright spec on the fake engine. Start a model, send \"/error\" (the fake worker throws \"Fake engine error.\"), and check that \"Something went wrong: Fake engine error.\" is visible. Then check that the Send button is visible, that the Message textbox is editable, and that sending \"hello again\" shows \"Fake answer to: hello again\". On the current code this fails: Stop stays visible and the textbox stays disabled. It can also go into e2e/smoke.spec.ts as a second test after line 22.",
+          "at": [],
+          "edits": []
+        }
+      ],
+      "criteria": [],
+      "plan": [
+        "Write the e2e spec that sends \"/error\" and then expects Send to come back and a second message to get an answer. Confirm it fails on the current code.",
+        "In src/App.tsx, add `setGenerating(false)` to the `finally` block of the generation task in `send()`. The call at line 261 can stay, so the success path behaves exactly as before.",
+        "Run pnpm check-types && pnpm lint && pnpm test and the Playwright suite."
+      ],
+      "assumptions": [
+        "The reporter's \"Something went wrong\" comes from an engine error thrown by `getEngine().generate` (for example a WebGPU out-of-memory error). Any error there takes the same catch path, so the exact cause does not matter.",
+        "Keeping the failed assistant message with its error in the chat is the intended behaviour. Only the stuck generating state is the bug."
+      ],
+      "open_questions": [],
+      "size": "S"
+    },
+    "unknown_paths": [
+      "e2e/fail-recovers.spec.ts"
+    ],
+    "run": {
+      "output": {
+        "problem": "If an answer fails, the chat stays in the generating state for good. In `send()` (src/App.tsx:220-291), the success path calls `setGenerating(false)` at line 261, but the `catch` block at lines 276-284 only flushes and dispatches `fail`. The `finally` block (285-288) clears `writingChat` and `inFlight` but never resets `generating`. So after any engine error (out of memory, or \"/error\" on the fake engine), `generating` stays true:\n- the composer keeps showing Stop instead of Send (src/components/chat-composer.tsx:92);\n- the textbox stays disabled (chat-composer.tsx:80);\n- `send()` returns early at App.tsx:221.\n\nTwo side effects follow. Chats are no longer saved, because the persist effect skips while generating (App.tsx:172). The failed message also stays marked as streaming (src/components/chat.tsx:103). Only a reload resets the state.",
+        "files": [
+          {
+            "path": "src/App.tsx",
+            "why": "Reset `generating` on every way out of a generation, including errors, by moving `setGenerating(false)` into `finally`. The success path still resets it before the speed advice runs, so that behaviour does not change.",
+            "at": [
+              "276-288"
+            ],
+            "edits": [
+              {
+                "old": "      } finally {\n        writingChat.current = null;\n        inFlight.current = null;\n      }",
+                "new": "      } finally {\n        writingChat.current = null;\n        inFlight.current = null;\n        setGenerating(false);\n      }"
+              }
+            ]
+          }
+        ],
+        "tests": [
+          {
+            "path": "e2e/fail-recovers.spec.ts",
+            "why": "New Playwright spec on the fake engine. Start a model, send \"/error\" (the fake worker throws \"Fake engine error.\"), and check that \"Something went wrong: Fake engine error.\" is visible. Then check that the Send button is visible, that the Message textbox is editable, and that sending \"hello again\" shows \"Fake answer to: hello again\". On the current code this fails: Stop stays visible and the textbox stays disabled. It can also go into e2e/smoke.spec.ts as a second test after line 22.",
+            "at": []
+          }
+        ],
+        "plan": [
+          "Write the e2e spec that sends \"/error\" and then expects Send to come back and a second message to get an answer. Confirm it fails on the current code.",
+          "In src/App.tsx, add `setGenerating(false)` to the `finally` block of the generation task in `send()`. The call at line 261 can stay, so the success path behaves exactly as before.",
+          "Run pnpm check-types && pnpm lint && pnpm test and the Playwright suite."
+        ],
+        "assumptions": [
+          "The reporter's \"Something went wrong\" comes from an engine error thrown by `getEngine().generate` (for example a WebGPU out-of-memory error). Any error there takes the same catch path, so the exact cause does not matter.",
+          "Keeping the failed assistant message with its error in the chat is the intended behaviour. Only the stuck generating state is the bug."
+        ],
+        "open_questions": [],
+        "size": "S",
+        "criteria": [
+          "After a generation fails, the composer shows Send again, not Stop.",
+          "After a generation fails, the Message textbox is editable and a new message gets an answer."
+        ]
+      },
+      "model": "claude-opus-5-5",
+      "cost_usd": 0.15290020000000001,
+      "turns": 11,
+      "latency_ms": 41908,
+      "tokens": {
+        "input": 18,
+        "output": 2287,
+        "cache_read": 104521,
+        "cache_write": 10773
+      }
+    }
+  },
+  "answer-image-no-request": {
+    "repo": "philippmossier/local-ai-chat-playground",
+    "number": 72,
+    "commit": "50c141408e067f3a878ad49b131a40f583600034",
+    "route": "bug",
+    "spec": {
+      "problem": "Assistant replies are rendered with react-markdown in `src/components/message.tsx:55`, and the only override is for `a` (lines 13-19). Image syntax `![alt](https://host/x.png)` therefore becomes a real `<img src=\"https://host/x.png\">`, and the browser fetches it from that host as soon as the message renders, with no click needed. Model output is untrusted, so a reply can make the browser contact any server, and the URL can carry text from the chat. In production the CSP in `vite.config.ts:19` (`img-src 'self' data: blob:`) blocks the load. `pnpm dev` sends no CSP (`vite.config.ts:33,87`, only the isolation headers), so the request goes out, which is what the reporter saw. Even in production the privacy claim should not depend on the CSP alone, because the CSP is described as a backstop (`vite.config.ts:9-12`). The fake engine repeats the user message back (\"Fake answer to: <text>\", `src/lib/engine/fake-worker.ts:46`), so the bug can be reproduced in Playwright without a model.",
+      "files": [
+        {
+          "path": "src/components/message.tsx",
+          "why": "Override the `img` renderer so model Markdown never makes an <img> that loads a remote URL. Show the alt text, or a plain link to the URL that the user has to click, which is the same as how links already work.",
+          "at": [
+            "12-19"
+          ],
+          "edits": [
+            {
+              "old": "/** Model output is untrusted: links open in a new tab. */\nconst markdownComponents = {\n  a: ({ children, href }: { children?: React.ReactNode; href?: string }) => (\n    <a href={href} rel=\"noopener noreferrer\">\n      {children}\n    </a>\n  ),\n};",
+              "new": "/**\n * Model output is untrusted: links open in a new tab, and images are never loaded (an <img> would fetch\n * from any host the model names, without a click). They show as a link the user can choose to open.\n */\nconst markdownComponents = {\n  a: ({ children, href }: { children?: React.ReactNode; href?: string }) => (\n    <a href={href} rel=\"noopener noreferrer\">\n      {children}\n    </a>\n  ),\n  img: ({ alt, src }: { alt?: string; src?: string }) => (\n    <a href={typeof src === \"string\" ? src : undefined} rel=\"noopener noreferrer\">\n      {alt || tr(\"Image\", \"Bild\")}\n    </a>\n  ),\n};",
+              "line": 12
+            }
+          ]
+        }
+      ],
+      "tests": [
+        {
+          "path": "e2e/remote-image.spec.ts",
+          "why": "New Playwright test on the fake engine. Start a model and send `![pic](https://example.com/pixel.png)`. The fake engine repeats it back as Markdown. Use `context.route('https://example.com/**', r => r.abort())` so no real traffic leaves the machine, while still recording requests with `context.on('request')`. Wait for the text \"Fake answer to:\". Then check that no request went to example.com, that the set of request hosts is only `localhost:5199`, and that the answer contains no `img` element. On the current code this fails because an <img> is rendered and requested.",
+          "at": [],
+          "edits": []
+        }
+      ],
+      "criteria": [],
+      "plan": [
+        "Add the e2e test e2e/remote-image.spec.ts and check that it fails now, because an <img> is rendered and example.com is requested.",
+        "Add an `img` override to `markdownComponents` in src/components/message.tsx that renders a link (alt text, or tr(\"Image\", \"Bild\")) and never an <img>.",
+        "Update the comment and, if wanted, add a line to docs/for-it-and-compliance.md or docs/REVIEW-GUIDE.md saying model Markdown images are not loaded.",
+        "Run pnpm check-types && pnpm lint && pnpm test and the Playwright suite."
+      ],
+      "assumptions": [
+        "Showing the image as a clickable link is fine, the same way Markdown links are handled now. Following it is a navigation the user chooses, which is already documented as outside what the CSP covers.",
+        "data: and blob: images in model output do not need to be shown inline. Turning every image into a link is simpler and safe.",
+        "No CSP change is needed: production already blocks remote images. The fix is in the renderer so that dev and any deploy without the header behave the same."
+      ],
+      "open_questions": [],
+      "size": "S"
+    },
+    "unknown_paths": [
+      "e2e/remote-image.spec.ts"
+    ],
+    "run": {
+      "output": {
+        "problem": "Assistant replies are rendered with react-markdown in `src/components/message.tsx:55`, and the only override is for `a` (lines 13-19). Image syntax `![alt](https://host/x.png)` therefore becomes a real `<img src=\"https://host/x.png\">`, and the browser fetches it from that host as soon as the message renders, with no click needed. Model output is untrusted, so a reply can make the browser contact any server, and the URL can carry text from the chat. In production the CSP in `vite.config.ts:19` (`img-src 'self' data: blob:`) blocks the load. `pnpm dev` sends no CSP (`vite.config.ts:33,87`, only the isolation headers), so the request goes out, which is what the reporter saw. Even in production the privacy claim should not depend on the CSP alone, because the CSP is described as a backstop (`vite.config.ts:9-12`). The fake engine repeats the user message back (\"Fake answer to: <text>\", `src/lib/engine/fake-worker.ts:46`), so the bug can be reproduced in Playwright without a model.",
+        "files": [
+          {
+            "path": "src/components/message.tsx",
+            "why": "Override the `img` renderer so model Markdown never makes an <img> that loads a remote URL. Show the alt text, or a plain link to the URL that the user has to click, which is the same as how links already work.",
+            "at": [
+              "12-19"
+            ],
+            "edits": [
+              {
+                "old": "/** Model output is untrusted: links open in a new tab. */\nconst markdownComponents = {\n  a: ({ children, href }: { children?: React.ReactNode; href?: string }) => (\n    <a href={href} rel=\"noopener noreferrer\">\n      {children}\n    </a>\n  ),\n};",
+                "new": "/**\n * Model output is untrusted: links open in a new tab, and images are never loaded (an <img> would fetch\n * from any host the model names, without a click). They show as a link the user can choose to open.\n */\nconst markdownComponents = {\n  a: ({ children, href }: { children?: React.ReactNode; href?: string }) => (\n    <a href={href} rel=\"noopener noreferrer\">\n      {children}\n    </a>\n  ),\n  img: ({ alt, src }: { alt?: string; src?: string }) => (\n    <a href={typeof src === \"string\" ? src : undefined} rel=\"noopener noreferrer\">\n      {alt || tr(\"Image\", \"Bild\")}\n    </a>\n  ),\n};"
+              }
+            ]
+          }
+        ],
+        "tests": [
+          {
+            "path": "e2e/remote-image.spec.ts",
+            "why": "New Playwright test on the fake engine. Start a model and send `![pic](https://example.com/pixel.png)`. The fake engine repeats it back as Markdown. Use `context.route('https://example.com/**', r => r.abort())` so no real traffic leaves the machine, while still recording requests with `context.on('request')`. Wait for the text \"Fake answer to:\". Then check that no request went to example.com, that the set of request hosts is only `localhost:5199`, and that the answer contains no `img` element. On the current code this fails because an <img> is rendered and requested.",
+            "at": []
+          }
+        ],
+        "plan": [
+          "Add the e2e test e2e/remote-image.spec.ts and check that it fails now, because an <img> is rendered and example.com is requested.",
+          "Add an `img` override to `markdownComponents` in src/components/message.tsx that renders a link (alt text, or tr(\"Image\", \"Bild\")) and never an <img>.",
+          "Update the comment and, if wanted, add a line to docs/for-it-and-compliance.md or docs/REVIEW-GUIDE.md saying model Markdown images are not loaded.",
+          "Run pnpm check-types && pnpm lint && pnpm test and the Playwright suite."
+        ],
+        "assumptions": [
+          "Showing the image as a clickable link is fine, the same way Markdown links are handled now. Following it is a navigation the user chooses, which is already documented as outside what the CSP covers.",
+          "data: and blob: images in model output do not need to be shown inline. Turning every image into a link is simpler and safe.",
+          "No CSP change is needed: production already blocks remote images. The fix is in the renderer so that dev and any deploy without the header behave the same."
+        ],
+        "open_questions": [],
+        "size": "S",
+        "criteria": [
+          "When an assistant message contains Markdown image syntax with a remote URL, the browser makes no request to that host, even under `pnpm dev` with no CSP.",
+          "The rendered answer contains no <img> element for model Markdown images.",
+          "The image's alt text (or \"Image\"/\"Bild\") still shows, as a link to the URL."
+        ]
+      },
+      "model": "claude-opus-5-5",
+      "cost_usd": 0.134241,
+      "turns": 9,
+      "latency_ms": 39847,
+      "tokens": {
+        "input": 10,
+        "output": 2848,
+        "cache_read": 48245,
+        "cache_write": 8449
+      }
+    }
+  }
+}

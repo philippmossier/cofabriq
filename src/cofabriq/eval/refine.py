@@ -8,8 +8,13 @@ hit@k = at least one truth file in the top k, recall@k = share of truth
 files in the top k, precision = share of all listed files that are truth.
 Rates are reported per bug size too: the planted bugs are mostly small,
 and one overall rate would hide that.
+
+Lines (`score_lines`, bugs with a reference fix): does the spec's `at`
+name a line the fix changes, does a sketch it gives (kept: its old lines
+are in the file) cover one, and does it plan a test at all.
 """
 
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Protocol
@@ -59,6 +64,65 @@ def score_bug(bug: Answer, spec: Spec) -> BugScore:
         precision=len(truth & set(listed)) / len(listed) if listed else 0.0,
         listed=len(listed),
         size_guess=spec.size,
+    )
+
+
+def fixed_lines(patch: str) -> dict[str, set[int]]:
+    """Per file, the lines of the original a unified diff changes: the lines
+    it removes, and both neighbours of a line it only inserts (one added
+    right after removed ones replaces them: those count already)."""
+    out: dict[str, set[int]] = {}
+    path, n, replacing = "", 0, False
+    for line in patch.splitlines():
+        if line.startswith("--- a/"):
+            path = line.removeprefix("--- a/")
+        elif m := re.match(r"^@@ -(\d+)", line):
+            n, replacing = int(m[1]), False
+        elif line.startswith("-") and not line.startswith("---"):
+            out.setdefault(path, set()).add(n)
+            n, replacing = n + 1, True
+        elif line.startswith("+") and not line.startswith("+++"):
+            if not replacing:
+                out.setdefault(path, set()).update({n - 1, n})
+        elif line.startswith(" "):
+            n, replacing = n + 1, False
+    return out
+
+
+@dataclass(frozen=True)
+class LineScore:
+    """Where a spec says the change goes, against the reference fix: per bug,
+    over the files the fix changes."""
+
+    key: str
+    at: bool | None  # `at` names a line the fix changes; None: no `at` given
+    edits: int  # sketches kept (checked against the file)
+    edit_hit: bool | None  # a kept sketch covers a line the fix changes
+    tests: bool  # the spec plans a test at all
+
+
+def score_lines(key: str, spec: Spec, fixed: dict[str, set[int]]) -> LineScore:
+    def covered(path: str, ranges: list[tuple[int, int]]) -> bool:
+        return any(fixed[path] & set(range(a, b + 1)) for a, b in ranges)
+
+    files = [f for f in spec.files if f.path in fixed]
+    with_at = [f for f in files if f.at]
+    sketched = [f for f in files if f.edits]
+
+    def at_ranges(at: list[str]) -> list[tuple[int, int]]:
+        return [(int(a.split("-")[0]), int(a.split("-")[-1])) for a in at]
+
+    return LineScore(
+        key=key,
+        at=any(covered(f.path, at_ranges(f.at)) for f in with_at) if with_at else None,
+        edits=sum(len(f.edits) for f in spec.files),
+        edit_hit=any(
+            covered(f.path, [(e.line, e.line + e.old.count("\n")) for e in f.edits])
+            for f in sketched
+        )
+        if sketched
+        else None,
+        tests=bool(spec.tests),
     )
 
 

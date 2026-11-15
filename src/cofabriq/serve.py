@@ -41,7 +41,7 @@ from cofabriq.loop.gate import Gated
 from cofabriq.loop.graph import FlowRunner, FlowStatus, GateAnswer, Refused
 from cofabriq.loop.intake import not_ready
 from cofabriq.loop.record import RunRecord
-from cofabriq.loop.refine import Refined, Route
+from cofabriq.loop.refine import FileChange, Refined, Route
 from cofabriq.loop.run import Attempt, CheckResult, LoopResult, load_rules
 from cofabriq.serve_guard import guard
 from cofabriq.targets import clone_dir
@@ -73,10 +73,28 @@ class SpecSummary(BaseModel):
     made_at: datetime | None
 
 
+class EditNote(BaseModel):
+    """A place of the change, sketched by the agent; not run."""
+
+    old: str = Field(description="The lines as they are, found in the file.")
+    new: str = Field(description="What the agent proposes they become.")
+    line: int = Field(description="Where `old` starts in the file.")
+
+
 class FileNote(BaseModel):
     path: str
     why: str
     at: list[str] = Field(description='The lines it changes: "74", "78-83".')
+    edits: list[EditNote] = Field(description="Sketches checked against the file.")
+
+
+def _note(f: FileChange) -> FileNote:
+    return FileNote(
+        path=f.path,
+        why=f.why,
+        at=f.at,
+        edits=[EditNote(old=e.old, new=e.new, line=e.line) for e in f.edits],
+    )
 
 
 class SpecView(BaseModel):
@@ -200,6 +218,7 @@ class FlowView(FlowSummary):
     assumptions: list[str]
     open_questions: list[str]
     diff: str  # the frozen test, at the test gate
+    red: str  # its run on the unchanged code: how it fails now
     commit: str  # the spec's: its paths and code lines are at it; "" before refine
     tests: list[FileNote]
     unknown_paths: list[str]  # not in the repo at the commit: new files
@@ -575,8 +594,8 @@ def build(
             route=found.route,
             size=s.size,
             problem=s.problem,
-            files=[FileNote(path=f.path, why=f.why, at=f.at) for f in s.files],
-            tests=[FileNote(path=f.path, why=f.why, at=f.at) for f in s.tests],
+            files=[_note(f) for f in s.files],
+            tests=[_note(f) for f in s.tests],
             criteria=s.criteria,
             plan=s.plan,
             assumptions=s.assumptions,
@@ -778,17 +797,14 @@ def _flow_routes(app: FastAPI, flows: FlowRunner) -> None:
             size=spec.size if spec else None,
             problem=spec.problem if spec else "",
             criteria=spec.criteria if spec else [],
-            files=[FileNote(path=x.path, why=x.why, at=x.at) for x in spec.files]
-            if spec
-            else [],
+            files=[_note(x) for x in spec.files] if spec else [],
             plan=spec.plan if spec else [],
             assumptions=spec.assumptions if spec else [],
             open_questions=spec.open_questions if spec else [],
             diff=f.diff,
+            red=f.red,
             commit=f.state.refined.commit if f.state.refined else "",
-            tests=[FileNote(path=x.path, why=x.why, at=x.at) for x in spec.tests]
-            if spec
-            else [],
+            tests=[_note(x) for x in spec.tests] if spec else [],
             unknown_paths=f.state.refined.unknown_paths if f.state.refined else [],
             trace=tracing.run_id(f.state.trace),
             record=f.state.record,

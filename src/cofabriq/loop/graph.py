@@ -6,8 +6,11 @@ in Postgres, so a run can wait for the dev for hours and resume in
 another process.
 
     refine -> plan_gate -> setup -> write_test -> test_gate -> build -> review
-                                                  (feature only)
       -> record -> finish
+
+The test gate shows the test and how it fails on the unchanged code, for a
+bug too: a test can go red for a reason other than the reported one (a
+check the issue never asked for), and only a person can tell.
 
     not ready, plan rejected                 -> finish
     any other end once setup ran (setup
@@ -74,6 +77,7 @@ from cofabriq.loop.run import (
     pack,
     start_stage,
     test_stage,
+    testing_note,
 )
 from cofabriq.loop.sandbox import Sandbox
 from cofabriq.loop.worktree import diff, remove_worktree
@@ -209,7 +213,12 @@ def build_graph(deps: Deps) -> StateGraph[FlowState]:
         try:
             if refined is None:
                 refined = refine_mod.refine(
-                    s.issue, deps.clone, deps.reader, s.route, s.earlier
+                    s.issue,
+                    deps.clone,
+                    deps.reader,
+                    s.route,
+                    s.earlier,
+                    testing=testing_note(deps.rules),
                 )
         except (AgentError, refine_mod.NoCriteria) as exc:  # back to the dev
             return {"stage": "failed", "note": f"not ready: {exc}"}
@@ -273,7 +282,11 @@ def build_graph(deps: Deps) -> StateGraph[FlowState]:
     def test_gate(s: FlowState) -> dict[str, object]:
         assert s.progress is not None
         test = diff(deps.worktree(s.issue), [])
-        a = GateAnswer.model_validate(interrupt({"gate": "test", "diff": test}))
+        # how it fails now: the dev judges whether that is the reported bug
+        red = s.progress.red.output if s.progress.red else ""
+        a = GateAnswer.model_validate(
+            interrupt({"gate": "test", "diff": test, "red": red})
+        )
         tracing.answered(a.approve)
         if a.approve:
             return {}
@@ -375,7 +388,7 @@ def build_graph(deps: Deps) -> StateGraph[FlowState]:
         return "record" if s.result is not None else "finish"
 
     def after_test(s: FlowState) -> str:
-        return s.route if go_on(s) == "next" else go_on(s)
+        return "test_gate" if go_on(s) == "next" else go_on(s)
 
     def after_build(s: FlowState) -> str:
         return "review" if s.result and s.result.status == "green" else "record"
@@ -437,7 +450,7 @@ def build_graph(deps: Deps) -> StateGraph[FlowState]:
     g.add_conditional_edges("plan_gate", go_on, {"next": "setup", **ends})
     g.add_conditional_edges("setup", go_on, {"next": "write_test", **ends})
     g.add_conditional_edges(
-        "write_test", after_test, {"feature": "test_gate", "bug": "build", **ends}
+        "write_test", after_test, {"test_gate": "test_gate", **ends}
     )
     g.add_conditional_edges("test_gate", go_on, {"next": "build", **ends})
     g.add_conditional_edges("build", after_build, {"review": "review", **ends})
@@ -512,6 +525,7 @@ class FlowStatus(BaseModel):
     state: FlowState
     waiting: Literal["plan", "test"] | None  # the gate it waits at
     diff: str = ""  # the frozen test, at the test gate
+    red: str = ""  # its run on the unchanged code: how it fails now
     running: bool = False  # an answer is being worked off right now
     error: str = ""  # the last answer's run failed
     # steps left but no gate and nothing running: the process stopped mid-run
@@ -520,7 +534,7 @@ class FlowStatus(BaseModel):
 
 def read_status(graph: CompiledStateGraph[FlowState], thread: str) -> FlowStatus | None:
     """Where a flow stands, from its newest checkpoint; None if it has none.
-    A paused flow's interrupt payload is `{"gate": .., "spec" | "diff": ..}`."""
+    A paused flow's interrupt payload is `{"gate": .., "spec" | "diff", "red": ..}`."""
     snap = graph.get_state(thread_config(thread))
     if not snap.values:
         return None
@@ -531,6 +545,7 @@ def read_status(graph: CompiledStateGraph[FlowState], thread: str) -> FlowStatus
         state=FlowState.model_validate(snap.values),
         waiting=gate["gate"] if gate else None,
         diff=gate.get("diff", "") if gate else "",
+        red=gate.get("red", "") if gate else "",
         cut_off=bool(snap.next) and gate is None,
     )
 

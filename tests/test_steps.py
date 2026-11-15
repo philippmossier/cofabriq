@@ -20,7 +20,8 @@ DOCS = runsteps.load_docs()
 
 
 def flow_run(tmp_path: Path) -> tuple[str, FlowState]:
-    """A bug flow on fakes, started and approved in two "processes"."""
+    """A bug flow on fakes, started, its plan and its test approved: three
+    "processes"."""
     editor = EditingAgent(write("src/a.test.sh", REPRO), write("src/a.ts", "fixed\n"))
     d = deps(tmp_path, editor, [])
     saver = InMemorySaver(serde=JsonPlusSerializer(allowed_msgpack_modules=ALLOWED))
@@ -29,8 +30,9 @@ def flow_run(tmp_path: Path) -> tuple[str, FlowState]:
         FlowState(issue=issue(3), route="bug"),
         "t",
     )
-    graph = build_graph(d).compile(checkpointer=saver)
-    invoke(graph, GateAnswer(approve=True), "t")
+    for _ in ("plan", "test"):
+        graph = build_graph(d).compile(checkpointer=saver)
+        invoke(graph, GateAnswer(approve=True), "t")
     state = FlowState.model_validate(
         graph.get_state({"configurable": {"thread_id": "t"}}).values
     )
@@ -41,7 +43,7 @@ def names(step: runsteps.RunStep) -> list[str]:
     return [c.name for c in step.children]
 
 
-def test_a_flow_and_its_resume_are_one_run_of_two_roots(
+def test_a_flow_and_its_resumes_are_one_run_of_three_roots(
     run_store: tracing.RunStore, tmp_path: Path
 ) -> None:
     run, state = flow_run(tmp_path)
@@ -49,21 +51,23 @@ def test_a_flow_and_its_resume_are_one_run_of_two_roots(
     tree = runsteps.load_steps(run_store.directory, run, DOCS)
 
     assert tree is not None
-    first, resumed = tree
-    assert (first.detail, resumed.detail) == ("started", "resumed with your answer")
-    assert names(first) == ["node refine"]  # the paused gate: answered below
-    assert resumed.children[0].detail == "you approved"
-    assert names(resumed) == [
-        "node plan_gate",
-        "node setup",
-        "node write_test",
+    first, planned, tested = tree
+    assert (first.detail, tested.detail) == ("started", "resumed with your answer")
+    assert names(first) == ["node refine"]  # each paused gate: answered below
+    assert names(planned) == ["node plan_gate", "node setup", "node write_test"]
+    assert (planned.children[0].detail, tested.children[0].detail) == (
+        "you approved",
+        "you approved",
+    )
+    assert names(tested) == [
+        "node test_gate",
         "node build",
         "node review",
         "node record",
         "node finish",
     ]
-    assert all(s.status == "ok" for s in resumed.children)
-    build_step = resumed.children[3]
+    assert all(s.status == "ok" for s in [*planned.children, *tested.children])
+    build_step = tested.children[1]
     assert build_step.title == DOCS["build"].title
     assert build_step.code is not None
     assert build_step.code.function == "cofabriq.loop.run.build_stage"
@@ -174,7 +178,7 @@ def test_the_api_serves_steps_payloads_and_docs(
     payload = api.get(f"/api/traces/{run}/payloads/{refine['id']}")
     docs = api.get("/api/step-docs").json()
 
-    assert [s["name"] for s in steps] == [tracing.FLOW, tracing.FLOW]
+    assert [s["name"] for s in steps] == [tracing.FLOW] * 3  # start, plan, test
     assert set(tree["totals"]) == {"seconds", "agents", "turns", "cost_usd"}
     assert payload.status_code == 200 and "update" in payload.json()
     assert docs["review"]["code"] == "cofabriq.loop.gate.review_gate"

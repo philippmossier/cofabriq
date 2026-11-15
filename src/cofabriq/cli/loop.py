@@ -73,7 +73,8 @@ def refine(number: int, repo: str | None = None, json: bool = False) -> None:
         raise typer.Exit(code=1)
     with steps.step("agent", f"reading the code ({agent.model})") as done:
         try:
-            refined = refine_mod.refine(issue, clone, agent)
+            testing = run_mod.testing_for(settings.targets_dir, target)
+            refined = refine_mod.refine(issue, clone, agent, testing=testing)
         except AgentError as exc:
             typer.echo(str(exc), err=True)
             raise typer.Exit(code=1) from exc
@@ -120,7 +121,7 @@ def _gate_answer(question: str) -> graph_mod.GateAnswer:
 def _terminal_gate(at: graph_mod.FlowStatus, yes: bool) -> graph_mod.GateAnswer:
     """`run`'s answer at the gate its graph waits at: `--yes` approves
     (but leaves no open question unanswered), else the dev in the terminal.
-    The test gate shows the frozen acceptance test, before any code."""
+    The test gate shows the test and how it fails now, before any code."""
     assert at.state.refined is not None
     asked = len(at.state.refined.spec.open_questions)
     if at.waiting == "plan" and yes and asked:  # nobody at the gate to answer
@@ -129,9 +130,11 @@ def _terminal_gate(at: graph_mod.FlowStatus, yes: bool) -> graph_mod.GateAnswer:
     if yes:
         return graph_mod.GateAnswer(approve=True)
     if at.waiting == "test":
-        typer.echo("acceptance test (frozen once approved):")
+        typer.echo("the test (frozen once approved):")
         typer.echo(at.diff)
-        return _gate_answer("Approve the test and let the agent build against it?")
+        typer.echo("how it fails on the unchanged code (the end of the output):")
+        typer.echo("\n".join(at.red.splitlines()[-40:]))
+        return _gate_answer("Does it fail for the reported reason? Build against it?")
     if asked:
         return _gate_answer(
             f"Approve the plan as the answer to its {asked} open question(s)?"

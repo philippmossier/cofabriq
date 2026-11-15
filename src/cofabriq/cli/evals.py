@@ -496,9 +496,11 @@ def eval_refine(
     commit = refine_mod.update_clone(target, clone)
     typer.echo(f"{target} at {commit[:7]}: {len(planted)} planted bugs, {agent.model}")
 
+    testing = run_mod.testing_for(settings.targets_dir, target)
+
     def run(key: str) -> refine_mod.Refined | AgentError:
         try:
-            return refine_mod.refine(matched[key], clone, agent)
+            return refine_mod.refine(matched[key], clone, agent, testing=testing)
         except AgentError as exc:
             return exc
 
@@ -527,9 +529,34 @@ def eval_refine(
             f"${r.run.cost_usd:.3f} {r.run.turns:>2}t  {listed}"
         )
     _refine_summary(scores, [r.run for r in done.values()], len(results) - len(done))
+    lines = [
+        refine_eval.score_lines(
+            b.key,
+            done[b.key].spec,
+            refine_eval.fixed_lines(fix_path(bugs, b).read_text("utf-8")),
+        )
+        for b in planted
+        if b.key in done
+    ]
+    _lines_summary(lines)
     adapter = TypeAdapter(dict[str, refine_mod.Refined])
     out = write_stamped(settings.refine_dir, "eval", adapter, done)
     typer.echo(f"  -> {out}")
+
+
+def _lines_summary(lines: list[refine_eval.LineScore]) -> None:
+    """Where the specs say the change goes, against the reference fixes."""
+
+    def rate(values: list[bool | None]) -> str:
+        given = [v for v in values if v is not None]
+        return f"{sum(given)}/{len(given)}" if given else "-"
+
+    typer.echo(
+        f"  lines   at on the fix's lines {rate([s.at for s in lines])}  "
+        f"sketches kept {sum(s.edits for s in lines)}, on the fix's lines "
+        f"{rate([s.edit_hit for s in lines])}  "
+        f"a test planned {sum(s.tests for s in lines)}/{len(lines)}"
+    )
 
 
 def _refine_summary(
@@ -575,12 +602,13 @@ def _eval_refine_features(
     clone = clone_dir(settings.clones_dir, target)
     commit = refine_mod.update_clone(target, clone)
     typer.echo(f"{target} at {commit[:7]}: {len(feats)} features, {agent.model}")
+    testing = run_mod.testing_for(settings.targets_dir, target)
 
     def run(f: features_eval.Feature) -> refine_mod.Refined | Exception:
         worktree = settings.work_dir / f"refine-{f.key}"
         try:
             return features_eval.refine_feature(
-                f, path, target, clone, commit, worktree, agent
+                f, path, target, clone, commit, worktree, agent, testing
             )
         except (AgentError, refine_mod.NoCriteria) as exc:
             return exc

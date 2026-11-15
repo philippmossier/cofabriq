@@ -70,7 +70,7 @@ def test_a_red_build_is_recorded_without_a_review(tmp_path: Path) -> None:
     d = deps(
         tmp_path, EditingAgent(write("src/a.test.sh", REPRO), still, still, still), []
     )
-    state = run_graph(d, FlowState(issue=issue(3), route="bug"), YES)
+    state = run_graph(d, FlowState(issue=issue(3), route="bug"), YES, YES)
     assert state.outcome == "escalated" and state.gated is None
     # no gate, no draft; its steps' trace id
     assert set(stored(d, state)) == {"result", "evidence", "trace"}
@@ -90,7 +90,7 @@ def test_a_given_spec_skips_refine_and_a_planted_repro_goes_to_the_agent(
         refined=given,
         planted=str(tmp_path / "bug.test.sh"),
     )
-    state = run_graph(d, state, YES)
+    state = run_graph(d, state, YES, YES)  # plan, then the (planted) test
     assert reader.refiner.calls == []  # the spec was given
     assert editor.roles == ["implement"]  # no repro to write: it was handed in
     assert state.result is not None and state.result.planted
@@ -109,7 +109,7 @@ def test_run_hooks_judge_before_finish_and_keep_the_worktree(tmp_path: Path) -> 
     editor = EditingAgent(write("src/a.test.sh", REPRO), write("src/a.ts", "fixed\n"))
     d = deps(tmp_path, editor, [])
     d = replace(d, judge=judge, keep=True, prefix="")
-    state = run_graph(d, FlowState(issue=issue(3), route="bug"), YES)
+    state = run_graph(d, FlowState(issue=issue(3), route="bug"), YES, YES)
     assert seen == [("green", "fixed\n")]  # on the loop's tree, before finish
     record = stored(d, state)
     assert record["judge"]["ok"] is False and record["valid"] is None  # type: ignore[index]
@@ -127,7 +127,7 @@ def test_a_halt_during_review_is_recorded_without_a_gate(tmp_path: Path) -> None
 
     editor = EditingAgent(write("src/a.test.sh", REPRO), write("src/a.ts", "fixed\n"))
     d = replace(deps(tmp_path, editor, []), reader=Halting(spec("src/a.ts")))
-    state = run_graph(d, FlowState(issue=issue(3), route="bug"), YES)
+    state = run_graph(d, FlowState(issue=issue(3), route="bug"), YES, YES)
     assert state.note == "halted before the review was done: run budget spent"
     assert state.outcome == "green" and state.gated is None
     assert "gate" not in stored(d, state) and "draft" not in stored(d, state)
@@ -138,7 +138,7 @@ def test_a_halt_in_the_loop_ends_halted_and_is_recorded(tmp_path: Path) -> None:
         raise Halted("stopped")
 
     d = deps(tmp_path, EditingAgent(write("src/a.test.sh", REPRO), halt), [])
-    state = run_graph(d, FlowState(issue=issue(3), route="bug"), YES)
+    state = run_graph(d, FlowState(issue=issue(3), route="bug"), YES, YES)
     assert state.outcome == "halted"
     assert stored(d, state)["result"]["status"] == "halted"  # type: ignore[index]
 

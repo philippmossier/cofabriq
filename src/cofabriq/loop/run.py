@@ -375,6 +375,29 @@ def repro_command(rules: LoopRules, paths: list[str]) -> str:
     )
 
 
+def testing_note(rules: LoopRules) -> str:
+    """How the failing test gets written, for refine: a spec that plans a test
+    the test writer can't write (a helper only the fix adds, a file outside
+    its globs) goes back at the gate. The same rules the test writer gets."""
+    globs = ", ".join(rules.tests) if rules.tests else "the repository's test files"
+    note = (
+        "How the fix is proven: after the plan is approved and before any code, "
+        "an agent writes a test that must fail on the code as it is now, for the "
+        f"reported reason. It may only write files matching {globs} (anything "
+        "else is reverted), and the test can only use code that exists now: a "
+        "helper, hook or fixture the fix would add can't be part of it. Plan the "
+        "tests under these rules."
+    )
+    kinds = suites_note(rules)
+    return f"{note}\n\n{kinds}" if kinds else note
+
+
+def testing_for(targets_dir: Path, repo: str) -> str:
+    """`testing_note` for a target with `[loop]`; "" for one without."""
+    rules = load_rules(targets_dir, repo)
+    return testing_note(rules) if rules is not None else ""
+
+
 def suites_note(rules: LoopRules) -> str:
     """The test kinds, for a test writer's prompt; empty without suites."""
     if not rules.suites:

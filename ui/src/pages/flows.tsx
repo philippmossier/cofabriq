@@ -5,8 +5,9 @@ import { useState } from "react";
 import { useFlow, useFlowAnswer, useFlowList } from "@/api/generated";
 import { FlowResult } from "@/components/result-card";
 import { StartFlow } from "@/components/start-flow";
+import { failureLines } from "@/lib/failure";
 import { againRoute, refreshFlow } from "@/lib/flows";
-import { Loading, Missing, Section, Status } from "@/components/bits";
+import { Loading, Missing, Pre, Section, Status } from "@/components/bits";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -165,7 +166,7 @@ export function FlowPage() {
               : f.waiting === "plan"
                 ? "Approve the plan? No code is written before you do."
                 : f.waiting === "test"
-                  ? "Approve the test? It is frozen from here: the build can't change it."
+                  ? "Approve the test? Check that it fails for the reported reason: from here it is frozen."
                   : f.outcome.startsWith("cut off")
                     ? `Stopped mid-run (${f.outcome}): Start again below.`
                     : `Done: ${f.outcome}`}
@@ -237,9 +238,22 @@ export function FlowPage() {
       </Card>
 
       {f.waiting === "test" && (
-        <Section title="The test (frozen once approved)">
-          <DiffView diff={f.diff} />
-        </Section>
+        <>
+          <Section title="How it fails on the unchanged code">
+            <p className="text-sm text-muted-foreground">
+              A test can fail for a reason other than the reported one (a check the issue never asked for).
+              The build makes it pass, so this is where a wrong reason is still cheap to catch.
+            </p>
+            <Pre text={failureLines(f.red).join("\n") || "(no failing line found: see the full output)"} />
+            <details>
+              <summary className="text-xs text-muted-foreground">the full output</summary>
+              <Pre text={f.red} />
+            </details>
+          </Section>
+          <Section title="The test (frozen once approved)">
+            <DiffView diff={f.diff} />
+          </Section>
+        </>
       )}
 
       {/* at a gate the spec is what you review: above the steps; after it, below */}

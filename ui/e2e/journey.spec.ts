@@ -52,7 +52,8 @@ async function settled(page: Page, minutes: number): Promise<string> {
 /** Approve the gate on screen, then wait until the page has left it: right after the
  * click the card still shows the question, which `settled` would take for the answer. */
 async function approve(page: Page, gate: "plan" | "test", minutes: number): Promise<string> {
-  await page.getByRole("button", { name: "Approve" }).click();
+  // exact: a step row reads "Plan gate: your approval: you approved"
+  await page.getByRole("button", { name: "Approve", exact: true }).click();
   await expect(title(page)).not.toHaveText(new RegExp(`^Approve the ${gate}\\?`), { timeout: 60_000 });
   return settled(page, minutes);
 }
@@ -64,11 +65,18 @@ test(`#${ISSUE} (${ROUTE}): Start, the gates, the result`, async ({ page }) => {
   await page.goto(`/#token=${token}`);
   await expect(page.getByText("gate: you can approve")).toBeVisible();
 
-  // Issues: Start, or Start again when the issue has a flow already
+  // Issues: Start, or Start again when the issue's flow has ended; a flow still at a
+  // gate (an earlier journey stopped there) is opened and goes on from that gate
   await page.goto("/issues");
   const row = page.getByRole("row", { name: new RegExp(`#${ISSUE} `) });
-  await row.locator("select").last().selectOption(ROUTE);
-  await row.getByRole("button", { name: /^Start( again)?$/ }).click();
+  const start = row.getByRole("button", { name: /^Start( again)?$/ });
+  await expect(row.getByRole("link", { name: /Open/ }).or(start).first()).toBeVisible();
+  if (await start.count()) {
+    await row.locator("select").last().selectOption(ROUTE);
+    await start.click();
+  } else {
+    await row.getByRole("link", { name: /Open/ }).click();
+  }
   await expect(page).toHaveURL(new RegExp(`/flows/${OWNER}/${NAME}/${ISSUE}$`));
 
   let state = await settled(page, 5);
@@ -84,6 +92,8 @@ test(`#${ISSUE} (${ROUTE}): Start, the gates, the result`, async ({ page }) => {
   if (state.startsWith("Approve the test")) {
     await save(page, "test-gate");
     await expect(page.getByRole("heading", { name: "The test (frozen once approved)" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "How it fails on the unchanged code" })).toBeVisible();
+    await api(page, `/api/flows/${OWNER}/${NAME}/${ISSUE}`, "flow-at-test-gate.json");
     state = await approve(page, "test", 12);
   }
   // the server stops with the test: the run must be over, not cut off
