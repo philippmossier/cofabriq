@@ -120,15 +120,20 @@ function SpecText({ s, text }: { s: SpecLike; text: string }) {
     out.push(part.slice(last));
     return out;
   };
+  // only `a span` (single backticks, no line break inside) is code; a fence
+  // (```) or a stray backtick stays as written
+  const parts = text.split(/(?<!`)`([^`\n]+)`(?!`)/);
   return (
     <>
-      {text.split("`").map((part, i) =>
+      {parts.map((part, i) =>
         i % 2 ? (
           <code key={i} className="rounded bg-muted px-1 font-mono text-xs">
             {linked(part, String(i))}
           </code>
         ) : (
-          <span key={i}>{linked(part, String(i))}</span>
+          <span key={i} className="whitespace-pre-line">
+            {linked(part, String(i))}
+          </span>
         ),
       )}
     </>
