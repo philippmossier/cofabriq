@@ -305,12 +305,74 @@ function Payload({ run, span }: { run: string; span: string }) {
   if (!q.data) return <p className="text-xs text-muted-foreground">Nothing kept for this step.</p>;
   return (
     <div className="space-y-2">
-      {Object.entries(q.data).map(([key, value]) => (
-        <div key={key} className="space-y-1">
-          <div className="text-xs font-medium text-muted-foreground">{key}</div>
-          <Pre text={typeof value === "string" ? value : JSON.stringify(value, null, 2)} />
-        </div>
-      ))}
+      {Object.entries(q.data).map(([key, value]) =>
+        typeof value === "string" ? (
+          <div key={key} className="space-y-1">
+            <div className="text-xs font-medium text-muted-foreground">{key}</div>
+            <Pre text={value} />
+          </div>
+        ) : (
+          <div key={key} className="font-mono text-xs">
+            <JsonTree name={key} value={value as Json} open />
+          </div>
+        ),
+      )}
     </div>
+  );
+}
+
+// the generated `JsonValue` is `{}`: any JSON, untyped
+type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
+
+/** A node's state update or an agent's answer: nested objects closed, with
+ * a one-line preview, so a step's own change isn't buried under the
+ * results it carries along. Strings stay text. */
+function JsonTree({ name, value, open = false }: { name: string; value: Json; open?: boolean }) {
+  const label = <span className="text-muted-foreground">{name}: </span>;
+  if (value === null || typeof value !== "object") {
+    if (typeof value === "string" && (value.includes("\n") || value.length > 100)) {
+      return (
+        <details>
+          <summary className="cursor-pointer truncate">
+            {label}"{value.slice(0, 80)}…"
+          </summary>
+          <Pre text={value} />
+        </details>
+      );
+    }
+    return (
+      <div className="break-words">
+        {label}
+        {JSON.stringify(value)}
+      </div>
+    );
+  }
+  const entries: [string, Json][] = Array.isArray(value)
+    ? value.map((v, i) => [String(i), v])
+    : Object.entries(value);
+  if (entries.length === 0) {
+    return (
+      <div>
+        {label}
+        {Array.isArray(value) ? "[]" : "{}"}
+      </div>
+    );
+  }
+  const keys = entries.map(([k]) => k);
+  const preview = Array.isArray(value)
+    ? `[${value.length} items]`
+    : `{${keys.slice(0, 4).join(", ")}${keys.length > 4 ? ", …" : ""}}`;
+  return (
+    <details open={open}>
+      <summary className="cursor-pointer">
+        {label}
+        <span className="text-muted-foreground/70">{preview}</span>
+      </summary>
+      <div className="ml-1.5 border-l pl-3">
+        {entries.map(([k, v]) => (
+          <JsonTree key={k} name={k} value={v} />
+        ))}
+      </div>
+    </details>
   );
 }

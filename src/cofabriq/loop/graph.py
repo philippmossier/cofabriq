@@ -217,6 +217,7 @@ def build_graph(deps: Deps) -> StateGraph[FlowState]:
         a = GateAnswer.model_validate(
             interrupt({"gate": "plan", "spec": s.refined.spec.model_dump()})
         )
+        tracing.answered(a.approve)
         if not a.approve:
             log_rejection(deps.lessons_dir, s.issue, s.route, "plan", a.reason)
         return {
@@ -263,6 +264,7 @@ def build_graph(deps: Deps) -> StateGraph[FlowState]:
         assert s.progress is not None
         test = diff(deps.worktree(s.issue), [])
         a = GateAnswer.model_validate(interrupt({"gate": "test", "diff": test}))
+        tracing.answered(a.approve)
         if a.approve:
             return {}
         log_rejection(deps.lessons_dir, s.issue, s.route, "test", a.reason)

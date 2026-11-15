@@ -67,6 +67,7 @@ WHAT = "cofabriq.llm.what"
 TOOLS = "cofabriq.agent.tools"
 TURNS = "cofabriq.agent.turns"
 BUDGET = "cofabriq.agent.budget_usd"
+APPROVED = "cofabriq.gate.approved"  # a gate's answer; the reason stays out
 
 FLOW = "cofabriq.flow"  # the root of one process's part of a run
 ROOT = (
@@ -380,6 +381,11 @@ def agent(
         kind=SpanKind.CLIENT,
         code=code,
     )
+
+
+def answered(approved: bool) -> None:
+    """The dev's answer at a gate, on the gate node's span."""
+    trace.get_current_span().set_attribute(APPROVED, approved)
 
 
 def agent_ran(current: Span, model: str, cost_usd: float, turns: int) -> None:

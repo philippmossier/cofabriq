@@ -51,9 +51,8 @@ def test_a_flow_and_its_resume_are_one_run_of_two_roots(
     assert tree is not None
     first, resumed = tree
     assert (first.detail, resumed.detail) == ("started", "resumed with your answer")
-    assert names(first) == ["node refine", "node plan_gate"]
-    assert first.children[1].status == "paused"
-    assert first.children[1].detail == "paused for your answer"
+    assert names(first) == ["node refine"]  # the paused gate: answered below
+    assert resumed.children[0].detail == "you approved"
     assert names(resumed) == [
         "node plan_gate",
         "node setup",
@@ -71,6 +70,26 @@ def test_a_flow_and_its_resume_are_one_run_of_two_roots(
     assert build_step.code.url.startswith(f"{runsteps.SOURCE}/blob/c0ffee/src/")
     record = tmp_path / "runs" / f"{state.record}.json"
     assert json.loads(record.read_text())["trace"] == run
+
+
+def test_a_flow_waiting_at_its_gate_keeps_the_paused_row(
+    run_store: tracing.RunStore, tmp_path: Path
+) -> None:
+    d = deps(tmp_path, EditingAgent(), [])
+    saver = InMemorySaver(serde=JsonPlusSerializer(allowed_msgpack_modules=ALLOWED))
+    graph = build_graph(d).compile(checkpointer=saver)
+    invoke(graph, FlowState(issue=issue(3), route="bug"), "t")
+    state = FlowState.model_validate(
+        graph.get_state({"configurable": {"thread_id": "t"}}).values
+    )
+
+    tree = runsteps.load_steps(run_store.directory, tracing.run_id(state.trace), DOCS)
+
+    assert tree is not None
+    [first] = tree
+    assert names(first) == ["node refine", "node plan_gate"]
+    assert first.children[1].status == "paused"
+    assert first.children[1].detail == "paused for your answer"
 
 
 def test_a_step_keeps_what_it_changed_in_the_state(

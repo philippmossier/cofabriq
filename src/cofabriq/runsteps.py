@@ -15,6 +15,7 @@ The fold is the contract the API serves, not the lines (ADR-009).
 import json
 import re
 from datetime import datetime
+from itertools import pairwise
 from pathlib import Path
 from typing import Literal
 
@@ -109,6 +110,8 @@ def _detail(name: str, attrs: dict[str, Value]) -> str:
         return f"{model}{f', {what}' if what else ''}"
     if name == tracing.FLOW:
         return "resumed with your answer" if attrs.get("cofabriq.resume") else "started"
+    if (approved := attrs.get(tracing.APPROVED)) is not None:
+        return "you approved" if approved else "you rejected"
     return "paused for your answer" if attrs.get("cofabriq.paused") else ""
 
 
@@ -156,7 +159,21 @@ def load_steps(
         _link_code(root, str(starts[root.id].get("commit", "")))
     for step in steps.values():
         step.children.sort(key=lambda c: c.started)
-    return sorted(roots, key=lambda r: r.started)
+    roots.sort(key=lambda r: r.started)
+    _one_row_per_gate(roots)
+    return roots
+
+
+def _one_row_per_gate(roots: list[RunStep]) -> None:
+    """A gate runs twice: it pauses at the end of one invocation and runs
+    again, with the answer, at the start of the next. Once answered, the
+    paused copy says nothing the answered one doesn't: it goes."""
+    for done, resumed in pairwise(roots):
+        if not done.children or not resumed.children:
+            continue
+        paused = done.children[-1]
+        if paused.status == "paused" and resumed.children[0].name == paused.name:
+            done.children.pop()
 
 
 def _step(
