@@ -10,14 +10,17 @@ export function Layout() {
       <header className="mb-6 flex items-center gap-6">
         <span className="font-heading text-lg font-semibold">cofabriq</span>
         <nav className="flex gap-1">
-          <Link to="/specs" className={tab} activeProps={active}>
-            Specs
+          <Link to="/issues" className={tab} activeProps={active}>
+            Issues
+          </Link>
+          <Link to="/flows" className={tab} activeProps={active}>
+            Flows
           </Link>
           <Link to="/runs" className={tab} activeProps={active}>
             Runs
           </Link>
-          <Link to="/flows" className={tab} activeProps={active}>
-            Flows
+          <Link to="/specs" className={tab} activeProps={active}>
+            Specs
           </Link>
         </nav>
         <span className="ml-auto text-xs text-muted-foreground">

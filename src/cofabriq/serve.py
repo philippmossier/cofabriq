@@ -35,17 +35,19 @@ from cofabriq import git as git_mod
 from cofabriq import runsteps, tracing
 from cofabriq.eval.loop import Judged
 from cofabriq.files import STAMP
+from cofabriq.issues.fetch import load_index, load_issues
 from cofabriq.issues.model import check_repo
 from cofabriq.loop.gate import Gated
-from cofabriq.loop.graph import FlowRunner, FlowStatus, GateAnswer
+from cofabriq.loop.graph import FlowRunner, FlowStatus, GateAnswer, Refused
 from cofabriq.loop.intake import not_ready
 from cofabriq.loop.record import RunRecord
-from cofabriq.loop.refine import Refined
-from cofabriq.loop.run import Attempt, CheckResult, LoopResult
+from cofabriq.loop.refine import Refined, Route
+from cofabriq.loop.run import Attempt, CheckResult, LoopResult, load_rules
 from cofabriq.serve_guard import guard
 from cofabriq.targets import clone_dir
 
 _NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+_REPO = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9][A-Za-z0-9_.-]*$")
 _STAMP = re.compile(r"(\d{8}T\d{6})")
 
 type RunKind = Literal["eval", "features", "wrong", "gate", "run"]
@@ -202,6 +204,39 @@ class StepTree(BaseModel):
 
     steps: list[runsteps.RunStep]
     totals: runsteps.Totals
+
+
+class Repo(BaseModel):
+    """A repo a flow can run on: an issue store and `[loop]` in its target
+    file."""
+
+    repo: str
+    issues: int
+
+
+class IssueRow(BaseModel):
+    """One stored issue, as the Issues page lists it."""
+
+    number: int
+    title: str
+    state: str = Field(description="`open` or `closed`, as last fetched.")
+    labels: list[str]
+    comments: int
+    updated_at: datetime
+    url: str = Field(description="The issue on GitHub.")
+    flow: bool = Field(description="It has a flow: open it instead of starting.")
+
+
+class Start(BaseModel):
+    route: Route = Field(description="`feature` writes acceptance criteria.")
+
+
+class Started(BaseModel):
+    thread: str
+
+
+class Refusal(BaseModel):
+    detail: str = Field(description="Why not: a blocker, a flow already there.")
 
 
 class Answer(GateAnswer):
@@ -433,6 +468,8 @@ def build(
     flows: FlowRunner | None = None,
     trace_dir: Path = Path("data/traces"),
     docs_dir: Path = runsteps.DOCS,
+    issues_dir: Path = Path("data/issues"),
+    targets_dir: Path = Path("targets"),
 ) -> FastAPI:
     """The app over these folders. `ui_dir`: the built UI (`ui/dist`), served
     at `/` when it exists. `port`: the port it serves on; with it, the
@@ -558,6 +595,45 @@ def build(
         """Every step's title, sentence and why (docs/steps/), keyed by `doc`."""
         return runsteps.load_docs(docs_dir)
 
+    def runnable(repo: str) -> bool:
+        return load_rules(targets_dir, repo) is not None
+
+    @app.get("/api/repos", response_model=list[Repo])
+    def repos() -> list[Repo]:
+        """The repos a flow can run on: an issue store (`fetch-issues`) and
+        `[loop]` in the target file."""
+        out: list[Repo] = []
+        for folder in sorted(issues_dir.glob("*/*")):
+            repo = f"{folder.parent.name}/{folder.name}"
+            if folder.is_dir() and _REPO.match(repo) and runnable(repo):
+                out.append(Repo(repo=repo, issues=len(load_index(folder))))
+        return out
+
+    @app.get("/api/issues/{owner}/{name}", response_model=list[IssueRow])
+    def issues(owner: str, name: str) -> list[IssueRow]:
+        """A repo's stored issues, newest first. Read from data/issues, not
+        from GitHub: Start refreshes the one it starts."""
+        repo = f"{owner}/{name}"
+        if not _REPO.match(repo) or not runnable(repo):
+            raise HTTPException(status_code=404, detail="no such repo")
+        with_flow = set(flows.threads()) if flows is not None else set[str]()
+        found = sorted(
+            load_issues(issues_dir, repo), key=lambda i: i.number, reverse=True
+        )
+        return [
+            IssueRow(
+                number=i.number,
+                title=i.title,
+                state=i.state,
+                labels=i.labels,
+                comments=i.comment_count,
+                updated_at=i.updated_at,
+                url=f"https://github.com/{repo}/issues/{i.number}",
+                flow=f"{repo}#{i.number}" in with_flow,
+            )
+            for i in found
+        ]
+
     if flows is not None:
         _flow_routes(app, flows)
 
@@ -640,3 +716,19 @@ def _flow_routes(app: FastAPI, flows: FlowRunner) -> None:
         if not flows.answer(thread(owner, name, number), answer):
             raise HTTPException(status_code=409, detail="not waiting at a gate")
         return Answered(started=True)
+
+    @app.post(
+        "/api/flows/{owner}/{name}/{number}/start",
+        response_model=Started,
+        responses={409: {"model": Refusal}},
+    )
+    def flow_start(owner: str, name: str, number: int, start: Start) -> Started:
+        """Start a flow on a stored issue: the issue refreshed from GitHub,
+        its blockers checked, the clone updated (here, so a refusal comes
+        back at once), then refine in the background up to the plan gate.
+        Paid: an agent run."""
+        repo = thread(owner, name, number).split("#", 1)[0]
+        try:
+            return Started(thread=flows.start(repo, number, start.route))
+        except Refused as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc

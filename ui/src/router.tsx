@@ -1,6 +1,7 @@
 import { createRootRoute, createRoute, createRouter, redirect } from "@tanstack/react-router";
 import { Layout } from "./components/layout";
 import { FlowPage, FlowsPage } from "./pages/flows";
+import { IssuesPage } from "./pages/issues";
 import { RunPage, RunsPage } from "./pages/runs";
 import { SpecPage, SpecsPage } from "./pages/specs";
 
@@ -12,9 +13,11 @@ const index = createRoute({
   getParentRoute: () => root,
   path: "/",
   beforeLoad: () => {
-    throw redirect({ to: "/specs" });
+    throw redirect({ to: "/issues" });
   },
 });
+
+const issues = createRoute({ getParentRoute: () => root, path: "/issues", component: IssuesPage });
 
 const specs = createRoute({ getParentRoute: () => root, path: "/specs", component: SpecsPage });
 export const spec = createRoute({
@@ -37,7 +40,7 @@ const flow = createRoute({
 });
 
 export const router = createRouter({
-  routeTree: root.addChildren([index, specs, spec, runs, run, flows, flow]),
+  routeTree: root.addChildren([index, issues, specs, spec, runs, run, flows, flow]),
 });
 
 declare module "@tanstack/react-router" {

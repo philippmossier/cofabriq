@@ -32,7 +32,8 @@ export function FlowsPage() {
       <div className="flex items-center gap-4">
         <h1 className="font-heading text-xl font-semibold">Flows</h1>
         <span className="text-sm text-muted-foreground">
-          runs waiting for you: start one with <code>cofabriq flow start &lt;n&gt;</code>
+          runs waiting for you: start one from <Link to="/issues" className="underline">Issues</Link>
+          {" "}(or <code>cofabriq flow start &lt;n&gt;</code>)
         </span>
       </div>
       {rows.length === 0 && (
@@ -129,7 +130,9 @@ export function FlowPage() {
       <Card className={f.waiting ? "border-primary" : ""}>
         <CardHeader>
           <CardTitle>
-            {f.running
+            {f.running && !f.problem
+              ? "Reading the code to write a spec… (about 20 s; the plan gate comes next)"
+              : f.running
               ? "Working on your answer… (setup, test, build and review take a few minutes)"
               : f.waiting === "plan"
                 ? "Approve the plan? No code is written before you do."

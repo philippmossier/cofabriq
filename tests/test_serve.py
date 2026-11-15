@@ -78,17 +78,20 @@ def test_the_built_ui_answers_every_other_path(tmp_path: Path) -> None:
     assert c.get("/../secret.json").text == "<div id=root></div>"
 
 
-def test_the_gate_answer_is_the_only_write_route(tmp_path: Path) -> None:
+def test_answer_and_start_are_the_only_write_routes(tmp_path: Path) -> None:
     app = build(tmp_path, tmp_path, tmp_path, None)
     paths: dict[str, dict[str, object]] = app.openapi()["paths"]
     assert {m for ops in paths.values() for m in ops} == {"get"}
-    # with the browser gate, its answer is the only route that changes anything
+    # with the browser gate: answer a gate, start a flow; nothing else writes
     flows = FlowRunner("", lambda repo, spent: None)  # pyright: ignore[reportArgumentType]
     gated: dict[str, dict[str, object]] = build(
         tmp_path, tmp_path, tmp_path, None, flows=flows
     ).openapi()["paths"]
     writes = [p for p, ops in gated.items() if set(ops) - {"get"}]
-    assert writes == ["/api/flows/{owner}/{name}/{number}/answer"]
+    assert writes == [
+        "/api/flows/{owner}/{name}/{number}/answer",
+        "/api/flows/{owner}/{name}/{number}/start",
+    ]
 
 
 def test_the_committed_schema_is_current(tmp_path: Path) -> None:

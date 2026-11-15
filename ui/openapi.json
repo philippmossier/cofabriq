@@ -261,6 +261,82 @@
         }
       }
     },
+    "/api/repos": {
+      "get": {
+        "summary": "Repos",
+        "description": "The repos a flow can run on: an issue store (`fetch-issues`) and\n`[loop]` in the target file.",
+        "operationId": "repos",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Repo"
+                  },
+                  "type": "array",
+                  "title": "Response Repos"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/issues/{owner}/{name}": {
+      "get": {
+        "summary": "Issues",
+        "description": "A repo's stored issues, newest first. Read from data/issues, not\nfrom GitHub: Start refreshes the one it starts.",
+        "operationId": "issues",
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Owner"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/IssueRow"
+                  },
+                  "title": "Response Issues"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/flows": {
       "get": {
         "summary": "Flow List",
@@ -393,6 +469,84 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/flows/{owner}/{name}/{number}/start": {
+      "post": {
+        "summary": "Flow Start",
+        "description": "Start a flow on a stored issue: the issue refreshed from GitHub,\nits blockers checked, the clone updated (here, so a refusal comes\nback at once), then refine in the background up to the plan gate.\nPaid: an agent run.",
+        "operationId": "flow_start",
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Owner"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Start"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Started"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            },
+            "description": "Conflict"
           },
           "422": {
             "description": "Validation Error",
@@ -777,6 +931,62 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "IssueRow": {
+        "properties": {
+          "number": {
+            "type": "integer",
+            "title": "Number"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "state": {
+            "type": "string",
+            "title": "State",
+            "description": "`open` or `closed`, as last fetched."
+          },
+          "labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Labels"
+          },
+          "comments": {
+            "type": "integer",
+            "title": "Comments"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url",
+            "description": "The issue on GitHub."
+          },
+          "flow": {
+            "type": "boolean",
+            "title": "Flow",
+            "description": "It has a flow: open it instead of starting."
+          }
+        },
+        "type": "object",
+        "required": [
+          "number",
+          "title",
+          "state",
+          "labels",
+          "comments",
+          "updated_at",
+          "url",
+          "flow"
+        ],
+        "title": "IssueRow",
+        "description": "One stored issue, as the Issues page lists it."
+      },
       "JsonValue": {},
       "ProofView": {
         "properties": {
@@ -818,6 +1028,39 @@
           "red"
         ],
         "title": "ProofView"
+      },
+      "Refusal": {
+        "properties": {
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "description": "Why not: a blocker, a flow already there."
+          }
+        },
+        "type": "object",
+        "required": [
+          "detail"
+        ],
+        "title": "Refusal"
+      },
+      "Repo": {
+        "properties": {
+          "repo": {
+            "type": "string",
+            "title": "Repo"
+          },
+          "issues": {
+            "type": "integer",
+            "title": "Issues"
+          }
+        },
+        "type": "object",
+        "required": [
+          "repo",
+          "issues"
+        ],
+        "title": "Repo",
+        "description": "A repo a flow can run on: an issue store and `[loop]` in its target\nfile."
       },
       "ReviewRound": {
         "properties": {
@@ -875,6 +1118,13 @@
           "fix"
         ],
         "title": "ReviewRound"
+      },
+      "Route": {
+        "type": "string",
+        "enum": [
+          "bug",
+          "feature"
+        ]
       },
       "RunKind": {
         "type": "string",
@@ -1470,6 +1720,32 @@
           "seconds"
         ],
         "title": "SpecView"
+      },
+      "Start": {
+        "properties": {
+          "route": {
+            "$ref": "#/components/schemas/Route",
+            "description": "`feature` writes acceptance criteria."
+          }
+        },
+        "type": "object",
+        "required": [
+          "route"
+        ],
+        "title": "Start"
+      },
+      "Started": {
+        "properties": {
+          "thread": {
+            "type": "string",
+            "title": "Thread"
+          }
+        },
+        "type": "object",
+        "required": [
+          "thread"
+        ],
+        "title": "Started"
       },
       "Status": {
         "type": "string",
