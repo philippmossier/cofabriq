@@ -76,6 +76,7 @@ class SpecSummary(BaseModel):
 class FileNote(BaseModel):
     path: str
     why: str
+    at: list[str] = Field(description='The lines it changes: "74", "78-83".')
 
 
 class SpecView(BaseModel):
@@ -573,8 +574,8 @@ def build(
             route=found.route,
             size=s.size,
             problem=s.problem,
-            files=[FileNote(path=f.path, why=f.why) for f in s.files],
-            tests=[FileNote(path=f.path, why=f.why) for f in s.tests],
+            files=[FileNote(path=f.path, why=f.why, at=f.at) for f in s.files],
+            tests=[FileNote(path=f.path, why=f.why, at=f.at) for f in s.tests],
             criteria=s.criteria,
             plan=s.plan,
             assumptions=s.assumptions,
@@ -774,7 +775,7 @@ def _flow_routes(app: FastAPI, flows: FlowRunner) -> None:
             size=spec.size if spec else None,
             problem=spec.problem if spec else "",
             criteria=spec.criteria if spec else [],
-            files=[FileNote(path=x.path, why=x.why) for x in spec.files]
+            files=[FileNote(path=x.path, why=x.why, at=x.at) for x in spec.files]
             if spec
             else [],
             plan=spec.plan if spec else [],
@@ -782,7 +783,7 @@ def _flow_routes(app: FastAPI, flows: FlowRunner) -> None:
             open_questions=spec.open_questions if spec else [],
             diff=f.diff,
             commit=f.state.refined.commit if f.state.refined else "",
-            tests=[FileNote(path=x.path, why=x.why) for x in spec.tests]
+            tests=[FileNote(path=x.path, why=x.why, at=x.at) for x in spec.tests]
             if spec
             else [],
             unknown_paths=f.state.refined.unknown_paths if f.state.refined else [],

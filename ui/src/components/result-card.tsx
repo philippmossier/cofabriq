@@ -3,6 +3,7 @@ import type { RunTrace } from "@/api/generated";
 import { Loading } from "@/components/bits";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useRun } from "@/api/generated";
+import { parseDiff } from "@/lib/diff";
 import { usd } from "@/lib/format";
 
 /** The outcome in one sentence: the review gate's status, else the loop's. */
@@ -19,27 +20,11 @@ const OUTCOME: Record<string, string> = {
   halted: "Stopped by the kill switch or the run budget.",
 };
 
-type FileStat = { path: string; added: number; removed: number };
-
-/** Lines added and removed per file, from the unified diff. */
-function stats(diff: string): FileStat[] {
-  const out: FileStat[] = [];
-  for (const line of diff.split("\n")) {
-    const head = line.match(/^diff --git a\/(.+?) b\//);
-    if (head) out.push({ path: head[1]!, added: 0, removed: 0 });
-    const f = out.at(-1);
-    if (!f || line.startsWith("+++") || line.startsWith("---")) continue;
-    if (line.startsWith("+")) f.added++;
-    else if (line.startsWith("-")) f.removed++;
-  }
-  return out;
-}
-
 /** What a finished run did, at a glance: outcome, change, proof, review,
  * cost, and where the PR is. The sections below it have the detail. */
 export function ResultCard({ t }: { t: RunTrace }) {
   const outcome = t.gate ?? t.status;
-  const files = stats(t.diff);
+  const files = parseDiff(t.diff);
   const review = t.rounds.at(-1);
   const bad = ["blocked", "escalated", "setup_failed", "halted"].includes(outcome);
   return (

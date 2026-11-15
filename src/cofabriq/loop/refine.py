@@ -12,6 +12,8 @@ feature (find where it goes, and write acceptance criteria, each checkable
 by one test: the contract the acceptance test is written from, 0.3).
 """
 
+import re
+import subprocess
 from pathlib import Path
 from typing import Literal
 
@@ -36,8 +38,11 @@ find the cause and where the fix goes. Change nothing.
 - problem: what is wrong or wanted and why, as found in the code, with
   file and line references. Say so if you could not find the cause.
 - files: the source files the fix changes, most likely first, paths
-  relative to the repository root. Not tests.
-- tests: test files to add or change to prove the fix.
+  relative to the repository root. Not tests. For each, at: the lines the
+  change touches in the code as it is now ("74", "78-83"), only those;
+  empty for a new file.
+- tests: test files to add or change to prove the fix; at: for an
+  existing file, where the new cases go.
 - plan: short ordered steps.
 - assumptions: what you assumed that the issue does not say.
 - open_questions: what only the reporter or a maintainer can answer.
@@ -57,8 +62,11 @@ find where the feature goes and what it must fit. Change nothing.
 - problem: what is wanted and why, and what the code does today, with file
   and line references.
 - files: the source files the change touches, most likely first, paths
-  relative to the repository root. Not tests.
-- tests: test files to add or change to prove the feature.
+  relative to the repository root. Not tests. For each, at: the lines the
+  change touches in the code as it is now ("74", "78-83"), only those;
+  empty for a new file.
+- tests: test files to add or change to prove the feature; at: for an
+  existing file, where the new cases go.
 - criteria: acceptance criteria, each one observable behaviour a single
   automated test can check: a concrete input or situation and the exact
   expected result, through the code's existing functions and types where
@@ -82,6 +90,36 @@ class FileChange(BaseModel):
 
     path: str
     why: str
+    at: list[str] = Field(
+        default_factory=list[str],
+        description='The lines the change touches in this file as it is now: "74", '
+        '"78-83". Empty for a new file.',
+    )
+
+
+LINES = re.compile(r"^L?(\d+)(?:\s*-\s*L?(\d+))?$")
+
+
+def checked_lines(at: list[str], length: int | None) -> list[str]:
+    """`at` as the file has it: "N" or "N-M" inside its `length` lines, the
+    rest dropped (a file not in the commit has none)."""
+    out: list[str] = []
+    for raw in at:
+        m = LINES.match(raw.strip())
+        if m is None or length is None:
+            continue
+        first, last = int(m[1]), int(m[2] or m[1])
+        if 1 <= first <= last <= length:
+            out.append(str(first) if first == last else f"{first}-{last}")
+    return list(dict.fromkeys(out))
+
+
+def line_count(clone: Path, commit: str, path: str) -> int | None:
+    """A text file's length at the commit; None when it isn't one there."""
+    try:
+        return len(git(clone, "show", f"{commit}:{path}").splitlines())
+    except (subprocess.CalledProcessError, UnicodeDecodeError):
+        return None
 
 
 class Spec(BaseModel):
@@ -173,14 +211,17 @@ def refine(
         raise NoCriteria(f"#{issue.number}: the feature spec has no criteria")
     if route == "bug":
         spec = spec.model_copy(update={"criteria": []})
+
+    def checked(f: FileChange) -> FileChange:
+        """The path normalized, `at` kept only where the file has those lines."""
+        path = normalized(f.path)
+        at = checked_lines(f.at, line_count(clone, commit, path))
+        return f.model_copy(update={"path": path, "at": at})
+
     spec = spec.model_copy(
         update={
-            "files": [
-                f.model_copy(update={"path": normalized(f.path)}) for f in spec.files
-            ],
-            "tests": [
-                f.model_copy(update={"path": normalized(f.path)}) for f in spec.tests
-            ],
+            "files": [checked(f) for f in spec.files],
+            "tests": [checked(f) for f in spec.tests],
         }
     )
     return Refined(

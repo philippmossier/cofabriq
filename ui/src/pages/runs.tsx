@@ -2,6 +2,7 @@ import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router"
 import { type RunSummary, type Step, useRun, useRuns } from "@/api/generated";
 import { EVAL_TABS, type EvalTab } from "@/lib/evals";
 import { Checks, List, Loading, Missing, Pre, Section, Status, Verdict } from "@/components/bits";
+import { DiffView } from "@/components/code";
 import { ResultCard } from "@/components/result-card";
 import { RunSteps } from "@/components/run-steps";
 import { SpecsList } from "@/pages/specs";
@@ -288,7 +289,7 @@ export function RunPage() {
       )}
 
       <Section title={`Diff (${t.changed.length} files)`}>
-        {t.diff ? <Pre text={t.diff} /> : <p className="text-sm text-muted-foreground">(no change)</p>}
+        <DiffView diff={t.diff} />
       </Section>
 
       {t.pr_body && (
