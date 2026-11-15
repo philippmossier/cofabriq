@@ -2,6 +2,7 @@ import { Link, useParams } from "@tanstack/react-router";
 import { useState } from "react";
 import { type RunKind, type RunSummary, type Step, useRun, useRuns } from "@/api/generated";
 import { Checks, List, Loading, Missing, Pre, Section, Status, Verdict } from "@/components/bits";
+import { RunSteps } from "@/components/run-steps";
 import { usd, when } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -161,6 +162,12 @@ export function RunPage() {
             <List items={t.sentinel} />
           </CardContent>
         </Card>
+      )}
+
+      {t.trace && (
+        <Section title="Steps: what ran, what it cost, why">
+          <RunSteps run={t.trace} />
+        </Section>
       )}
 
       <Section title="1. The test, before any code">

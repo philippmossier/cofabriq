@@ -1,7 +1,8 @@
 import { Link, Outlet } from "@tanstack/react-router";
-import { writeToken } from "@/lib/token";
+import { useWriteToken } from "@/lib/token";
 
 export function Layout() {
+  const token = useWriteToken();
   const tab = "rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground";
   const active = { className: "bg-muted text-foreground" };
   return (
@@ -20,7 +21,7 @@ export function Layout() {
           </Link>
         </nav>
         <span className="ml-auto text-xs text-muted-foreground">
-          {writeToken() ? "gate: you can approve" : "read-only"}
+          {token ? "gate: you can approve" : "read-only"}
         </span>
       </header>
       <Outlet />

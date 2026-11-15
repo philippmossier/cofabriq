@@ -50,7 +50,8 @@ def structured[T: BaseModel](
 ) -> tuple[T, Usage]:
     """One call whose answer is parsed into `schema`. `what` names the answer
     in the error raised when there is none ("verdict for #12")."""
-    with tracing.chat(MODEL, what) as span:
+    with tracing.chat(MODEL, what, code=structured) as span:
+        tracing.capture(span, instructions=instructions, input=input)
         start = time.perf_counter()
         response = client.responses.parse(
             model=MODEL,
@@ -67,6 +68,7 @@ def structured[T: BaseModel](
         tracing.used(
             span, response.model, usage.input_tokens, usage.output_tokens, cost(usage)
         )
+        tracing.capture(span, answer=response.output_parsed)
     return response.output_parsed, usage
 
 

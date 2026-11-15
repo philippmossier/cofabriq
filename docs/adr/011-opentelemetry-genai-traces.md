@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted, 2026-11-14.
+Accepted, 2026-11-14. Amended 2026-11-15: a local run store for the
+viewer, with what each step got and gave.
 
 ## Context
 
@@ -62,6 +63,34 @@ the data would go to one vendor's SaaS. cofabriq is self-hosted (ADR-009).
   exit.
 - Three more direct dependencies (the OpenTelemetry API, SDK and OTLP/HTTP
   exporter, with protobuf).
+
+## Amendment: the run store (2026-11-15)
+
+The viewer shows a run step by step, live, at four levels: the step and its
+time; what it got and gave (an agent's prompt and answer, a command's output,
+the state a node changed); the function behind it, linked at the commit that
+ran; and a doc on why the step exists (`docs/steps/`).
+
+- **A span processor writes the store**, independent of OTLP and always on in
+  the CLI: every span under a flow goes to `data/traces/<run>.jsonl` once at
+  its start and once at its end, so a running step is visible. The run's id
+  is the flow's first trace id; a resumed flow's root links to it.
+- **Content stays local.** Prompts, answers and outputs go into
+  `data/traces/<run>/<span>.json` through a separate call (`capture`), never
+  into span attributes, so OTLP still exports metadata only. `data/` is
+  git-ignored and the API binds to 127.0.0.1. The UI shows this text as
+  text: it is untrusted (issue text, model answers).
+- **Files, not a table.** Every other per-run result is a file in `data/`,
+  `cofabriq run` works without Postgres, and the two processes of a flow
+  append small lines. A table pays off once runs are queried across.
+- **The page polls once a second**, no SSE: a step lasts seconds, and SSE
+  through the background thread that resumes a flow adds machinery for no
+  visible difference.
+- **Step titles live in the docs** (line one of each file), keyed by span
+  name; a test checks every node and span kind has a doc naming a function
+  that exists.
+- FastAPI's own request spans are off in `serve`: the page polls, and every
+  poll became a trace.
 
 ## Alternatives considered
 

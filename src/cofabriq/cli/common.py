@@ -3,6 +3,7 @@ repo, the GitHub source, the target's loop rules, `--only`, the agent, the
 write token and the OpenAI and Neo4j clients."""
 
 from collections.abc import Callable, Collection
+from functools import cache
 
 import typer
 from neo4j import Driver
@@ -44,6 +45,7 @@ def main() -> None:
     tracing.setup(
         settings.otel_exporter_otlp_endpoint,
         headers.get_secret_value() if headers else "",
+        trace_dir=settings.trace_dir,
     )
 
 
@@ -120,6 +122,12 @@ def triage_fn(
     )
 
 
+@cache
+def _on_your_plan() -> None:
+    """Said once per process: `serve` builds the agent on every request."""
+    typer.echo("agent: your Claude plan; costs shown are API list prices", err=True)
+
+
 def claude_code() -> ClaudeCode:
     settings = get_settings()
     auth: Auth
@@ -130,7 +138,7 @@ def claude_code() -> ClaudeCode:
             )
             raise typer.Exit(code=1)
         auth = Subscription(settings.claude_code_oauth_token.get_secret_value())
-        typer.echo("agent: your Claude plan; costs shown are API list prices", err=True)
+        _on_your_plan()
     elif settings.anthropic_api_key is None:
         typer.echo("ANTHROPIC_API_KEY is not set (see .env.example)", err=True)
         raise typer.Exit(code=1)

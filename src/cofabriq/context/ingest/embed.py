@@ -33,7 +33,7 @@ def openai_embedder(api_key: str) -> Embed:
         vectors: list[list[float]] = []
         for i in range(0, len(texts), BATCH):
             batch = list(texts[i : i + BATCH])
-            with tracing.embeddings(MODEL) as span:
+            with tracing.embeddings(MODEL, code=embed) as span:
                 response = client.embeddings.create(model=MODEL, input=batch)
                 tracing.embedded(span, response.model, response.usage.prompt_tokens)
             vectors.extend(d.embedding for d in response.data)

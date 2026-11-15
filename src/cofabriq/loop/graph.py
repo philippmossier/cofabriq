@@ -328,7 +328,9 @@ def build_graph(deps: Deps) -> StateGraph[FlowState]:
             evidence = collect_evidence(
                 deps.rules, worktree, final.repro, deps.sandbox, deps.runs_dir / stem
             )
-        out = RunRecord(result=s.result, evidence=evidence)
+        out = RunRecord(
+            result=s.result, evidence=evidence, trace=tracing.run_id(s.trace)
+        )
         if deps.judge is not None:  # last on the tree: it may reset the code
             out.judge, out.valid = deps.judge(s.result, worktree)
         if s.gated is not None:
@@ -379,17 +381,33 @@ def build_graph(deps: Deps) -> StateGraph[FlowState]:
         "finish": finish,
     }
 
+    # the function that does a node's work, for the viewer's code link; the
+    # gates and the tail are their own node functions
+    work: dict[str, Callable[..., object]] = {
+        "refine": refine_mod.refine,
+        "setup": start_stage,
+        "write_test": test_stage,
+        "build": build_stage,
+        "review": gate_mod.review_gate,
+    }
+
     def counted(name: str, node: Node) -> Node:
         """The node in its own span, with the run's spending so far and the
-        first trace written into the state."""
+        first trace written into the state; what it changed in the state is
+        kept for the viewer."""
 
         def run(s: FlowState) -> dict[str, object]:
-            with tracing.span(f"node {name}", expected=(GraphInterrupt,)) as span:
+            code = work.get(name, node)
+            span_of = tracing.span(
+                f"node {name}", expected=(GraphInterrupt,), code=code
+            )
+            with span_of as span:
                 try:
                     update = node(s)
                 except GraphInterrupt:  # a gate: the process stops here
                     span.set_attribute("cofabriq.paused", True)
                     raise
+                tracing.capture(span, update=update)
                 if not s.trace:
                     update["trace"] = tracing.traceparent()
             if deps.guard is not None:
@@ -462,7 +480,7 @@ def invoke(
     resume = isinstance(given, GateAnswer)
     first = str(graph.get_state(config).values.get("trace", "")) if resume else ""
     attributes = {"cofabriq.thread": thread, "cofabriq.resume": resume}
-    with tracing.span("cofabriq.flow", attributes, link=first):
+    with tracing.span(tracing.FLOW, attributes, link=first, code=invoke):
         if isinstance(given, GateAnswer):
             graph.invoke(Command(resume=given.model_dump()), config)
         else:

@@ -90,11 +90,12 @@ class Podman:
             "cofabriq.sandbox.image": self.image,
             "cofabriq.sandbox.network": network,
         }
-        with tracing.span("sandbox.run", attributes) as span:
+        with tracing.span("sandbox.run", attributes, code=Podman.__call__) as span:
             ran = run_command(
                 self.command(cmd, worktree, network=network), worktree, self.timeout_s
             )
             span.set_attribute("cofabriq.sandbox.ok", ran.ok)  # red can be the goal
+            tracing.capture(span, output=ran.output)
         return ran
 
 

@@ -40,6 +40,19 @@ export interface Check {
   output: string;
 }
 
+/**
+ * The function a step stands for.
+ */
+export interface Code {
+  /** Module-qualified: `cofabriq.loop.run.build_stage`. */
+  function: string;
+  /** Relative to the checkout. */
+  file: string;
+  line: number;
+  /** A permalink at the commit that ran; empty without a commit. */
+  url: string;
+}
+
 export interface FileNote {
   path: string;
   why: string;
@@ -117,6 +130,8 @@ export interface FlowView {
   assumptions: string[];
   open_questions: string[];
   diff: string;
+  trace: string;
+  record: string;
 }
 
 export type ValidationErrorCtx = { [key: string]: unknown };
@@ -132,6 +147,8 @@ export interface ValidationError {
 export interface HTTPValidationError {
   detail?: ValidationError[];
 }
+
+export interface JsonValue {}
 
 export interface ProofView {
   finding: FindingView;
@@ -186,6 +203,53 @@ export const RunKind = {
   run: 'run',
 } as const;
 
+export type Value = string | number | boolean | (string | number | boolean)[];
+
+/**
+ * The span's attributes: model, turns, cost, command.
+ */
+export type RunStepAttrs = {[key: string]: Value};
+
+export type Status = typeof Status[keyof typeof Status];
+
+
+export const Status = {
+  running: 'running',
+  ok: 'ok',
+  error: 'error',
+  paused: 'paused',
+} as const;
+
+/**
+ * One step of a run (a span), with the steps it ran inside it.
+ */
+export interface RunStep {
+  /** The span id: its payload is /api/traces/{run}/payloads/{id}. */
+  id: string;
+  /** The span's name: `node build`, `sandbox.run`. */
+  name: string;
+  /** The step doc's key in /api/step-docs: `build`. */
+  doc: string;
+  /** The doc's title, or the span's name without one. */
+  title: string;
+  /** What this one did: the command, the model, a gate's pause. */
+  detail: string;
+  started: string;
+  /** Its duration; null while it runs. */
+  ms: number | null;
+  /** `paused`: it stopped at a gate. A red sandbox command the reproducer wanted is `ok`, with `cofabriq.sandbox.ok` false. */
+  status: Status;
+  /** The exception's message when `error`. */
+  error: string;
+  /** The span's attributes: model, turns, cost, command. */
+  attrs: RunStepAttrs;
+  code: Code | null;
+  /** What it got and gave was kept: prompt, answer, output, state. */
+  payload: boolean;
+  /** The steps it ran, by start time. */
+  children: RunStep[];
+}
+
 export interface RunSummary {
   file: string;
   key: string;
@@ -222,6 +286,7 @@ export interface RunTrace {
   pr_body: string | null;
   sentinel: string[];
   evidence: string[];
+  trace: string;
 }
 
 export type SpecSummaryRoute = typeof SpecSummaryRoute[keyof typeof SpecSummaryRoute];
@@ -275,6 +340,45 @@ export interface SpecView {
   turns: number;
   seconds: number;
 }
+
+/**
+ * What a kind of step is for, from `docs/steps/<key>.md`.
+ */
+export interface StepDoc {
+  key: string;
+  /** Line 1 of the doc. */
+  title: string;
+  /** The plain sentence under the title. */
+  summary: string;
+  /** Markdown: why the step exists, its decision, alternatives. */
+  why: string;
+  /** The module-qualified function it describes. */
+  code: string;
+}
+
+export interface Totals {
+  /** First start to last end, gates included. */
+  seconds: number;
+  /** Agent sessions run. */
+  agents: number;
+  /** Their turns, summed. */
+  turns: number;
+  /** At API list prices. */
+  cost_usd: number;
+}
+
+/**
+ * A run's steps so far: the roots are its flow invocations in order
+ * (`flow start` up to the first gate, then one per answered gate).
+ */
+export interface StepTree {
+  steps: RunStep[];
+  totals: Totals;
+}
+
+export type Payload200 = {[key: string]: JsonValue};
+
+export type StepDocs200 = {[key: string]: StepDoc};
 
 const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKey: K } => {
   const result = { queryKey } as T & { queryKey: K };
@@ -789,6 +893,392 @@ export function useRun<TData = Awaited<ReturnType<typeof run>>, TError = HTTPVal
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getRunQueryOptions(file,key,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export type traceResponse200 = {
+  data: StepTree
+  status: 200
+}
+
+export type traceResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type traceResponseSuccess = (traceResponse200) & {
+  headers: Headers;
+};
+export type traceResponseError = (traceResponse422) & {
+  headers: Headers;
+};
+
+export type traceResponse = (traceResponseSuccess | traceResponseError)
+
+export const getTraceUrl = (run: string,) => {
+
+
+
+
+  return `/api/traces/${run}`
+}
+
+/**
+ * A run's steps as a tree, the running one included (poll it).
+ * @summary Trace
+ */
+export const trace = async (run: string, options?: RequestInit): Promise<traceResponse> => {
+
+  const res = await fetch(getTraceUrl(run),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: traceResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as traceResponse
+}
+
+
+
+
+
+export const getTraceQueryKey = (run: string,) => {
+    return [
+    `/api/traces/${run}`
+    ] as const;
+    }
+
+
+export const getTraceQueryOptions = <TData = Awaited<ReturnType<typeof trace>>, TError = HTTPValidationError>(run: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof trace>>, TError, TData>>, fetch?: RequestInit}
+) => {
+
+const {query: queryOptions, fetch: fetchOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getTraceQueryKey(run);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof trace>>> = ({ signal }) => trace(run, { signal, ...fetchOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: run !== null && run !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof trace>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type TraceQueryResult = NonNullable<Awaited<ReturnType<typeof trace>>>
+export type TraceQueryError = HTTPValidationError
+
+
+export function useTrace<TData = Awaited<ReturnType<typeof trace>>, TError = HTTPValidationError>(
+ run: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof trace>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof trace>>,
+          TError,
+          Awaited<ReturnType<typeof trace>>
+        > , 'initialData'
+      >, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useTrace<TData = Awaited<ReturnType<typeof trace>>, TError = HTTPValidationError>(
+ run: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof trace>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof trace>>,
+          TError,
+          Awaited<ReturnType<typeof trace>>
+        > , 'initialData'
+      >, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useTrace<TData = Awaited<ReturnType<typeof trace>>, TError = HTTPValidationError>(
+ run: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof trace>>, TError, TData>>, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Trace
+ */
+
+export function useTrace<TData = Awaited<ReturnType<typeof trace>>, TError = HTTPValidationError>(
+ run: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof trace>>, TError, TData>>, fetch?: RequestInit}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getTraceQueryOptions(run,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export type payloadResponse200 = {
+  data: Payload200
+  status: 200
+}
+
+export type payloadResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type payloadResponseSuccess = (payloadResponse200) & {
+  headers: Headers;
+};
+export type payloadResponseError = (payloadResponse422) & {
+  headers: Headers;
+};
+
+export type payloadResponse = (payloadResponseSuccess | payloadResponseError)
+
+export const getPayloadUrl = (run: string,
+    span: string,) => {
+
+
+
+
+  return `/api/traces/${run}/payloads/${span}`
+}
+
+/**
+ * What one step got and gave: a prompt and its answer, a command's
+ * output, the state a node changed. Untrusted text: show it as text.
+ * @summary Payload
+ */
+export const payload = async (run: string,
+    span: string, options?: RequestInit): Promise<payloadResponse> => {
+
+  const res = await fetch(getPayloadUrl(run,span),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: payloadResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as payloadResponse
+}
+
+
+
+
+
+export const getPayloadQueryKey = (run: string,
+    span: string,) => {
+    return [
+    `/api/traces/${run}/payloads/${span}`
+    ] as const;
+    }
+
+
+export const getPayloadQueryOptions = <TData = Awaited<ReturnType<typeof payload>>, TError = HTTPValidationError>(run: string,
+    span: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof payload>>, TError, TData>>, fetch?: RequestInit}
+) => {
+
+const {query: queryOptions, fetch: fetchOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getPayloadQueryKey(run,span);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof payload>>> = ({ signal }) => payload(run,span, { signal, ...fetchOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: run !== null && run !== undefined && span !== null && span !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof payload>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type PayloadQueryResult = NonNullable<Awaited<ReturnType<typeof payload>>>
+export type PayloadQueryError = HTTPValidationError
+
+
+export function usePayload<TData = Awaited<ReturnType<typeof payload>>, TError = HTTPValidationError>(
+ run: string,
+    span: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof payload>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof payload>>,
+          TError,
+          Awaited<ReturnType<typeof payload>>
+        > , 'initialData'
+      >, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function usePayload<TData = Awaited<ReturnType<typeof payload>>, TError = HTTPValidationError>(
+ run: string,
+    span: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof payload>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof payload>>,
+          TError,
+          Awaited<ReturnType<typeof payload>>
+        > , 'initialData'
+      >, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function usePayload<TData = Awaited<ReturnType<typeof payload>>, TError = HTTPValidationError>(
+ run: string,
+    span: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof payload>>, TError, TData>>, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Payload
+ */
+
+export function usePayload<TData = Awaited<ReturnType<typeof payload>>, TError = HTTPValidationError>(
+ run: string,
+    span: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof payload>>, TError, TData>>, fetch?: RequestInit}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getPayloadQueryOptions(run,span,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export type stepDocsResponse200 = {
+  data: StepDocs200
+  status: 200
+}
+
+export type stepDocsResponseSuccess = (stepDocsResponse200) & {
+  headers: Headers;
+};
+;
+
+export type stepDocsResponse = (stepDocsResponseSuccess)
+
+export const getStepDocsUrl = () => {
+
+
+
+
+  return `/api/step-docs`
+}
+
+/**
+ * Every step's title, sentence and why (docs/steps/), keyed by `doc`.
+ * @summary Step Docs
+ */
+export const stepDocs = async ( options?: RequestInit): Promise<stepDocsResponse> => {
+
+  const res = await fetch(getStepDocsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: stepDocsResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as stepDocsResponse
+}
+
+
+
+
+
+export const getStepDocsQueryKey = () => {
+    return [
+    `/api/step-docs`
+    ] as const;
+    }
+
+
+export const getStepDocsQueryOptions = <TData = Awaited<ReturnType<typeof stepDocs>>, TError = unknown>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof stepDocs>>, TError, TData>>, fetch?: RequestInit}
+) => {
+
+const {query: queryOptions, fetch: fetchOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getStepDocsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof stepDocs>>> = ({ signal }) => stepDocs({ signal, ...fetchOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof stepDocs>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type StepDocsQueryResult = NonNullable<Awaited<ReturnType<typeof stepDocs>>>
+export type StepDocsQueryError = unknown
+
+
+export function useStepDocs<TData = Awaited<ReturnType<typeof stepDocs>>, TError = unknown>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof stepDocs>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof stepDocs>>,
+          TError,
+          Awaited<ReturnType<typeof stepDocs>>
+        > , 'initialData'
+      >, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useStepDocs<TData = Awaited<ReturnType<typeof stepDocs>>, TError = unknown>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof stepDocs>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof stepDocs>>,
+          TError,
+          Awaited<ReturnType<typeof stepDocs>>
+        > , 'initialData'
+      >, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useStepDocs<TData = Awaited<ReturnType<typeof stepDocs>>, TError = unknown>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof stepDocs>>, TError, TData>>, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Step Docs
+ */
+
+export function useStepDocs<TData = Awaited<ReturnType<typeof stepDocs>>, TError = unknown>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof stepDocs>>, TError, TData>>, fetch?: RequestInit}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getStepDocsQueryOptions(options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 

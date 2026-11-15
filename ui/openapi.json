@@ -145,6 +145,122 @@
         }
       }
     },
+    "/api/traces/{run}": {
+      "get": {
+        "summary": "Trace",
+        "description": "A run's steps as a tree, the running one included (poll it).",
+        "operationId": "trace",
+        "parameters": [
+          {
+            "name": "run",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StepTree"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/traces/{run}/payloads/{span}": {
+      "get": {
+        "summary": "Payload",
+        "description": "What one step got and gave: a prompt and its answer, a command's\noutput, the state a node changed. Untrusted text: show it as text.",
+        "operationId": "payload",
+        "parameters": [
+          {
+            "name": "run",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run"
+            }
+          },
+          {
+            "name": "span",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Span"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "$ref": "#/components/schemas/JsonValue"
+                  },
+                  "title": "Response Payload"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/step-docs": {
+      "get": {
+        "summary": "Step Docs",
+        "description": "Every step's title, sentence and why (docs/steps/), keyed by `doc`.",
+        "operationId": "step_docs",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "$ref": "#/components/schemas/StepDoc"
+                  },
+                  "type": "object",
+                  "title": "Response Step Docs"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/flows": {
       "get": {
         "summary": "Flow List",
@@ -353,6 +469,38 @@
           "output"
         ],
         "title": "Check"
+      },
+      "Code": {
+        "properties": {
+          "function": {
+            "type": "string",
+            "title": "Function",
+            "description": "Module-qualified: `cofabriq.loop.run.build_stage`."
+          },
+          "file": {
+            "type": "string",
+            "title": "File",
+            "description": "Relative to the checkout."
+          },
+          "line": {
+            "type": "integer",
+            "title": "Line"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url",
+            "description": "A permalink at the commit that ran; empty without a commit."
+          }
+        },
+        "type": "object",
+        "required": [
+          "function",
+          "file",
+          "line",
+          "url"
+        ],
+        "title": "Code",
+        "description": "The function a step stands for."
       },
       "FileNote": {
         "properties": {
@@ -582,6 +730,14 @@
           "diff": {
             "type": "string",
             "title": "Diff"
+          },
+          "trace": {
+            "type": "string",
+            "title": "Trace"
+          },
+          "record": {
+            "type": "string",
+            "title": "Record"
           }
         },
         "type": "object",
@@ -602,7 +758,9 @@
           "plan",
           "assumptions",
           "open_questions",
-          "diff"
+          "diff",
+          "trace",
+          "record"
         ],
         "title": "FlowView"
       },
@@ -619,6 +777,7 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "JsonValue": {},
       "ProofView": {
         "properties": {
           "finding": {
@@ -726,6 +885,110 @@
           "gate",
           "run"
         ]
+      },
+      "RunStep": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "The span id: its payload is /api/traces/{run}/payloads/{id}."
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "The span's name: `node build`, `sandbox.run`."
+          },
+          "doc": {
+            "type": "string",
+            "title": "Doc",
+            "description": "The step doc's key in /api/step-docs: `build`."
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "The doc's title, or the span's name without one."
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "description": "What this one did: the command, the model, a gate's pause."
+          },
+          "started": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started"
+          },
+          "ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ms",
+            "description": "Its duration; null while it runs."
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status",
+            "description": "`paused`: it stopped at a gate. A red sandbox command the reproducer wanted is `ok`, with `cofabriq.sandbox.ok` false."
+          },
+          "error": {
+            "type": "string",
+            "title": "Error",
+            "description": "The exception's message when `error`."
+          },
+          "attrs": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/Value"
+            },
+            "type": "object",
+            "title": "Attrs",
+            "description": "The span's attributes: model, turns, cost, command."
+          },
+          "code": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Code"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "payload": {
+            "type": "boolean",
+            "title": "Payload",
+            "description": "What it got and gave was kept: prompt, answer, output, state."
+          },
+          "children": {
+            "items": {
+              "$ref": "#/components/schemas/RunStep"
+            },
+            "type": "array",
+            "title": "Children",
+            "description": "The steps it ran, by start time."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "doc",
+          "title",
+          "detail",
+          "started",
+          "ms",
+          "status",
+          "error",
+          "attrs",
+          "code",
+          "payload",
+          "children"
+        ],
+        "title": "RunStep",
+        "description": "One step of a run (a span), with the steps it ran inside it."
       },
       "RunSummary": {
         "properties": {
@@ -952,6 +1215,10 @@
             },
             "type": "array",
             "title": "Evidence"
+          },
+          "trace": {
+            "type": "string",
+            "title": "Trace"
           }
         },
         "type": "object",
@@ -976,7 +1243,8 @@
           "rounds",
           "pr_body",
           "sentinel",
-          "evidence"
+          "evidence",
+          "trace"
         ],
         "title": "RunTrace"
       },
@@ -1203,6 +1471,15 @@
         ],
         "title": "SpecView"
       },
+      "Status": {
+        "type": "string",
+        "enum": [
+          "running",
+          "ok",
+          "error",
+          "paused"
+        ]
+      },
       "Step": {
         "properties": {
           "phase": {
@@ -1263,6 +1540,97 @@
         "title": "Step",
         "description": "One agent attempt: the reproducer's or the implementer's."
       },
+      "StepDoc": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "Line 1 of the doc."
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary",
+            "description": "The plain sentence under the title."
+          },
+          "why": {
+            "type": "string",
+            "title": "Why",
+            "description": "Markdown: why the step exists, its decision, alternatives."
+          },
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "description": "The module-qualified function it describes."
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "title",
+          "summary",
+          "why",
+          "code"
+        ],
+        "title": "StepDoc",
+        "description": "What a kind of step is for, from `docs/steps/<key>.md`."
+      },
+      "StepTree": {
+        "properties": {
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/RunStep"
+            },
+            "type": "array",
+            "title": "Steps"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/Totals"
+          }
+        },
+        "type": "object",
+        "required": [
+          "steps",
+          "totals"
+        ],
+        "title": "StepTree",
+        "description": "A run's steps so far: the roots are its flow invocations in order\n(`flow start` up to the first gate, then one per answered gate)."
+      },
+      "Totals": {
+        "properties": {
+          "seconds": {
+            "type": "number",
+            "title": "Seconds",
+            "description": "First start to last end, gates included."
+          },
+          "agents": {
+            "type": "integer",
+            "title": "Agents",
+            "description": "Agent sessions run."
+          },
+          "turns": {
+            "type": "integer",
+            "title": "Turns",
+            "description": "Their turns, summed."
+          },
+          "cost_usd": {
+            "type": "number",
+            "title": "Cost Usd",
+            "description": "At API list prices."
+          }
+        },
+        "type": "object",
+        "required": [
+          "seconds",
+          "agents",
+          "turns",
+          "cost_usd"
+        ],
+        "title": "Totals"
+      },
       "ValidationError": {
         "properties": {
           "loc": {
@@ -1302,6 +1670,41 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "Value": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "type": "array"
+          }
+        ]
       }
     }
   }
