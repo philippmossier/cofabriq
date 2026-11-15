@@ -5,6 +5,8 @@
 Accepted, 2026-10-18. Amended 2026-11-03: `cofabriq run` drives the same
 graph in one process, so the graph is the only orchestrator of a run.
 Amended 2026-11-14: durable-execution engines as an alternative.
+Amended 2026-11-15: every route stops at the test gate, and a test sent back
+is written again: the graph's one loop.
 
 ## Context
 
@@ -27,8 +29,8 @@ approved. So every pause point has to be a step boundary.
 ## Decision
 
 - **The outer loop of `cofabriq run` is a LangGraph graph** (`loop/graph.py`):
-  refine, plan gate, setup, write the test, test gate (features), build, review,
-  record. The gates are `interrupt()` calls, each in its own node.
+  refine, plan gate, setup, write the test, test gate, build, review, record.
+  The gates are `interrupt()` calls, each in its own node.
 - **`run_loop` is split into stages** (`start_stage`, `test_stage`,
   `build_stage`, `pack` over a JSON `Progress`). The graph's nodes call the
   stages; the evals keep calling `run_loop`, which composes the same stages
@@ -44,6 +46,19 @@ approved. So every pause point has to be a step boundary.
   hooks the CLI passes in (the judge runs in `record`, before the worktree is
   removed); `--spec` and `--planted` are inputs in the state; publishing
   (`--apply`) runs after the graph, from the stored record.
+- **Every route stops at the test gate** (amendment, 2026-11-15), bugs too,
+  not only features. A test can be red for a reason the issue never named
+  (on playground #8 it asserted `color-scheme` before the reported colour;
+  the build turned it green and the reviewer only noted it), and once the
+  build has passed against it, it proves nothing. The gate shows how the
+  test fails on the unchanged code. `run --yes` approves it; the evals don't
+  go through the graph, so their numbers stay comparable.
+- **A test sent back is written again** (amendment): the test gate's third
+  answer, next to approve and stop, needs a reason. The graph goes from
+  `test_gate` back to `write_test` with the rejected test and the reason in
+  the state; the worktree is reset first, the plan stays approved. The bound
+  (3 rewrites) is a counter in the state, not a graph construct, so a
+  resumed flow keeps it.
 
 ## Consequences
 
@@ -63,6 +78,9 @@ approved. So every pause point has to be a step boundary.
   result. Now both drive one graph: the same checks, the same record (the
   loop's result before review), and every run that got past setup is
   recorded, a flow's red build or rejected test too.
+- One more click per bug run, and a run's path through the graph is no
+  longer a straight line: the step view shows a rewritten test as a second
+  "write a failing test" step. Every rejection is still kept for `lessons`.
 
 ## Alternatives considered
 
@@ -85,3 +103,11 @@ approved. So every pause point has to be a step boundary.
   the dev reruns it), and a workflow server is one more service to
   self-host (ADR-009). Revisit when runs go unattended (a batch of issues
   overnight), where a crashed run must restart without a person.
+- **A rejected test ends the run** (what 0.5 did, amendment): the dev's
+  reason was kept only for `lessons`, and a test off by one case cost a full
+  restart, refine included. Rejected: the plan was fine, only the test needed
+  another try.
+- **Back to refine on a rejected test** (amendment): a new spec for a test
+  problem would make the dev approve the plan again. Rejected for the test
+  gate; Start again (a new flow that reads why the last one ended) covers a
+  plan that turned out wrong.

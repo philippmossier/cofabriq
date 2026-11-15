@@ -13,7 +13,9 @@ PR) -> 0.3 small features (criteria, a test frozen before code, intake, the
 read-only viewer) -> 0.4 UI bugs in the loop + kill switch -> 0.5 browser
 gate + guided planning -> 0.6 lessons, the sentinel, screenshots, a harder
 set -> 0.7 duplicate retrieval (issues cleaned before embedding, an LLM rerank
-of the nearest 50) -> next: a second reviewer model, risky-change routing ->
+of the nearest 50) -> 0.8 runs started and followed in the browser (the step
+view), a test gate on every run with "write it again", `at`, sketches and
+proof in the spec -> next: a second reviewer model, risky-change routing ->
 later: a real repo with tests, self-host packaging. Current: v0.7.2.
 Playground only.
 

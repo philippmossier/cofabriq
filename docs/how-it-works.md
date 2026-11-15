@@ -90,6 +90,51 @@ on it, and a run ends as `halted`. One run's agents share a budget
 (`RUN_BUDGET_USD`, each call's own cap clamped to what is left), and every
 agent run has a turn cap.
 
+## Gates you can judge, in the browser (0.8)
+
+**The spec says where and how.** Each file in a spec has `at`, the lines the
+change touches, and up to 3 `edits`, sketches of the change as old and new
+lines. Both are the agent's claims and checked in code: a line that isn't
+in the file at the commit is dropped, and a sketch is kept only if its old
+lines are in the file. The builder doesn't get the sketches; it reads the
+code itself and is judged by the test. The spec also says how the fix will
+be proven (`proof`): a unit test, a browser test, a proxy (a measurable
+stand-in, said what for), or none, with the reason. A `none` goes back to
+the dev before any test is paid for. Refine's prompt carries the test
+writer's rules (its globs, code that exists now, the test kinds), so it
+doesn't plan a test the test writer isn't allowed to write.
+
+**Every run stops at the test gate**, bugs too. The page shows how the test
+fails on the unchanged code (the failure lines first, the full output
+folded): a test can be red for a reason the issue never named, and once
+the build has made it green that can't be seen any more. Three answers:
+approve (the test is frozen), stop, or write it again with a reason, at
+most 3 times. A rewrite resets the worktree and gives the test writer the
+rejected test and the reason; the plan stays approved
+([ADR-010](adr/010-langgraph-for-the-outer-loop-gates-as-nodes.md)).
+
+**Runs start in the browser.** `serve --write`'s Issues page lists the
+stored issues of every repo cofabriq can run on; Start runs the same checks
+as `flow start` (a blocked ticket is refused with the reason) and refine in a
+background thread. Start again replaces an ended flow, and refine reads why
+the last one ended.
+
+**Each step, live.** Every step of a run is an OpenTelemetry span
+([ADR-011](adr/011-opentelemetry-genai-traces.md)). A span processor
+writes each one's start and end to `data/traces/<run>.jsonl`; the API folds
+those lines into a tree (a start without an end is running) and the page
+polls it: time, cost and turns per step, and on request the data a step got
+and gave (local only, shown as text), the function behind it, and a short
+doc on why the step exists (`docs/steps/`, kept in sync with the graph by a
+test). The same spans go to Jaeger or any OTLP backend when
+`OTEL_EXPORTER_OTLP_ENDPOINT` is set, as metadata only.
+
+**Checked in a browser.** `make e2e` runs the real `serve` on copies of
+recorded runs (`ui/e2e/fixtures/data/`) and checks every page, in CI.
+`make journey` takes one live issue through the UI and writes every page as
+a screenshot and text, plus the run's JSON and the draft PR body, to
+`data/journey/`: a change to the journey is reviewed from that folder.
+
 ## Triage (0.1)
 
 Point it at a GitHub

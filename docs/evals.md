@@ -76,6 +76,41 @@ right published 10/10; wrong fixed 8/8, **leaked 0**; 17 proof tests, all
 valid; $0.289 per case notional ($0.201 before: the extra proofs land on
 the wrong fixes only, every right fix is approved).
 
+## 0.8: specs and tests you can judge
+
+0.8 changes what refine writes (the lines a change touches, edit sketches,
+the test writer's rules in its prompt, how a fix will be proven) and adds a
+test gate to bug runs. Refine is measured on the 22 planted bugs; the gates
+by running them.
+
+`eval refine`, before (after `at` was added, same day) and after the rest:
+
+| | before | after |
+| --- | --- | --- |
+| the fix's file first (hit@1) | 1.00 | 1.00 |
+| precision (files listed that the fix touches) | 0.91 | 1.00 |
+| size right | 0.68 | 0.68 |
+| `at` on the lines the reference fix changes | 18/22 | 18/22 |
+| a test planned | 19/22 | 22/22 |
+| edit sketches kept / bugs with a sketch on the fix's lines | - | 24 / 18 |
+| proof kind | - | unit 10, browser 12, proxy 0, none 0 |
+| cost per bug | $0.117 | $0.122 |
+
+A sketch is kept only when its old lines are in the file at the commit;
+dropped ones aren't counted yet. Every planted bug has a test that shows it,
+so a `none` here would be a false refusal, and a `proxy` odd; neither came
+up. "On the fix's lines": the original lines a reference fix removes, and
+both neighbours of a pure insertion.
+
+| Check | Result |
+| --- | --- |
+| the viewer in a browser, on recorded runs (`make e2e`) | every page, in CI on every push, ~3 s |
+| one live issue through the real UI (`make journey`) | #51: plan approved, test sent back with a reason, rewritten (the asked-for 41-character case added), approved, fixed, review approved; 1 min 53 s, 5 agent sessions, $0.38; #83 (feature) through its test gate |
+| the first journey run | found a real bug: after Approve the page still showed the gate's question for a moment, the test ended, and the server stopped mid-run; such a run now reads "stopped mid-run", not "Done" |
+
+The evals don't go through the gates (they call the loop's stages
+directly), so the loop and gate numbers above stay comparable with 0.2.
+
 ## 0.6: a harder set that wasn't harder
 
 Every stage was saturated, so 5 harder bugs were planted (`playground/

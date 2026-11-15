@@ -186,7 +186,8 @@ Walk through the browser flow on one issue:
    reads the code and writes a spec while the step view shows it live
    (`cofabriq flow start <n>` does the same in the terminal).
 3. Approve the plan (or reject it with a reason). The agent then writes a
-   failing test; approve that too.
+   failing test and the page shows how it fails: approve it, stop the run, or
+   have it written again with your reason.
 4. The build, the review and the draft PR text run on their own, a few minutes.
 5. Read the result under Runs: the plan, the test, the diff, the review and
    the draft PR body. It stays on your disk. Opening the PR on GitHub is still
@@ -202,7 +203,52 @@ instead of the key: `AGENT_AUTH=subscription` and a token from
 prices, not billed.
 
 Development: `make check` runs ruff, pyright (strict) and pytest, and the
-UI's checks when `ui/` changed.
+UI's checks when `ui/` changed. `make e2e` runs the viewer in a browser on
+recorded runs (seconds, free, in CI); `make journey` takes one live issue
+through the real UI and saves every page to review.
+
+## A test you can judge, started from the browser (0.8)
+
+A green test only means something if it first failed for the reported
+reason. Playground [#8](https://github.com/philippmossier/local-ai-chat-playground/issues/8)
+says code in dark mode is "dark grey on almost black". The agent's browser
+test checked four things, the page's `color-scheme` first, and said so:
+
+> It should fail now because nothing sets `color-scheme` [...]. The colour
+> and contrast checks also catch the reported dark grey if Chrome's computed
+> colour shows it. I haven't been able to run it.
+
+It failed on `color-scheme`, the fix made it green, and the reviewer
+approved with a note: "'failed before' does not prove the grey text was
+reproduced". On a bug, nobody saw the test before the build. Now every run
+stops there:
+
+1. **Start it in the browser.** Under Issues, pick
+   [#51](https://github.com/philippmossier/local-ai-chat-playground/issues/51)
+   (a chat title cut off with "…" although it fits) and press Start. The
+   step view shows each step live: what ran, how long, what it cost, and on
+   request the data it got and gave, the code behind it and why it exists.
+2. **The plan gate** shows the lines the change will touch (checked against
+   the file), a sketch of the edit (kept only if its old lines are really
+   there), and how the fix will be proven: a unit test, a browser test, a
+   stand-in measure, or no test at all, which goes back to the dev before
+   any test is paid for.
+3. **The test gate** shows how the new test fails on the unchanged code:
+   only the failure lines, the full output folded. Approve, stop, or **write
+   it again** with a reason. #51's first test was sent back with "also test
+   a title one character shorter than the limit"; the second one added that
+   case, and was approved.
+4. Build, checks, review and the draft PR body, as before. #51 took 1 min
+   53 s and $0.38 (API list price), the rewrite included.
+
+<img src="docs/demo/test-gate-rewritten.png" width="760" alt="The test gate for #51 after a rewrite: Approve, Write it again (2 left), Stop the run; how the test fails on the unchanged code (a 42-character title comes back ending in an ellipsis); the rewritten test with the 41, 42 and 43 character cases">
+
+On the 22 planted bugs, refine now plans a test for every one (19 before),
+lists only files the fix touches (precision 0.91 to 1.00), and names the
+fix's own lines in 18; it picks a unit test for 10 and a browser test for
+12, and turns none away ([numbers](docs/evals.md#08-specs-and-tests-you-can-judge)).
+Why a rejected test goes back to the test writer and not to refine:
+[ADR-010](docs/adr/010-langgraph-for-the-outer-loop-gates-as-nodes.md).
 
 ## Features (0.3)
 
@@ -402,8 +448,11 @@ the repository, the parts and the user journeys:
       code, screenshots as evidence, a harder planted set
 - [x] **0.7** better duplicate retrieval: issues cleaned before embedding,
       an LLM rerank of the nearest 50
+- [x] **0.8** runs started and followed in the browser, step by step with
+      time and cost; a test gate on every run, a test sent back is written
+      again; how each fix will be proven
 - [ ] **Next:** a second reviewer model, "who knows this area" for risky
-      changes, starting and publishing runs from the browser, run metrics
+      changes, publishing runs from the browser
 - [ ] **Later:** a real repository with tests, self-host packaging
 
 0.x releases: the CLI may still change. Decisions are recorded in
