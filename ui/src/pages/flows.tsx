@@ -1,8 +1,9 @@
 import { Link, useParams } from "@tanstack/react-router";
 import { useState } from "react";
-import { Route, useFlow, useFlowAnswer, useFlowList } from "@/api/generated";
+import { useFlow, useFlowAnswer, useFlowList } from "@/api/generated";
 import { FlowResult } from "@/components/result-card";
 import { StartFlow } from "@/components/start-flow";
+import { againRoute } from "@/lib/flows";
 import { List, Loading, Missing, Pre, Section, Status } from "@/components/bits";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -163,7 +164,7 @@ export function FlowPage() {
                 name={name}
                 number={f.number}
                 canStart={token !== null}
-                route={f.route === "feature" ? Route.bug : Route.feature}
+                route={againRoute(f)}
                 again
               />
             </div>

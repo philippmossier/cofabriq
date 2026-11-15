@@ -4,6 +4,7 @@ import { useState } from "react";
 import { type FlowSummary, useIssues, useRepos } from "@/api/generated";
 import { Loading, Status } from "@/components/bits";
 import { StartFlow } from "@/components/start-flow";
+import { againRoute } from "@/lib/flows";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -135,14 +136,26 @@ function IssueTable({ repo, canStart }: { repo: string; canStart: boolean }) {
               <TableCell className="text-sm text-muted-foreground">{when(i.updated_at)}</TableCell>
               <TableCell>
                 {i.flow ? (
-                  <Link
-                    to="/flows/$owner/$name/$number"
-                    params={{ owner, name, number: String(i.number) }}
-                    className="flex items-center gap-2 text-sm hover:underline"
-                  >
-                    <FlowState flow={i.flow} />
-                    <span className="font-medium">Open →</span>
-                  </Link>
+                  <div className="space-y-1.5">
+                    <Link
+                      to="/flows/$owner/$name/$number"
+                      params={{ owner, name, number: String(i.number) }}
+                      className="flex items-center gap-2 text-sm hover:underline"
+                    >
+                      <FlowState flow={i.flow} />
+                      <span className="font-medium">Open →</span>
+                    </Link>
+                    {!i.flow.running && !i.flow.waiting && (
+                      <StartFlow
+                        owner={owner}
+                        name={name}
+                        number={i.number}
+                        canStart={canStart}
+                        route={againRoute(i.flow)}
+                        again
+                      />
+                    )}
+                  </div>
                 ) : (
                   <StartFlow owner={owner} name={name} number={i.number} canStart={canStart} />
                 )}
