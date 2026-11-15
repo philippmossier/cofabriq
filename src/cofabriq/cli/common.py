@@ -7,6 +7,7 @@ from collections.abc import Callable, Collection
 import typer
 from neo4j import Driver
 
+from cofabriq import tracing
 from cofabriq.config import get_settings
 from cofabriq.context.ingest.embed import Embed, openai_embedder
 from cofabriq.context.store import graph as kg
@@ -38,6 +39,12 @@ app.add_typer(flow_app, name="flow")
 def main() -> None:
     """A software factory pointed at a GitHub repo: triage, refine and the
     core loop for small issues, the repo map and its context for planning."""
+    settings = get_settings()
+    headers = settings.otel_exporter_otlp_headers
+    tracing.setup(
+        settings.otel_exporter_otlp_endpoint,
+        headers.get_secret_value() if headers else "",
+    )
 
 
 def target_repo(repo: str | None) -> str:

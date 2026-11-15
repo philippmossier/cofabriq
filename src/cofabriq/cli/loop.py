@@ -12,7 +12,6 @@ import typer
 import uvicorn
 from fastapi import FastAPI
 from langgraph.graph.state import CompiledStateGraph
-from langgraph.types import Command
 from rich.console import Console
 
 from cofabriq.cli.common import (
@@ -146,11 +145,7 @@ def _invoke(
 ) -> graph_mod.FlowStatus:
     """Start the graph, or resume it with the dev's answer, to its next
     gate or its end; where it stands then."""
-    config = graph_mod.thread_config(thread)
-    if isinstance(given, graph_mod.GateAnswer):
-        graph.invoke(Command(resume=given.model_dump()), config)
-    else:
-        graph.invoke(given, config)
+    graph_mod.invoke(graph, given, thread)
     now = graph_mod.read_status(graph, thread)
     assert now is not None
     return now
@@ -328,7 +323,7 @@ def flow_start(
                 raise typer.Exit(code=1)
             graph.checkpointer.delete_thread(thread)  # pyright: ignore[reportOptionalMemberAccess,reportAttributeAccessIssue]
         state = graph_mod.FlowState(issue=issue, route=route)
-        graph.invoke(state, config)
+        graph_mod.invoke(graph, state, thread)
         _flow_report(graph, thread)
 
 
@@ -358,7 +353,7 @@ def flow_resume(
             typer.echo(f"{thread} waits at no gate", err=True)
             raise typer.Exit(code=1)
         answer = graph_mod.GateAnswer(approve=approve, reason=reason)
-        graph.invoke(Command(resume=answer.model_dump()), config)
+        graph_mod.invoke(graph, answer, thread)
         _flow_report(graph, thread)
 
 

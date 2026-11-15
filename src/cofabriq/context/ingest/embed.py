@@ -4,6 +4,7 @@ from collections.abc import Callable, Sequence
 
 from openai import OpenAI
 
+from cofabriq import tracing
 from cofabriq.context.ingest.chunk import Chunk
 
 # The dimension is baked into the `chunks.embedding` column: changing the
@@ -32,7 +33,9 @@ def openai_embedder(api_key: str) -> Embed:
         vectors: list[list[float]] = []
         for i in range(0, len(texts), BATCH):
             batch = list(texts[i : i + BATCH])
-            response = client.embeddings.create(model=MODEL, input=batch)
+            with tracing.embeddings(MODEL) as span:
+                response = client.embeddings.create(model=MODEL, input=batch)
+                tracing.embedded(span, response.model, response.usage.prompt_tokens)
             vectors.extend(d.embedding for d in response.data)
         return vectors
 

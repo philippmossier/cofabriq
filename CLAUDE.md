@@ -20,7 +20,8 @@ Playground only.
 ## Commands
 
 - `make setup`: install deps (`uv sync`), create `.env` from `.env.example`, enable the git hook in `.githooks/` (`make check` before every commit on `main`)
-- `make up` / `make down`: start / stop Postgres+pgvector and Neo4j (podman compose)
+- `make up` / `make down`: start / stop Postgres+pgvector, Neo4j and Jaeger (podman compose)
+- Traces: set `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318` and every command exports its spans to compose's Jaeger (UI on http://localhost:16686), or to any OTLP/HTTP backend with `OTEL_EXPORTER_OTLP_HEADERS` (ADR-011); off when unset
 - `make check`: ruff lint, ruff format check, pyright (strict), pytest. Must be green before any commit. CI (`.github/workflows/check.yml`) runs it and `make check-ui` on every push to `main` and every PR, the two databases as service containers; there a database test fails instead of skipping (`CI` set)
 - `make fmt`: autofix lint and format
 - `make schema`: refresh GitHub's GraphQL schema (`tests/fixtures/github-schema.graphql`), which the query test and the GraphQL LSP (`.graphqlrc.yml`) read
@@ -64,6 +65,7 @@ Playground only.
 - `src/cofabriq/targets.py`: `target_table` (one table of `targets/<owner>-<name>.toml`; each module keeps its own model for its table), `repo_slug`, `clone_dir`, `PLAYGROUND`
 - `src/cofabriq/git.py`: every git call (`git`, `try_git` for a command whose failure is an answer, `files_at`, `tracked`), each without the caller's `GIT_*` variables (`git_env`: inside a git hook they point at the wrong repo)
 - `src/cofabriq/files.py`: result files under `data/`: `stamp` (UTC, names sort by time), `write_stamped` (`<prefix>-<stamp>.json`), `newest_by_key` (the newest value per key over those files), `write_atomic` (tmp + rename, for every cache and index)
+- `src/cofabriq/tracing.py`: OpenTelemetry setup (`setup`, called by the CLI's callback) and spans: `span` (a child of the current one; `expected` exceptions don't mark it failed), `chat` / `embeddings` / `agent` with the GenAI convention names (only here), `traceparent` (a resumed flow links to its first trace); metadata only, never prompt or answer text
 - `src/cofabriq/untrusted.py`: untrusted text in prompts: `fenced` (data in a tag it can't close early, in every prompt), `quote_in` (a quote the model gives back is in the text it saw, whitespace loose, case optional)
 - `src/cofabriq/llm.py`: the OpenAI model and prices, `structured` (one parsed call with usage, behind the `Judge` / `Reranker` / `Triager` / `Extractor` protocols), `cached_batch` (one `Record` per issue and version in a JSON list, reused while usable, saved even when a call fails)
 - `src/cofabriq/cli/`: typer CLI, entry point `cofabriq` (`app` in `common.py`): `context.py` (documents, decision graph, MCP, the repo map), `issues.py` (issue ingest, triage, impact), `loop.py` (refine, run, flow, intake, serve, lessons, stop), `evals.py` (`eval ...`), `render.py` (terminal output); `__init__.py` imports them, which registers the commands
@@ -102,6 +104,7 @@ Playground only.
 - Evidence per target: `[loop.evidence]` (0.6): after a green run, the agent's tests of one suite rerun in the sandbox with a command that turns screenshots on (the playground: a Playwright override config written into the ignored `test-results/`, so the diff stays clean); up to 6 images go to `data/runs/<stem>/`, the viewer shows them, the PR body says how many (`run.collect_evidence`)
 - Test kinds per target: `[[loop.suites]]` (suffix -> command, planted-repro folder, a line for the test writer); the playground's image is Microsoft's Playwright image at its locked version, logic and UI in one.
 - Install only what the current step needs.
+- Spans never carry prompt, issue, answer or diff text. A thread pool whose calls open spans gets the caller's context (`pool.submit(copy_context().run, fn, ...)`), or the spans lose their parent.
 - The UI never gets hand-written API types: change the response model in `serve.py`, run `make check-ui`. shadcn's `cn` is its own package (`shadcn-ui/cn`), keep it.
 - Postgres runs on host port 5433. Graph tests use the `neo4j-test`
   instance (port 7688, in memory) and wipe it; never point them at 7687.

@@ -8,11 +8,29 @@ import psycopg
 import pytest
 from neo4j import Driver
 from neo4j.exceptions import ServiceUnavailable
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from psycopg import sql
 
 from cofabriq.config import get_settings
 from cofabriq.context.store import graph, postgres
 from tests.gitrepo import init_repo
+
+# Every span goes to memory, never to a backend a dev's `.env` names:
+# `tracing.setup` keeps a provider that is already set.
+SPANS = InMemorySpanExporter()
+_provider = TracerProvider()
+_provider.add_span_processor(SimpleSpanProcessor(SPANS))
+trace.set_tracer_provider(_provider)
+
+
+@pytest.fixture
+def spans() -> InMemorySpanExporter:
+    """The spans finished during the test."""
+    SPANS.clear()
+    return SPANS
 
 
 def unreachable(service: str) -> NoReturn:

@@ -6,7 +6,7 @@ setup:  ## install deps into .venv, create .env if missing
 	git config core.hooksPath .githooks
 	cd ui && pnpm install --frozen-lockfile
 
-up:     ## start Postgres+pgvector and Neo4j in the background
+up:     ## start Postgres+pgvector, Neo4j and Jaeger in the background
 	podman compose up -d
 
 down:   ## stop containers (volumes kept)

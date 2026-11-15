@@ -4,6 +4,7 @@
 
 Accepted, 2026-10-18. Amended 2026-11-03: `cofabriq run` drives the same
 graph in one process, so the graph is the only orchestrator of a run.
+Amended 2026-11-14: durable-execution engines as an alternative.
 
 ## Context
 
@@ -73,3 +74,14 @@ approved. So every pause point has to be a step boundary.
 - **Gates inside `run_loop` as callbacks** (what 0.3's test gate did): fine
   while the process waits, impossible once the dev answers from another
   process.
+- **A durable-execution engine (Temporal, Inngest)** (amendment): a server
+  that re-drives a failed step and memoizes the finished ones, so a crashed
+  run continues on its own. LangGraph's checkpoints are not that: the state
+  is saved after every node, but nothing resumes a thread unless someone
+  invokes it again, the interrupted node restarts from its beginning, and
+  retries are opt-in per node (`RetryPolicy`; cofabriq uses none, the
+  build's three attempts are its own loop). Rejected for now: a run is one
+  dev's issue, a crash is rare and visible (the flow keeps its checkpoint,
+  the dev reruns it), and a workflow server is one more service to
+  self-host (ADR-009). Revisit when runs go unattended (a batch of issues
+  overnight), where a crashed run must restart without a person.
