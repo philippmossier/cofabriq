@@ -124,7 +124,18 @@
   body {
     @apply bg-background text-foreground;
     }
+  /* Tailwind v4 dropped the pointer on buttons: what can be clicked shows it */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  [role="tab"],
+  select:not(:disabled),
+  summary,
+  label:has(input:not(:disabled)) {
+    cursor: pointer;
+  }
   html {
     @apply font-sans;
+    /* room for the scrollbar on every page: a long page doesn't shift the layout */
+    scrollbar-gutter: stable;
     }
 }

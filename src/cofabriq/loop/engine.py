@@ -53,12 +53,24 @@ READ_ONLY = ("Read", "Grep", "Glob")
 EDIT = (*READ_ONLY, "Edit", "Write")
 
 
+class Tokens(BaseModel):
+    """A session's tokens, summed over its models. The prompt cache decides
+    the cost as much as the turns: a cache read costs a tenth of an input
+    token, a cache write more than one."""
+
+    input: int = 0  # not from the cache
+    output: int = 0
+    cache_read: int = 0
+    cache_write: int = 0
+
+
 class AgentRun(BaseModel):
     output: dict[str, object]  # the structured answer, matching the schema
     model: str
     cost_usd: float
     turns: int
     latency_ms: int
+    tokens: Tokens = Field(default_factory=Tokens)  # runs before it: zeros
 
 
 class AgentError(RuntimeError):
@@ -187,6 +199,14 @@ class ClaudeCode:
                 tracing.agent_ran(span, self.model, exc.cost_usd, 0)
                 raise
             tracing.agent_ran(span, run.model, run.cost_usd, run.turns)
+            t = run.tokens
+            tracing.agent_tokens(
+                span,
+                t.input,
+                t.output,
+                cache_read=t.cache_read,
+                cache_write=t.cache_write,
+            )
             tracing.capture(span, answer=run.output)
         return run
 
@@ -211,6 +231,15 @@ def _env(auth: Auth, config: Path) -> dict[str, str]:
     return env
 
 
+class _Usage(BaseModel):
+    """One model's share of a session (`modelUsage`)."""
+
+    input: int = Field(default=0, alias="inputTokens")
+    output: int = Field(default=0, alias="outputTokens")
+    cache_read: int = Field(default=0, alias="cacheReadInputTokens")
+    cache_write: int = Field(default=0, alias="cacheCreationInputTokens")
+
+
 class _Result(BaseModel):
     """The fields of the `--output-format json` result cofabriq reads."""
 
@@ -220,7 +249,16 @@ class _Result(BaseModel):
     structured_output: dict[str, object] | None = None
     total_cost_usd: float = 0.0
     num_turns: int = 0
-    model_usage: dict[str, object] = Field(default={}, alias="modelUsage")
+    model_usage: dict[str, _Usage] = Field(default={}, alias="modelUsage")
+
+
+def _tokens(usage: dict[str, _Usage]) -> Tokens:
+    return Tokens(
+        input=sum(u.input for u in usage.values()),
+        output=sum(u.output for u in usage.values()),
+        cache_read=sum(u.cache_read for u in usage.values()),
+        cache_write=sum(u.cache_write for u in usage.values()),
+    )
 
 
 def parse(stdout: str, stderr: str, latency_ms: int) -> AgentRun:
@@ -240,6 +278,7 @@ def parse(stdout: str, stderr: str, latency_ms: int) -> AgentRun:
         cost_usd=result.total_cost_usd,
         turns=result.num_turns,
         latency_ms=latency_ms,
+        tokens=_tokens(result.model_usage),
     )
 
 

@@ -1,7 +1,12 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
+import { LoaderCircle } from "lucide-react";
 import { useState } from "react";
 import { useFlow, useFlowAnswer, useFlowList } from "@/api/generated";
-import { List, Loading, Missing, Pre, Section, Status } from "@/components/bits";
+import { FlowResult } from "@/components/result-card";
+import { StartFlow } from "@/components/start-flow";
+import { againRoute, refreshFlow } from "@/lib/flows";
+import { Loading, Missing, Pre, Section, Status } from "@/components/bits";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,6 +19,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { RunSteps } from "@/components/run-steps";
+import { SpecReview } from "@/components/spec-review";
 import { dropToken, useWriteToken, writeAuth } from "@/lib/token";
 
 const POLL_MS = 3000;
@@ -32,7 +38,8 @@ export function FlowsPage() {
       <div className="flex items-center gap-4">
         <h1 className="font-heading text-xl font-semibold">Flows</h1>
         <span className="text-sm text-muted-foreground">
-          runs waiting for you: start one with <code>cofabriq flow start &lt;n&gt;</code>
+          runs waiting for you: start one from <Link to="/issues" className="underline">Issues</Link>
+          {" "}(or <code>cofabriq flow start &lt;n&gt;</code>)
         </span>
       </div>
       {rows.length === 0 && (
@@ -90,10 +97,15 @@ export function FlowPage() {
   const q = useFlow(owner, name, Number(number), {
     query: {
       select: (r) => (r.status === 200 ? r.data : null),
-      refetchInterval: POLL_MS,
+      // while it works, each second: a rejection ends it in under one
+      refetchInterval: (query) => {
+        const r = query.state.data;
+        return r?.status === 200 && r.data.running ? 1000 : POLL_MS;
+      },
     },
   });
   const token = useWriteToken();
+  const client = useQueryClient();
   const answer = useFlowAnswer({ fetch: writeAuth() });
   const [reason, setReason] = useState("");
   if (q.isPending) return <Loading what="the flow" />;
@@ -103,9 +115,19 @@ export function FlowPage() {
   const send = (approve: boolean) =>
     answer.mutate(
       { owner, name, number: Number(number), data: { approve, reason: approve ? "" : reason } },
-      // 401: the server restarted with a new token; this one is dead
-      { onSuccess: (r) => (r.status as number) === 401 && dropToken() },
+      {
+        onSuccess: async (r) => {
+          if ((r.status as number) === 401) dropToken(); // the server restarted: a dead token
+          // it says "running" at once: don't wait for the next poll
+          else await refreshFlow(client, owner, name, Number(number));
+        },
+      },
     );
+  const spec = f.problem ? <SpecReview s={f} /> : null;
+  // which button was pressed: it gets the spinner
+  const sending = answer.isPending ? answer.variables.data.approve : null;
+  // the last answer from this page was a no: the work left is closing it
+  const rejected = answer.variables?.data.approve === false;
   // the guard's 401 / 403 aren't in the schema: a plain number
   const refused: number | null =
     answer.data && answer.data.status !== 200 ? answer.data.status : null;
@@ -129,8 +151,12 @@ export function FlowPage() {
       <Card className={f.waiting ? "border-primary" : ""}>
         <CardHeader>
           <CardTitle>
-            {f.running
-              ? "Working on your answer… (setup, test, build and review take a few minutes)"
+            {f.running && !f.problem
+              ? "Reading the code to write a spec… (about 20 s; the plan gate comes next)"
+              : f.running && rejected
+                ? "Rejected: closing the flow…"
+                : f.running
+                  ? "Working on your answer… (setup, test, build and review take a few minutes)"
               : f.waiting === "plan"
                 ? "Approve the plan? No code is written before you do."
                 : f.waiting === "test"
@@ -145,18 +171,28 @@ export function FlowPage() {
               Read-only here: open the URL that <code>cofabriq serve --write</code> printed.
             </p>
           )}
-          {!f.waiting && !f.running && f.record && (
-            <Link
-              to="/runs/$file/$key"
-              params={{ file: f.record, key: String(f.number) }}
-              className="text-sm font-medium hover:underline"
-            >
-              Open the run: test, diff, review, draft PR →
-            </Link>
+          {!f.waiting && !f.running && f.record && <FlowResult file={f.record} number={f.number} />}
+          {!f.waiting && !f.running && (
+            <div className="space-y-1 border-t pt-3">
+              <p className="text-sm text-muted-foreground">
+                {f.outcome === "approved"
+                  ? "Run it again: a new flow replaces this one (nothing was merged, so the bug is still there). The old run stays under Runs."
+                  : "Wrong type, or a plan you rejected? Start again: a new flow replaces this one, and refine reads why this one ended. The old run stays under Runs."}
+              </p>
+              <StartFlow
+                owner={owner}
+                name={name}
+                number={f.number}
+                canStart={token !== null}
+                route={againRoute(f)}
+                again
+              />
+            </div>
           )}
           {f.waiting && (
             <div className="flex gap-2">
               <Button disabled={!canAnswer || answer.isPending} onClick={() => send(true)}>
+                {sending === true && <LoaderCircle className="animate-spin" />}
                 Approve
               </Button>
               <Button
@@ -164,6 +200,7 @@ export function FlowPage() {
                 disabled={!canAnswer || answer.isPending}
                 onClick={() => send(false)}
               >
+                {sending === false && <LoaderCircle className="animate-spin" />}
                 Reject
               </Button>
               <input
@@ -176,7 +213,6 @@ export function FlowPage() {
               />
             </div>
           )}
-          {answer.isPending && <p className="text-sm text-muted-foreground">Sending…</p>}
           {refused === 401 && (
             <p className="text-sm text-destructive">
               Refused: the server restarted with a new token. Open the new link it printed.
@@ -193,35 +229,20 @@ export function FlowPage() {
         </CardContent>
       </Card>
 
-      {f.trace && (
-        <Section title="Steps: what ran, what it cost, why">
-          <RunSteps run={f.trace} live={f.running} />
-        </Section>
-      )}
-
       {f.waiting === "test" && (
         <Section title="The test (frozen once approved)">
           <Pre text={f.diff} />
         </Section>
       )}
 
-      <Section title="Problem">
-        <Pre text={f.problem} className="bg-transparent p-0 font-sans text-sm" />
-      </Section>
-      {f.route === "feature" && (
-        <Section title="Acceptance criteria">
-          <List items={f.criteria} ordered />
+      {/* at a gate the spec is what you review: above the steps; after it, below */}
+      {f.waiting && spec}
+      {f.trace && (
+        <Section title="Steps: what ran, what it cost, why">
+          <RunSteps run={f.trace} live={f.running} />
         </Section>
       )}
-      <Section title="Files">
-        <List items={f.files.map((x) => `${x.path}: ${x.why}`)} />
-      </Section>
-      <Section title="Plan">
-        <List items={f.plan} ordered />
-      </Section>
-      <Section title="Open questions (answered by approving the plan)">
-        <List items={f.open_questions} />
-      </Section>
+      {!f.waiting && spec}
     </div>
   );
 }

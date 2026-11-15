@@ -57,6 +57,8 @@ RESPONSE_MODEL = "gen_ai.response.model"
 AGENT_NAME = "gen_ai.agent.name"
 INPUT_TOKENS = "gen_ai.usage.input_tokens"
 OUTPUT_TOKENS = "gen_ai.usage.output_tokens"
+CACHE_READ = "gen_ai.usage.cache_read.input_tokens"
+CACHE_WRITE = "gen_ai.usage.cache_creation.input_tokens"
 # the code conventions: the function a span stands for
 CODE_FUNCTION = "code.function.name"
 CODE_FILE = "code.file.path"
@@ -380,6 +382,21 @@ def agent(
         },
         kind=SpanKind.CLIENT,
         code=code,
+    )
+
+
+def agent_tokens(
+    current: Span, uncached: int, output: int, *, cache_read: int, cache_write: int
+) -> None:
+    """A session's tokens. As the conventions count it, input includes what
+    the cache served and stored; the two cache counts say how much."""
+    current.set_attributes(
+        {
+            INPUT_TOKENS: uncached + cache_read + cache_write,
+            OUTPUT_TOKENS: output,
+            CACHE_READ: cache_read,
+            CACHE_WRITE: cache_write,
+        }
     )
 
 

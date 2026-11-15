@@ -85,6 +85,24 @@ def conn() -> Iterator[postgres.Conn]:
             admin.execute(sql.SQL("DROP SCHEMA {} CASCADE").format(ident))
 
 
+@pytest.fixture
+def pg_dsn() -> Iterator[str]:
+    """A DSN whose tables (the flows' checkpoints) live in a throwaway schema."""
+    schema = f"test_{uuid.uuid4().hex[:8]}"
+    ident = sql.Identifier(schema)
+    dsn = get_settings().postgres_dsn
+    try:
+        admin = psycopg.connect(dsn, connect_timeout=2, autocommit=True)
+    except psycopg.OperationalError:
+        unreachable("Postgres")
+    with admin:
+        admin.execute(sql.SQL("CREATE SCHEMA {}").format(ident))
+        try:
+            yield f"{dsn}?options=-csearch_path%3D{schema}"
+        finally:
+            admin.execute(sql.SQL("DROP SCHEMA {} CASCADE").format(ident))
+
+
 # The throwaway instance from compose (`neo4j-test`), never the dev graph.
 TEST_URI = "bolt://localhost:7688"
 

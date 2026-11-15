@@ -4,10 +4,13 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from cofabriq.eval.loop import Judged
+from cofabriq.git import git
 from cofabriq.loop.graph import FlowRunner
 from cofabriq.loop.run import CheckResult
 from cofabriq.serve import build
+from cofabriq.targets import clone_dir
 from tests.builders import loop_result, refined
+from tests.gitrepo import init_repo
 
 
 def client(tmp_path: Path, ui: Path | None = None) -> TestClient:
@@ -78,17 +81,20 @@ def test_the_built_ui_answers_every_other_path(tmp_path: Path) -> None:
     assert c.get("/../secret.json").text == "<div id=root></div>"
 
 
-def test_the_gate_answer_is_the_only_write_route(tmp_path: Path) -> None:
+def test_answer_and_start_are_the_only_write_routes(tmp_path: Path) -> None:
     app = build(tmp_path, tmp_path, tmp_path, None)
     paths: dict[str, dict[str, object]] = app.openapi()["paths"]
     assert {m for ops in paths.values() for m in ops} == {"get"}
-    # with the browser gate, its answer is the only route that changes anything
+    # with the browser gate: answer a gate, start a flow; nothing else writes
     flows = FlowRunner("", lambda repo, spent: None)  # pyright: ignore[reportArgumentType]
     gated: dict[str, dict[str, object]] = build(
         tmp_path, tmp_path, tmp_path, None, flows=flows
     ).openapi()["paths"]
     writes = [p for p, ops in gated.items() if set(ops) - {"get"}]
-    assert writes == ["/api/flows/{owner}/{name}/{number}/answer"]
+    assert writes == [
+        "/api/flows/{owner}/{name}/{number}/answer",
+        "/api/flows/{owner}/{name}/{number}/start",
+    ]
 
 
 def test_the_committed_schema_is_current(tmp_path: Path) -> None:
@@ -107,3 +113,23 @@ def test_served_on_a_port_it_is_read_only_and_checks_the_host(tmp_path: Path) ->
     assert c.post("/api/runs", json={}).status_code == 405
     other = TestClient(app, base_url="http://evil.example:8765")
     assert other.get("/api/runs").status_code == 403
+
+
+def test_code_lines_come_from_the_clone_at_the_commit_only(tmp_path: Path) -> None:
+    body = "".join(f"line {n}\n" for n in range(1, 41))
+    clone = init_repo(clone_dir(tmp_path / "clones", "acme/app"), {"src/a.ts": body})
+    commit = git(clone, "rev-parse", "HEAD").strip()
+    c = TestClient(build(tmp_path, tmp_path, tmp_path / "clones", None))
+    url = f"/api/code/acme/app?commit={commit}"
+
+    around = c.get(f"{url}&path=src/a.ts&line=20").json()
+    span = c.get(f"{url}&path=src/a.ts&line=10&end=30").json()
+    top = c.get(f"{url}&path=src/a.ts").json()
+
+    assert (around["start"], len(around["lines"]), around["total"]) == (12, 17, 40)
+    assert around["lines"][8] == "line 20"
+    assert (span["start"], span["lines"][-1]) == (2, "line 38")  # 8 around the range
+    assert (top["start"], top["lines"][0]) == (1, "line 1")
+    for bad in ("../../etc/passwd", "src/nope.ts", ".git/config"):
+        assert c.get(f"{url}&path={bad}").status_code == 404
+    assert c.get("/api/code/acme/app?commit=HEAD&path=src/a.ts").status_code == 404

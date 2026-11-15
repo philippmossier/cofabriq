@@ -103,6 +103,11 @@ def test_an_agent_session_is_one_span_with_cost_and_turns(
         0.4,
         2,
     )
+    # input counts what the cache served and stored, as the conventions do
+    assert attributes["gen_ai.usage.input_tokens"] == 10_010
+    assert attributes["gen_ai.usage.cache_read.input_tokens"] == 9000
+    assert attributes["gen_ai.usage.cache_creation.input_tokens"] == 1000
+    assert attributes["gen_ai.usage.output_tokens"] == 300
 
 
 def test_a_failed_session_is_an_error_span_that_still_shows_its_cost(

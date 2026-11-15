@@ -53,6 +53,20 @@ export interface Code {
   url: string;
 }
 
+/**
+ * A few lines of one file at a commit, read from the clone: the plan
+ * gate's "current code" next to what the spec will change. The target's
+ * text: shown as text.
+ */
+export interface CodeLines {
+  path: string;
+  /** The first line's number, 1-based. */
+  start: number;
+  lines: string[];
+  /** The file's length in lines. */
+  total: number;
+}
+
 export interface FileNote {
   path: string;
   why: string;
@@ -130,6 +144,9 @@ export interface FlowView {
   assumptions: string[];
   open_questions: string[];
   diff: string;
+  commit: string;
+  tests: FileNote[];
+  unknown_paths: string[];
   trace: string;
   record: string;
 }
@@ -148,6 +165,23 @@ export interface HTTPValidationError {
   detail?: ValidationError[];
 }
 
+/**
+ * One stored issue, as the Issues page lists it.
+ */
+export interface IssueRow {
+  number: number;
+  title: string;
+  /** `open` or `closed`, as last fetched. */
+  state: string;
+  labels: string[];
+  comments: number;
+  updated_at: string;
+  /** The issue on GitHub. */
+  url: string;
+  /** Its flow, where it waits or how it ended; null: none yet. */
+  flow: FlowSummary | null;
+}
+
 export interface JsonValue {}
 
 export interface ProofView {
@@ -156,6 +190,20 @@ export interface ProofView {
   quote: string;
   tests: string[];
   red: Check | null;
+}
+
+export interface Refusal {
+  /** Why not: a blocker, a flow already there. */
+  detail: string;
+}
+
+/**
+ * A repo a flow can run on: an issue store and `[loop]` in its target
+ * file.
+ */
+export interface Repo {
+  repo: string;
+  issues: number;
 }
 
 export type StepPhase = typeof StepPhase[keyof typeof StepPhase];
@@ -191,6 +239,14 @@ export interface ReviewRound {
   proofs: ProofView[];
   fix: Step[];
 }
+
+export type Route = typeof Route[keyof typeof Route];
+
+
+export const Route = {
+  bug: 'bug',
+  feature: 'feature',
+} as const;
 
 export type RunKind = typeof RunKind[keyof typeof RunKind];
 
@@ -287,6 +343,7 @@ export interface RunTrace {
   sentinel: string[];
   evidence: string[];
   trace: string;
+  pr_url: string | null;
 }
 
 export type SpecSummaryRoute = typeof SpecSummaryRoute[keyof typeof SpecSummaryRoute];
@@ -341,6 +398,17 @@ export interface SpecView {
   seconds: number;
 }
 
+export interface Start {
+  /** `feature` writes acceptance criteria. */
+  route: Route;
+  /** Replace the issue's ended flow; why it ended goes to refine. */
+  again?: boolean;
+}
+
+export interface Started {
+  thread: string;
+}
+
 /**
  * What a kind of step is for, from `docs/steps/<key>.md`.
  */
@@ -379,6 +447,13 @@ export interface StepTree {
 export type Payload200 = {[key: string]: JsonValue};
 
 export type StepDocs200 = {[key: string]: StepDoc};
+
+export type CodeParams = {
+commit: string;
+path: string;
+line?: number | null;
+end?: number | null;
+};
 
 const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKey: K } => {
   const result = { queryKey } as T & { queryKey: K };
@@ -1291,6 +1366,419 @@ export function useStepDocs<TData = Awaited<ReturnType<typeof stepDocs>>, TError
 
 
 
+export type codeResponse200 = {
+  data: CodeLines
+  status: 200
+}
+
+export type codeResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type codeResponseSuccess = (codeResponse200) & {
+  headers: Headers;
+};
+export type codeResponseError = (codeResponse422) & {
+  headers: Headers;
+};
+
+export type codeResponse = (codeResponseSuccess | codeResponseError)
+
+export const getCodeUrl = (owner: string,
+    name: string,
+    params: CodeParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/code/${owner}/${name}?${stringifiedParams}` : `/api/code/${owner}/${name}`
+}
+
+/**
+ * A file at a commit: lines `line` to `end` (default: `line`) with 8
+ * above and below, at most 80; the top of the file without `line`. Only
+ * a file in that commit's tree of the local clone: never a path from
+ * outside it.
+ * @summary Code
+ */
+export const code = async (owner: string,
+    name: string,
+    params: CodeParams, options?: RequestInit): Promise<codeResponse> => {
+
+  const res = await fetch(getCodeUrl(owner,name,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: codeResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as codeResponse
+}
+
+
+
+
+
+export const getCodeQueryKey = (owner: string,
+    name: string,
+    params?: CodeParams,) => {
+    return [
+    `/api/code/${owner}/${name}`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getCodeQueryOptions = <TData = Awaited<ReturnType<typeof code>>, TError = HTTPValidationError>(owner: string,
+    name: string,
+    params: CodeParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof code>>, TError, TData>>, fetch?: RequestInit}
+) => {
+
+const {query: queryOptions, fetch: fetchOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getCodeQueryKey(owner,name,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof code>>> = ({ signal }) => code(owner,name,params, { signal, ...fetchOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: owner !== null && owner !== undefined && name !== null && name !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof code>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type CodeQueryResult = NonNullable<Awaited<ReturnType<typeof code>>>
+export type CodeQueryError = HTTPValidationError
+
+
+export function useCode<TData = Awaited<ReturnType<typeof code>>, TError = HTTPValidationError>(
+ owner: string,
+    name: string,
+    params: CodeParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof code>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof code>>,
+          TError,
+          Awaited<ReturnType<typeof code>>
+        > , 'initialData'
+      >, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useCode<TData = Awaited<ReturnType<typeof code>>, TError = HTTPValidationError>(
+ owner: string,
+    name: string,
+    params: CodeParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof code>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof code>>,
+          TError,
+          Awaited<ReturnType<typeof code>>
+        > , 'initialData'
+      >, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useCode<TData = Awaited<ReturnType<typeof code>>, TError = HTTPValidationError>(
+ owner: string,
+    name: string,
+    params: CodeParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof code>>, TError, TData>>, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Code
+ */
+
+export function useCode<TData = Awaited<ReturnType<typeof code>>, TError = HTTPValidationError>(
+ owner: string,
+    name: string,
+    params: CodeParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof code>>, TError, TData>>, fetch?: RequestInit}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getCodeQueryOptions(owner,name,params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export type reposResponse200 = {
+  data: Repo[]
+  status: 200
+}
+
+export type reposResponseSuccess = (reposResponse200) & {
+  headers: Headers;
+};
+;
+
+export type reposResponse = (reposResponseSuccess)
+
+export const getReposUrl = () => {
+
+
+
+
+  return `/api/repos`
+}
+
+/**
+ * The repos a flow can run on: an issue store (`fetch-issues`) and
+ * `[loop]` in the target file.
+ * @summary Repos
+ */
+export const repos = async ( options?: RequestInit): Promise<reposResponse> => {
+
+  const res = await fetch(getReposUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: reposResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as reposResponse
+}
+
+
+
+
+
+export const getReposQueryKey = () => {
+    return [
+    `/api/repos`
+    ] as const;
+    }
+
+
+export const getReposQueryOptions = <TData = Awaited<ReturnType<typeof repos>>, TError = unknown>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof repos>>, TError, TData>>, fetch?: RequestInit}
+) => {
+
+const {query: queryOptions, fetch: fetchOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getReposQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof repos>>> = ({ signal }) => repos({ signal, ...fetchOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof repos>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ReposQueryResult = NonNullable<Awaited<ReturnType<typeof repos>>>
+export type ReposQueryError = unknown
+
+
+export function useRepos<TData = Awaited<ReturnType<typeof repos>>, TError = unknown>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof repos>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof repos>>,
+          TError,
+          Awaited<ReturnType<typeof repos>>
+        > , 'initialData'
+      >, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useRepos<TData = Awaited<ReturnType<typeof repos>>, TError = unknown>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof repos>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof repos>>,
+          TError,
+          Awaited<ReturnType<typeof repos>>
+        > , 'initialData'
+      >, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useRepos<TData = Awaited<ReturnType<typeof repos>>, TError = unknown>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof repos>>, TError, TData>>, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Repos
+ */
+
+export function useRepos<TData = Awaited<ReturnType<typeof repos>>, TError = unknown>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof repos>>, TError, TData>>, fetch?: RequestInit}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getReposQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export type issuesResponse200 = {
+  data: IssueRow[]
+  status: 200
+}
+
+export type issuesResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type issuesResponseSuccess = (issuesResponse200) & {
+  headers: Headers;
+};
+export type issuesResponseError = (issuesResponse422) & {
+  headers: Headers;
+};
+
+export type issuesResponse = (issuesResponseSuccess | issuesResponseError)
+
+export const getIssuesUrl = (owner: string,
+    name: string,) => {
+
+
+
+
+  return `/api/issues/${owner}/${name}`
+}
+
+/**
+ * A repo's stored issues, newest first. Read from data/issues, not
+ * from GitHub: Start refreshes the one it starts.
+ * @summary Issues
+ */
+export const issues = async (owner: string,
+    name: string, options?: RequestInit): Promise<issuesResponse> => {
+
+  const res = await fetch(getIssuesUrl(owner,name),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: issuesResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as issuesResponse
+}
+
+
+
+
+
+export const getIssuesQueryKey = (owner: string,
+    name: string,) => {
+    return [
+    `/api/issues/${owner}/${name}`
+    ] as const;
+    }
+
+
+export const getIssuesQueryOptions = <TData = Awaited<ReturnType<typeof issues>>, TError = HTTPValidationError>(owner: string,
+    name: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof issues>>, TError, TData>>, fetch?: RequestInit}
+) => {
+
+const {query: queryOptions, fetch: fetchOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getIssuesQueryKey(owner,name);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof issues>>> = ({ signal }) => issues(owner,name, { signal, ...fetchOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: owner !== null && owner !== undefined && name !== null && name !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof issues>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type IssuesQueryResult = NonNullable<Awaited<ReturnType<typeof issues>>>
+export type IssuesQueryError = HTTPValidationError
+
+
+export function useIssues<TData = Awaited<ReturnType<typeof issues>>, TError = HTTPValidationError>(
+ owner: string,
+    name: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof issues>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof issues>>,
+          TError,
+          Awaited<ReturnType<typeof issues>>
+        > , 'initialData'
+      >, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useIssues<TData = Awaited<ReturnType<typeof issues>>, TError = HTTPValidationError>(
+ owner: string,
+    name: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof issues>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof issues>>,
+          TError,
+          Awaited<ReturnType<typeof issues>>
+        > , 'initialData'
+      >, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useIssues<TData = Awaited<ReturnType<typeof issues>>, TError = HTTPValidationError>(
+ owner: string,
+    name: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof issues>>, TError, TData>>, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Issues
+ */
+
+export function useIssues<TData = Awaited<ReturnType<typeof issues>>, TError = HTTPValidationError>(
+ owner: string,
+    name: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof issues>>, TError, TData>>, fetch?: RequestInit}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getIssuesQueryOptions(owner,name,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export type flowListResponse200 = {
   data: FlowSummary[]
   status: 200
@@ -1671,4 +2159,132 @@ export const useFlowAnswer = <TError = HTTPValidationError,
         TContext
       > => {
       return useMutation(getFlowAnswerMutationOptions(options), queryClient);
+    }
+
+export type flowStartResponse200 = {
+  data: Started
+  status: 200
+}
+
+export type flowStartResponse409 = {
+  data: Refusal
+  status: 409
+}
+
+export type flowStartResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type flowStartResponseSuccess = (flowStartResponse200) & {
+  headers: Headers;
+};
+export type flowStartResponseError = (flowStartResponse409 | flowStartResponse422) & {
+  headers: Headers;
+};
+
+export type flowStartResponse = (flowStartResponseSuccess | flowStartResponseError)
+
+export const getFlowStartUrl = (owner: string,
+    name: string,
+    number: number,) => {
+
+
+
+
+  return `/api/flows/${owner}/${name}/${number}/start`
+}
+
+/**
+ * Start a flow on a stored issue: the issue refreshed from GitHub,
+ * its blockers checked, the clone updated (here, so a refusal comes
+ * back at once), then refine in the background up to the plan gate.
+ * Paid: an agent run.
+ * @summary Flow Start
+ */
+export const flowStart = async (owner: string,
+    name: string,
+    number: number,
+    start: Start, options?: RequestInit): Promise<flowStartResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+const res = await fetch(getFlowStartUrl(owner,name,number),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(start)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: flowStartResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as flowStartResponse
+}
+
+
+
+
+
+export const getFlowStartMutationKey = () => ['flowStart'] as const;
+
+export const getFlowStartMutationOptions = <TError = Refusal | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof flowStart>>, TError,FlowStartMutationVariables, TContext>, fetch?: RequestInit}
+): UseMutationOptions<Awaited<ReturnType<typeof flowStart>>, TError,FlowStartMutationVariables, TContext> => {
+
+const mutationKey = getFlowStartMutationKey();
+const {mutation: mutationOptions, fetch: fetchOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, fetch: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof flowStart>>, FlowStartMutationVariables> = (props) => {
+          const {owner,name,number,data} = props ?? {};
+
+          return  flowStart(owner,name,number,data,fetchOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type FlowStartMutationResult = NonNullable<Awaited<ReturnType<typeof flowStart>>>
+    export type FlowStartMutationBody = Start
+    export type FlowStartMutationError = Refusal | HTTPValidationError
+    export type FlowStartMutationVariables = {owner: string;name: string;number: number;data: Start}
+
+    /**
+ * @summary Flow Start
+ */
+export const useFlowStart = <TError = Refusal | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof flowStart>>, TError,FlowStartMutationVariables, TContext>, fetch?: RequestInit}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof flowStart>>,
+        TError,
+        FlowStartMutationVariables,
+        TContext
+      > => {
+      return useMutation(getFlowStartMutationOptions(options), queryClient);
     }

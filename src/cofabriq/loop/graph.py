@@ -100,6 +100,7 @@ class FlowState(BaseModel):
     result: LoopResult | None = None  # the loop's, before the review gate
     gated: gate_mod.Gated | None = None
     trace: str = ""  # the first trace's `traceparent`: each resume links to it
+    earlier: str = ""  # why the last attempt on this issue ended (refine reads it)
 
     @property
     def outcome(self) -> str:
@@ -108,6 +109,13 @@ class FlowState(BaseModel):
         if self.gated is not None:
             return self.gated.status
         return self.result.status if self.result is not None else self.stage
+
+    @property
+    def lesson(self) -> str:
+        """What a new attempt should know: why this one stopped short (a
+        rejected plan's reason, a spec that wasn't ready); "" after a fix
+        or with no reason given."""
+        return "" if self.outcome in ("approved", "green") else self.note
 
 
 class GateAnswer(BaseModel):
@@ -200,7 +208,9 @@ def build_graph(deps: Deps) -> StateGraph[FlowState]:
         refined = s.refined
         try:
             if refined is None:
-                refined = refine_mod.refine(s.issue, deps.clone, deps.reader, s.route)
+                refined = refine_mod.refine(
+                    s.issue, deps.clone, deps.reader, s.route, s.earlier
+                )
         except (AgentError, refine_mod.NoCriteria) as exc:  # back to the dev
             return {"stage": "failed", "note": f"not ready: {exc}"}
         except Halted as exc:
@@ -474,15 +484,21 @@ def thread_config(thread: str) -> RunnableConfig:
 
 
 def invoke(
-    graph: CompiledStateGraph[FlowState], given: FlowState | GateAnswer, thread: str
+    graph: CompiledStateGraph[FlowState],
+    given: FlowState | GateAnswer,
+    thread: str,
+    on_trace: Callable[[str], None] | None = None,
 ) -> None:
     """Start a flow, or resume it with the dev's answer, to its next gate or
-    its end: one trace per call, a resume linked to the flow's first."""
+    its end: one trace per call, a resume linked to the flow's first.
+    `on_trace` gets the call's traceparent before any node runs."""
     config = thread_config(thread)
     resume = isinstance(given, GateAnswer)
     first = str(graph.get_state(config).values.get("trace", "")) if resume else ""
     attributes = {"cofabriq.thread": thread, "cofabriq.resume": resume}
     with tracing.span(tracing.FLOW, attributes, link=first, code=invoke):
+        if on_trace is not None:
+            on_trace(tracing.traceparent())
         if isinstance(given, GateAnswer):
             graph.invoke(Command(resume=given.model_dump()), config)
         else:
@@ -519,18 +535,37 @@ def read_status(graph: CompiledStateGraph[FlowState], thread: str) -> FlowStatus
 _THREAD = re.compile(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+#\d+$")
 
 type DepsFor = Callable[[str, float], Deps]  # (repo, spent so far) -> deps
+type Prepare = Callable[[str, int], Issue]  # (repo, number) -> the issue, or Refused
+
+
+class Refused(Exception):
+    """A flow that can't start: the message says why (a blocker, no such
+    issue, a flow already there). The CLI prints it, the API answers 409."""
+
+
+def _no_start(repo: str, number: int) -> Issue:
+    raise Refused("this server starts no flows")
 
 
 class FlowRunner:
-    """Answers a flow's gate from the browser: the resume runs in a
-    background thread (setup, test, build and review take minutes), one at a
-    time per flow; the page polls `status`."""
+    """Starts a flow and answers its gates from the browser. The work runs
+    in a background thread (refine takes seconds, setup to review minutes),
+    one at a time per flow; the page polls `status`. `prepare` runs first,
+    in the request: what it refuses comes back at once."""
 
-    def __init__(self, dsn: str, deps_for: DepsFor) -> None:
+    def __init__(
+        self, dsn: str, deps_for: DepsFor, prepare: Prepare = _no_start
+    ) -> None:
         self.dsn = dsn
         self.deps_for = deps_for
+        self.prepare = prepare
         self._running: set[str] = set()
         self._errors: dict[str, str] = {}
+        # started, no checkpoint yet: the flow page shows it from the start
+        self._starting: dict[str, FlowState] = {}
+        # a start's traceparent: the state has it only once refine ends, the
+        # step view needs it while refine runs
+        self._traces: dict[str, str] = {}
         self._lock = threading.Lock()
 
     def threads(self) -> list[str]:
@@ -540,20 +575,61 @@ class FlowRunner:
                 for c in saver.list(None)
             )
             # only cofabriq's own threads (`owner/name#n`); others are skipped
-            return list(
-                dict.fromkeys(str(t) for t in seen if t and _THREAD.match(str(t)))
-            )
+            stored = [str(t) for t in seen if t and _THREAD.match(str(t))]
+        with self._lock:
+            return list(dict.fromkeys([*self._starting, *stored]))
 
     def status(self, thread: str) -> FlowStatus | None:
         repo = thread.split("#", 1)[0]
         with compiled(self.deps_for(repo, 0.0), self.dsn) as graph:
             found = read_status(graph, thread)
-        if found is None:
-            return None
         with self._lock:
+            if found is None:
+                state = self._starting.get(thread)
+                if state is None:
+                    return None
+                found = FlowStatus(thread=thread, state=state, waiting=None)
+            else:
+                self._starting.pop(thread, None)  # its checkpoint says it now
+            if not found.state.trace and thread in self._traces:
+                trace = self._traces[thread]
+                found.state = found.state.model_copy(update={"trace": trace})
             found.running = thread in self._running
             found.error = self._errors.get(thread, "")
         return found
+
+    def start(
+        self, repo: str, number: int, route: refine_mod.Route, again: bool = False
+    ) -> str:
+        """Prepare the issue, then refine in the background up to the plan
+        gate; the flow's thread. `again`: an ended flow on the issue is
+        replaced (its checkpoints deleted; its trace, record and lessons stay
+        in data/), and why it ended goes to refine. Refused: a flow is there
+        (without `again`) or still going, or `prepare` said no."""
+        thread = f"{repo}#{number}"
+        current = self.status(thread)
+        if current is not None and not again:
+            raise Refused(f"#{number} has a flow already: open it")
+        if current is not None and (current.running or current.waiting):
+            raise Refused(f"#{number} is still going: answer or reject its gate first")
+        issue = self.prepare(repo, number)
+        with self._lock:
+            if thread in self._running:
+                raise Refused(f"#{number} is starting already")
+            self._running.add(thread)
+            self._errors.pop(thread, None)
+            self._traces.pop(thread, None)
+            earlier = current.state.lesson if current is not None else ""
+            state = FlowState(issue=issue, route=route, earlier=earlier)
+            self._starting[thread] = state
+        if current is not None:  # claimed above: no other start can race this
+            with checkpoints(self.dsn) as saver:
+                saver.delete_thread(thread)
+        worker = threading.Thread(
+            target=self._work, args=(thread, state, 0.0), daemon=True
+        )
+        worker.start()
+        return thread
 
     def answer(self, thread: str, answer: GateAnswer) -> bool:
         """Start working off the answer; False if the flow waits at no gate
@@ -568,16 +644,23 @@ class FlowRunner:
             self._errors.pop(thread, None)
         spent = current.state.spent_usd
         worker = threading.Thread(
-            target=self._resume, args=(thread, answer, spent), daemon=True
+            target=self._work, args=(thread, answer, spent), daemon=True
         )
         worker.start()
         return True
 
-    def _resume(self, thread: str, answer: GateAnswer, spent: float) -> None:
+    def _work(self, thread: str, given: FlowState | GateAnswer, spent: float) -> None:
+        """A start or a resume, to the next gate or the end."""
         repo = thread.split("#", 1)[0]
+
+        def keep(traceparent: str) -> None:
+            if isinstance(given, FlowState):  # a resume's state has its trace
+                with self._lock:
+                    self._traces[thread] = traceparent
+
         try:
             with compiled(self.deps_for(repo, spent), self.dsn) as graph:
-                invoke(graph, answer, thread)
+                invoke(graph, given, thread, on_trace=keep)
         except Exception as exc:  # shown on the page; the checkpoint stays
             with self._lock:
                 self._errors[thread] = f"{type(exc).__name__}: {exc}"

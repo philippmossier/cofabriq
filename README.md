@@ -174,15 +174,17 @@ Look at the specs and runs in the browser, or approve runs there:
 ```bash
 cd ui && pnpm install && cd ..
 make ui && uv run cofabriq serve           # http://127.0.0.1:8765, read-only
-uv run cofabriq flow start 54              # refine, then wait at the plan gate
-uv run cofabriq serve --write              # open the printed URL, approve under Flows
+uv run cofabriq serve --write              # open the printed URL: start and approve runs
 ```
 
 Walk through the browser flow on one issue:
 
-1. `make ui` (once), then `uv run cofabriq flow start <n>`: refines the issue,
-   then waits at the plan gate.
-2. `uv run cofabriq serve --write`, open the printed URL, go to Flows.
+1. `make ui` (once), then `uv run cofabriq serve --write` and open the
+   printed URL.
+2. Under Issues, pick an issue, bug or feature, and press Start: the issue is
+   read fresh from GitHub, refused if it has an open blocker, then an agent
+   reads the code and writes a spec while the step view shows it live
+   (`cofabriq flow start <n>` does the same in the terminal).
 3. Approve the plan (or reject it with a reason). The agent then writes a
    failing test; approve that too.
 4. The build, the review and the draft PR text run on their own, a few minutes.

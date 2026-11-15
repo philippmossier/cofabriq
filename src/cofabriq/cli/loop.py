@@ -170,14 +170,32 @@ def _answer_key(
     return judge
 
 
-def _refuse_blocked(issue: Issue) -> None:
-    """A ticket with an open blocker stops here, before anything is paid."""
+def _prepare_start(target: str, number: int, steps: Steps) -> Issue:
+    """What a run checks before anything is paid, the same for `run`, `flow
+    start` and the browser's Start: the issue fresh from GitHub, no open
+    blocker, the clone at the default branch. Refused says why not."""
+    issue = _refresh_issue(target, number, steps)
+    if issue is None:
+        raise graph_mod.Refused(f"#{number} is not in the issue store")
     (ticket,) = intake_mod.slices([issue], _blocker_issues([issue]), [])
     if ticket.state == "blocked":
-        typer.echo(
-            f"#{issue.number} {ticket.reason}: start it once that is merged", err=True
+        raise graph_mod.Refused(
+            f"#{number} {ticket.reason}: start it once that is merged"
         )
-        raise typer.Exit(code=1)
+    clone = clone_dir(get_settings().clones_dir, target)
+    with steps.step("clone", f"updating {clone}") as done:
+        commit = refine_mod.update_clone(target, clone)
+        done(f"{clone} at {commit[:7]}")
+    return issue
+
+
+def _prepared(target: str, number: int, steps: Steps) -> Issue:
+    """`_prepare_start` in the terminal: a refusal exits."""
+    try:
+        return _prepare_start(target, number, steps)
+    except graph_mod.Refused as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
 
 
 def _blocker_issues(tickets: list[Issue]) -> dict[IssueRef, Issue]:
@@ -218,6 +236,8 @@ def _api(
         write_token=write_token,
         flows=flows,
         trace_dir=settings.trace_dir,
+        issues_dir=settings.issues_dir,
+        targets_dir=settings.targets_dir,
     )
 
 
@@ -239,8 +259,11 @@ def serve(port: int = 8765, ui: Path = Path("ui/dist"), write: bool = False) -> 
     # --write: the browser gate. The token is shown once, in the URL's
     # fragment (never sent to the server, so in no log)
     token = new_token()
+    steps = Steps(Console(stderr=True, soft_wrap=True))  # Start's checks, logged here
     runner = graph_mod.FlowRunner(
-        get_settings().postgres_dsn, lambda repo, spent: _flow_deps(repo, spent)[0]
+        get_settings().postgres_dsn,
+        lambda repo, spent: _flow_deps(repo, spent)[0],
+        prepare=lambda repo, number: _prepare_start(repo, number, steps),
     )
     typer.echo(f"gate: http://127.0.0.1:{port}/#token={token}  (open this one)")
     app = _api(ui, port, write_token=token, flows=runner)
@@ -309,22 +332,18 @@ def flow_start(
     route = _route(issue_type)
     target = check_repo(repo)
     steps = Steps(Console(stderr=True, soft_wrap=True))
-    issue = _refresh_issue(target, number, steps)
-    if issue is None:
-        typer.echo(f"#{number} is not in the issue store", err=True)
-        raise typer.Exit(code=1)
-    _refuse_blocked(issue)
-    refine_mod.update_clone(target, clone_dir(get_settings().clones_dir, target))
+    issue = _prepared(target, number, steps)
     deps, dsn = _flow_deps(target)
     thread = graph_mod.thread_id(issue)
-    config = graph_mod.thread_config(thread)
     with graph_mod.compiled(deps, dsn) as graph:
-        if graph.get_state(config).values:
+        earlier = ""
+        if (found := graph_mod.read_status(graph, thread)) is not None:
             if not restart:
                 typer.echo(f"{thread} has a flow: `flow show`, or --restart", err=True)
                 raise typer.Exit(code=1)
+            earlier = found.state.lesson  # why it ended: refine reads it
             graph.checkpointer.delete_thread(thread)  # pyright: ignore[reportOptionalMemberAccess,reportAttributeAccessIssue]
-        state = graph_mod.FlowState(issue=issue, route=route)
+        state = graph_mod.FlowState(issue=issue, route=route, earlier=earlier)
         graph_mod.invoke(graph, state, thread)
         _flow_report(graph, thread)
 
@@ -494,14 +513,7 @@ def run(
     # test, build, review, proofs) shares one budget, the kill switch's cap
     deps, _ = _flow_deps(target)
     steps = Steps(Console(stderr=True, soft_wrap=True))
-    with steps.step("clone", f"updating {deps.clone}") as done:
-        commit = refine_mod.update_clone(target, deps.clone)
-        done(f"{deps.clone} at {commit[:7]}")
-    issue = _refresh_issue(target, number, steps)
-    if issue is None:
-        typer.echo(f"#{number} is not in {settings.issues_dir}", err=True)
-        raise typer.Exit(code=1)
-    _refuse_blocked(issue)
+    issue = _prepared(target, number, steps)
     state = graph_mod.FlowState(issue=issue, route=route)
     bug = planted_for(issue.title, load_bugs(bugs, seed), seed)
     if bug is not None and bug.kind == "ui" and deps.rules.suite(bug.repro) is None:

@@ -183,6 +183,14 @@ function Row({ run, step, root, depth, level, docs }: RowProps) {
   );
 }
 
+// gen_ai.usage.*: input counts the cache's tokens too (tracing.agent_tokens)
+const TOKENS = {
+  input: "gen_ai.usage.input_tokens",
+  output: "gen_ai.usage.output_tokens",
+  read: "gen_ai.usage.cache_read.input_tokens",
+  write: "gen_ai.usage.cache_creation.input_tokens",
+};
+
 // already on the row (detail, chips) or meaningless to a reader
 const ON_ROW = new Set([
   TURNS,
@@ -198,7 +206,21 @@ const ON_ROW = new Set([
   SANDBOX_OK,
   "cofabriq.paused",
   "cofabriq.resume",
+  "cofabriq.gate.approved",
+  ...Object.values(TOKENS),
 ]);
+
+const k = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
+
+/** "48.0k in (83% from the cache), 950 out": the cache decides the cost. */
+function tokens(attrs: RunStep["attrs"]): string | null {
+  const input = attrs[TOKENS.input];
+  if (typeof input !== "number") return null;
+  const output = Number(attrs[TOKENS.output] ?? 0);
+  const read = attrs[TOKENS.read];
+  const cached = typeof read === "number" && input > 0 ? ` (${Math.round((read / input) * 100)}% from the cache)` : "";
+  return `tokens: ${k(input)} in${cached}, ${k(output)} out`;
+}
 
 function fact(key: string, value: RunStep["attrs"][string]): string {
   const name = key.replace(/^(gen_ai|cofabriq)\.(agent\.|sandbox\.|usage\.)?/, "");
@@ -210,9 +232,13 @@ function fact(key: string, value: RunStep["attrs"][string]): string {
 /** The Data level, without a click: the span's other attributes, and the
  * toggle for what the step got and gave. */
 function Facts({ step, open, onToggle, indent }: { step: RunStep; open: boolean; onToggle: () => void; indent: number }) {
-  const facts = Object.entries(step.attrs)
-    .filter(([k]) => !ON_ROW.has(k) && !k.startsWith("code."))
-    .map(([k, v]) => fact(k, v));
+  const used = tokens(step.attrs);
+  const facts = [
+    ...(used ? [used] : []),
+    ...Object.entries(step.attrs)
+      .filter(([key]) => !ON_ROW.has(key) && !key.startsWith("code."))
+      .map(([key, v]) => fact(key, v)),
+  ];
   if (facts.length === 0 && !step.payload) return null;
   return (
     <div className="flex flex-wrap gap-x-3 pb-1 text-xs text-muted-foreground" style={{ paddingLeft: indent }}>

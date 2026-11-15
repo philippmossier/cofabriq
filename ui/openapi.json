@@ -261,6 +261,181 @@
         }
       }
     },
+    "/api/code/{owner}/{name}": {
+      "get": {
+        "summary": "Code",
+        "description": "A file at a commit: lines `line` to `end` (default: `line`) with 8\nabove and below, at most 80; the top of the file without `line`. Only\na file in that commit's tree of the local clone: never a path from\noutside it.",
+        "operationId": "code",
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Owner"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          },
+          {
+            "name": "commit",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Commit"
+            }
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Path"
+            }
+          },
+          {
+            "name": "line",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Line"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodeLines"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/repos": {
+      "get": {
+        "summary": "Repos",
+        "description": "The repos a flow can run on: an issue store (`fetch-issues`) and\n`[loop]` in the target file.",
+        "operationId": "repos",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Repo"
+                  },
+                  "type": "array",
+                  "title": "Response Repos"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/issues/{owner}/{name}": {
+      "get": {
+        "summary": "Issues",
+        "description": "A repo's stored issues, newest first. Read from data/issues, not\nfrom GitHub: Start refreshes the one it starts.",
+        "operationId": "issues",
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Owner"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/IssueRow"
+                  },
+                  "title": "Response Issues"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/flows": {
       "get": {
         "summary": "Flow List",
@@ -406,6 +581,84 @@
           }
         }
       }
+    },
+    "/api/flows/{owner}/{name}/{number}/start": {
+      "post": {
+        "summary": "Flow Start",
+        "description": "Start a flow on a stored issue: the issue refreshed from GitHub,\nits blockers checked, the clone updated (here, so a refusal comes\nback at once), then refine in the background up to the plan gate.\nPaid: an agent run.",
+        "operationId": "flow_start",
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Owner"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Start"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Started"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -501,6 +754,40 @@
         ],
         "title": "Code",
         "description": "The function a step stands for."
+      },
+      "CodeLines": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "start": {
+            "type": "integer",
+            "title": "Start",
+            "description": "The first line's number, 1-based."
+          },
+          "lines": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Lines"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "description": "The file's length in lines."
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "start",
+          "lines",
+          "total"
+        ],
+        "title": "CodeLines",
+        "description": "A few lines of one file at a commit, read from the clone: the plan\ngate's \"current code\" next to what the spec will change. The target's\ntext: shown as text."
       },
       "FileNote": {
         "properties": {
@@ -731,6 +1018,24 @@
             "type": "string",
             "title": "Diff"
           },
+          "commit": {
+            "type": "string",
+            "title": "Commit"
+          },
+          "tests": {
+            "items": {
+              "$ref": "#/components/schemas/FileNote"
+            },
+            "type": "array",
+            "title": "Tests"
+          },
+          "unknown_paths": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unknown Paths"
+          },
           "trace": {
             "type": "string",
             "title": "Trace"
@@ -759,6 +1064,9 @@
           "assumptions",
           "open_questions",
           "diff",
+          "commit",
+          "tests",
+          "unknown_paths",
           "trace",
           "record"
         ],
@@ -776,6 +1084,68 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "IssueRow": {
+        "properties": {
+          "number": {
+            "type": "integer",
+            "title": "Number"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "state": {
+            "type": "string",
+            "title": "State",
+            "description": "`open` or `closed`, as last fetched."
+          },
+          "labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Labels"
+          },
+          "comments": {
+            "type": "integer",
+            "title": "Comments"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url",
+            "description": "The issue on GitHub."
+          },
+          "flow": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FlowSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Its flow, where it waits or how it ended; null: none yet."
+          }
+        },
+        "type": "object",
+        "required": [
+          "number",
+          "title",
+          "state",
+          "labels",
+          "comments",
+          "updated_at",
+          "url",
+          "flow"
+        ],
+        "title": "IssueRow",
+        "description": "One stored issue, as the Issues page lists it."
       },
       "JsonValue": {},
       "ProofView": {
@@ -818,6 +1188,39 @@
           "red"
         ],
         "title": "ProofView"
+      },
+      "Refusal": {
+        "properties": {
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "description": "Why not: a blocker, a flow already there."
+          }
+        },
+        "type": "object",
+        "required": [
+          "detail"
+        ],
+        "title": "Refusal"
+      },
+      "Repo": {
+        "properties": {
+          "repo": {
+            "type": "string",
+            "title": "Repo"
+          },
+          "issues": {
+            "type": "integer",
+            "title": "Issues"
+          }
+        },
+        "type": "object",
+        "required": [
+          "repo",
+          "issues"
+        ],
+        "title": "Repo",
+        "description": "A repo a flow can run on: an issue store and `[loop]` in its target\nfile."
       },
       "ReviewRound": {
         "properties": {
@@ -875,6 +1278,13 @@
           "fix"
         ],
         "title": "ReviewRound"
+      },
+      "Route": {
+        "type": "string",
+        "enum": [
+          "bug",
+          "feature"
+        ]
       },
       "RunKind": {
         "type": "string",
@@ -1219,6 +1629,17 @@
           "trace": {
             "type": "string",
             "title": "Trace"
+          },
+          "pr_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pr Url"
           }
         },
         "type": "object",
@@ -1244,7 +1665,8 @@
           "pr_body",
           "sentinel",
           "evidence",
-          "trace"
+          "trace",
+          "pr_url"
         ],
         "title": "RunTrace"
       },
@@ -1470,6 +1892,38 @@
           "seconds"
         ],
         "title": "SpecView"
+      },
+      "Start": {
+        "properties": {
+          "route": {
+            "$ref": "#/components/schemas/Route",
+            "description": "`feature` writes acceptance criteria."
+          },
+          "again": {
+            "type": "boolean",
+            "title": "Again",
+            "description": "Replace the issue's ended flow; why it ended goes to refine.",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "route"
+        ],
+        "title": "Start"
+      },
+      "Started": {
+        "properties": {
+          "thread": {
+            "type": "string",
+            "title": "Thread"
+          }
+        },
+        "type": "object",
+        "required": [
+          "thread"
+        ],
+        "title": "Started"
       },
       "Status": {
         "type": "string",
