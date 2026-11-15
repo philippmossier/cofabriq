@@ -106,4 +106,6 @@ def not_ready(refined: Refined, tracked: set[str]) -> list[str]:
         reasons.append("size L: split it into tickets in your planning session")
     if not s.files:
         reasons.append("no source file named")
+    if s.proof is not None and s.proof.kind == "none":  # no test attempts to pay for
+        reasons.append(f"no test can prove it here: {s.proof.how}")
     return reasons

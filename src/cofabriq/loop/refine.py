@@ -46,6 +46,14 @@ find the cause and where the fix goes. Change nothing.
   sketch; the build writes the real change.
 - tests: test files to add or change to prove the fix; at: for an
   existing file, where the new cases go.
+- proof: how a failing test will show it, before anyone pays for one.
+  kind unit (logic, no browser), browser (the app in a browser, clicks,
+  network held or failed on purpose), proxy (something measurable that
+  stands in for what a test can't check directly, e.g. rows in the DOM for
+  "scrolling is laggy": say what it measures and why it stands in), or
+  none (no test can show it here: say why, and it goes back to the
+  developer). how: one or two sentences. Test the mechanism, not a
+  feeling; hold time and the network still instead of waiting on them.
 - plan: short ordered steps.
 - assumptions: what you assumed that the issue does not say.
 - open_questions: what only the reporter or a maintainer can answer.
@@ -73,6 +81,14 @@ find where the feature goes and what it must fit. Change nothing.
   sketch; the build writes the real change.
 - tests: test files to add or change to prove the feature; at: for an
   existing file, where the new cases go.
+- proof: how a failing test will show it, before anyone pays for one.
+  kind unit (logic, no browser), browser (the app in a browser, clicks,
+  network held or failed on purpose), proxy (something measurable that
+  stands in for what a test can't check directly, e.g. rows in the DOM for
+  "scrolling is laggy": say what it measures and why it stands in), or
+  none (no test can show it here: say why, and it goes back to the
+  developer). how: one or two sentences. Test the mechanism, not a
+  feeling; hold time and the network still instead of waiting on them.
 - criteria: acceptance criteria, each one observable behaviour a single
   automated test can check: a concrete input or situation and the exact
   expected result, through the code's existing functions and types where
@@ -173,6 +189,26 @@ def file_text(clone: Path, commit: str, path: str) -> str | None:
         return None
 
 
+type ProofKind = Literal["unit", "browser", "proxy", "none"]
+
+
+class Proof(BaseModel):
+    """How a failing test can show the bug (a feature: that it is missing),
+    stated before anything is paid for it. `none` goes back to the dev."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: ProofKind = Field(
+        description="unit: logic, no browser. browser: the app in a browser. proxy: "
+        "a measurable stand-in for what a test can't check directly. none: no test "
+        "can show it here."
+    )
+    how: str = Field(
+        description="One or two sentences: the test; for a proxy, what it measures "
+        "and why it stands in; for none, why not."
+    )
+
+
 class Spec(BaseModel):
     """What the agent fills. Field descriptions go into the JSON Schema."""
 
@@ -181,6 +217,7 @@ class Spec(BaseModel):
     problem: str
     files: list[FileChange] = Field(description="Source files, most likely first.")
     tests: list[FileChange]
+    proof: Proof | None = None  # specs before it have none
     criteria: list[str] = Field(
         default_factory=list[str],
         description="Acceptance criteria, each checkable by one test (features).",

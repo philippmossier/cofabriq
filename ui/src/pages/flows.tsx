@@ -114,9 +114,10 @@ export function FlowPage() {
   const f = q.data;
   if (!f) return <Missing what="flow" />;
   const canAnswer = f.waiting !== null && !f.running && token !== null;
-  const send = (approve: boolean) =>
+  // again: at the test gate, a rejection that asks the test writer for another test
+  const send = (approve: boolean, again = false) =>
     answer.mutate(
-      { owner, name, number: Number(number), data: { approve, reason: approve ? "" : reason } },
+      { owner, name, number: Number(number), data: { approve, reason: approve ? "" : reason, again } },
       {
         onSuccess: async (r) => {
           if ((r.status as number) === 401) {
@@ -131,9 +132,11 @@ export function FlowPage() {
     );
   const spec = f.problem ? <SpecReview s={f} /> : null;
   // which button was pressed: it gets the spinner
-  const sending = answer.isPending ? answer.variables.data.approve : null;
+  const sent = answer.variables?.data;
+  const sending = !answer.isPending ? null : sent?.approve ? "approve" : sent?.again ? "again" : "reject";
   // the last answer from this page was a no: the work left is closing it
-  const rejected = answer.variables?.data.approve === false;
+  const rejected = sent?.approve === false && !sent.again;
+  const retesting = sent?.approve === false && !!sent.again;
   // the guard's 401 / 403 aren't in the schema: a plain number
   const refused: number | null =
     answer.data && answer.data.status !== 200 ? answer.data.status : null;
@@ -161,6 +164,8 @@ export function FlowPage() {
               ? "Reading the code to write a spec… (about 20 s; the plan gate comes next)"
               : f.running && rejected
                 ? "Rejected: closing the flow…"
+                : f.running && retesting
+                ? "Writing another test with your reason… (the test gate comes back)"
                 : f.running
                   ? "Working on your answer… (setup, test, build and review take a few minutes)"
               : f.waiting === "plan"
@@ -198,22 +203,37 @@ export function FlowPage() {
             </div>
           )}
           {f.waiting && (
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Button disabled={!canAnswer || answer.isPending} onClick={() => send(true)}>
-                {sending === true && <LoaderCircle className="animate-spin" />}
+                {sending === "approve" && <LoaderCircle className="animate-spin" />}
                 Approve
               </Button>
+              {f.waiting === "test" && f.retests_left > 0 && (
+                <Button
+                  variant="outline"
+                  disabled={!canAnswer || answer.isPending || !reason.trim()}
+                  title={reason.trim() ? "" : "Say what is wrong with it: the test writer reads it"}
+                  onClick={() => send(false, true)}
+                >
+                  {sending === "again" && <LoaderCircle className="animate-spin" />}
+                  Write it again ({f.retests_left} left)
+                </Button>
+              )}
               <Button
                 variant="outline"
                 disabled={!canAnswer || answer.isPending}
                 onClick={() => send(false)}
               >
-                {sending === false && <LoaderCircle className="animate-spin" />}
-                Reject
+                {sending === "reject" && <LoaderCircle className="animate-spin" />}
+                {f.waiting === "test" ? "Stop the run" : "Reject"}
               </Button>
               <input
-                className="min-w-0 flex-1 rounded-md border px-3 text-sm"
-                placeholder="Why, when rejecting (becomes a lesson)"
+                className="min-w-48 flex-1 rounded-md border px-3 text-sm"
+                placeholder={
+                  f.waiting === "test"
+                    ? "What is wrong with the test (the test writer reads it; kept as a lesson)"
+                    : "Why, when rejecting (becomes a lesson)"
+                }
                 maxLength={500}
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}

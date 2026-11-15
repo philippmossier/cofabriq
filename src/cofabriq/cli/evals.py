@@ -539,6 +539,10 @@ def eval_refine(
         if b.key in done
     ]
     _lines_summary(lines)
+    # every planted bug has a test that proves it: a `none` here sends a
+    # provable bug back to the dev
+    kinds = Counter(r.spec.proof.kind if r.spec.proof else "-" for r in done.values())
+    typer.echo("  proof   " + "  ".join(f"{k} {n}" for k, n in sorted(kinds.items())))
     adapter = TypeAdapter(dict[str, refine_mod.Refined])
     out = write_stamped(settings.refine_dir, "eval", adapter, done)
     typer.echo(f"  -> {out}")
