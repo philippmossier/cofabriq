@@ -27,12 +27,33 @@ export function ResultCard({ t }: { t: RunTrace }) {
   const files = parseDiff(t.diff);
   const review = t.rounds.at(-1);
   const bad = ["blocked", "escalated", "setup_failed", "halted"].includes(outcome);
+  // an approval with open concerns is not a clean "fixed": they lead the card
+  const open = (review?.findings ?? []).filter((f) => f.severity !== "nit");
+  const title =
+    outcome === "approved" && open.length > 0
+      ? `Approved, with ${open.length} open concern${open.length === 1 ? "" : "s"}: read ${open.length === 1 ? "it" : "them"} before you trust the fix.`
+      : (OUTCOME[outcome] ?? outcome);
   return (
-    <Card className={bad ? "border-destructive/50" : "border-primary/40"}>
+    <Card className={bad ? "border-destructive/50" : open.length > 0 ? "border-amber-400" : "border-primary/40"}>
       <CardHeader>
-        <CardTitle>{OUTCOME[outcome] ?? outcome}</CardTitle>
+        <CardTitle>{title}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-2 text-sm">
+        {open.length > 0 && (
+          <Row label="Concerns">
+            <ul className="list-disc space-y-1 pl-4">
+              {open.map((f, i) => (
+                <li key={i}>
+                  <code className="text-xs">
+                    {f.path}
+                    {f.line ? `:${f.line}` : ""}
+                  </code>{" "}
+                  {f.text}
+                </li>
+              ))}
+            </ul>
+          </Row>
+        )}
         {files.length > 0 && (
           <Row label="Changed">
             {files.map((f) => (

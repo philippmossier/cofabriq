@@ -187,10 +187,19 @@ export function RunPage() {
         <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
           <Badge variant="secondary">{t.kind}</Badge>
           <Status value={t.status} />
-          <span>judge</span>
-          <Verdict ok={t.judge} yes="green" no="red" />
-          <span>agent's test on the reference</span>
-          <Verdict ok={t.valid} yes="valid" no="invalid" />
+          {/* only a planted bug has an answer key to judge against */}
+          {t.judge != null && (
+            <>
+              <span>judge</span>
+              <Verdict ok={t.judge} yes="green" no="red" />
+            </>
+          )}
+          {t.valid != null && (
+            <>
+              <span>agent's test on the reference</span>
+              <Verdict ok={t.valid} yes="valid" no="invalid" />
+            </>
+          )}
           <span>
             · {t.repo} at {t.commit.slice(0, 7)} · {usd(t.cost_usd)}
           </span>
