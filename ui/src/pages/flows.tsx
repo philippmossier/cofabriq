@@ -118,9 +118,13 @@ export function FlowPage() {
       { owner, name, number: Number(number), data: { approve, reason: approve ? "" : reason } },
       {
         onSuccess: async (r) => {
-          if ((r.status as number) === 401) dropToken(); // the server restarted: a dead token
+          if ((r.status as number) === 401) {
+            dropToken(); // the server restarted: a dead token
+            return;
+          }
+          setReason(""); // answered: the next gate (or a new flow) starts empty
           // it says "running" at once: don't wait for the next poll
-          else await refreshFlow(client, owner, name, Number(number));
+          await refreshFlow(client, owner, name, Number(number));
         },
       },
     );
