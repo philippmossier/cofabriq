@@ -53,6 +53,20 @@ export interface Code {
   url: string;
 }
 
+/**
+ * A few lines of one file at a commit, read from the clone: the plan
+ * gate's "current code" next to what the spec will change. The target's
+ * text: shown as text.
+ */
+export interface CodeLines {
+  path: string;
+  /** The first line's number, 1-based. */
+  start: number;
+  lines: string[];
+  /** The line the spec points at. */
+  focus: number | null;
+}
+
 export interface FileNote {
   path: string;
   why: string;
@@ -130,6 +144,8 @@ export interface FlowView {
   assumptions: string[];
   open_questions: string[];
   diff: string;
+  commit: string;
+  tests: FileNote[];
   trace: string;
   record: string;
 }
@@ -430,6 +446,12 @@ export interface StepTree {
 export type Payload200 = {[key: string]: JsonValue};
 
 export type StepDocs200 = {[key: string]: StepDoc};
+
+export type CodeParams = {
+commit: string;
+path: string;
+line?: number | null;
+};
 
 const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKey: K } => {
   const result = { queryKey } as T & { queryKey: K };
@@ -1330,6 +1352,159 @@ export function useStepDocs<TData = Awaited<ReturnType<typeof stepDocs>>, TError
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getStepDocsQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export type codeResponse200 = {
+  data: CodeLines
+  status: 200
+}
+
+export type codeResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type codeResponseSuccess = (codeResponse200) & {
+  headers: Headers;
+};
+export type codeResponseError = (codeResponse422) & {
+  headers: Headers;
+};
+
+export type codeResponse = (codeResponseSuccess | codeResponseError)
+
+export const getCodeUrl = (owner: string,
+    name: string,
+    params: CodeParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/code/${owner}/${name}?${stringifiedParams}` : `/api/code/${owner}/${name}`
+}
+
+/**
+ * Up to 17 lines of a file at a commit, around `line` (the top of the
+ * file without one). Only a file in that commit's tree of the local
+ * clone: never a path from outside it.
+ * @summary Code
+ */
+export const code = async (owner: string,
+    name: string,
+    params: CodeParams, options?: RequestInit): Promise<codeResponse> => {
+
+  const res = await fetch(getCodeUrl(owner,name,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: codeResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as codeResponse
+}
+
+
+
+
+
+export const getCodeQueryKey = (owner: string,
+    name: string,
+    params?: CodeParams,) => {
+    return [
+    `/api/code/${owner}/${name}`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getCodeQueryOptions = <TData = Awaited<ReturnType<typeof code>>, TError = HTTPValidationError>(owner: string,
+    name: string,
+    params: CodeParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof code>>, TError, TData>>, fetch?: RequestInit}
+) => {
+
+const {query: queryOptions, fetch: fetchOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getCodeQueryKey(owner,name,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof code>>> = ({ signal }) => code(owner,name,params, { signal, ...fetchOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: owner !== null && owner !== undefined && name !== null && name !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof code>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type CodeQueryResult = NonNullable<Awaited<ReturnType<typeof code>>>
+export type CodeQueryError = HTTPValidationError
+
+
+export function useCode<TData = Awaited<ReturnType<typeof code>>, TError = HTTPValidationError>(
+ owner: string,
+    name: string,
+    params: CodeParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof code>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof code>>,
+          TError,
+          Awaited<ReturnType<typeof code>>
+        > , 'initialData'
+      >, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useCode<TData = Awaited<ReturnType<typeof code>>, TError = HTTPValidationError>(
+ owner: string,
+    name: string,
+    params: CodeParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof code>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof code>>,
+          TError,
+          Awaited<ReturnType<typeof code>>
+        > , 'initialData'
+      >, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useCode<TData = Awaited<ReturnType<typeof code>>, TError = HTTPValidationError>(
+ owner: string,
+    name: string,
+    params: CodeParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof code>>, TError, TData>>, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Code
+ */
+
+export function useCode<TData = Awaited<ReturnType<typeof code>>, TError = HTTPValidationError>(
+ owner: string,
+    name: string,
+    params: CodeParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof code>>, TError, TData>>, fetch?: RequestInit}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getCodeQueryOptions(owner,name,params,options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 

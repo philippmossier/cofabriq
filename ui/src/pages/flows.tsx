@@ -6,7 +6,7 @@ import { useFlow, useFlowAnswer, useFlowList } from "@/api/generated";
 import { FlowResult } from "@/components/result-card";
 import { StartFlow } from "@/components/start-flow";
 import { againRoute, refreshFlow } from "@/lib/flows";
-import { List, Loading, Missing, Pre, Section, Status } from "@/components/bits";
+import { Loading, Missing, Pre, Section, Status } from "@/components/bits";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,6 +19,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { RunSteps } from "@/components/run-steps";
+import { SpecReview } from "@/components/spec-review";
 import { dropToken, useWriteToken, writeAuth } from "@/lib/token";
 
 const POLL_MS = 3000;
@@ -118,6 +119,7 @@ export function FlowPage() {
         },
       },
     );
+  const spec = f.problem ? <SpecReview s={f} /> : null;
   // which button was pressed: it gets the spinner
   const sending = answer.isPending ? answer.variables.data.approve : null;
   // the guard's 401 / 403 aren't in the schema: a plain number
@@ -219,35 +221,20 @@ export function FlowPage() {
         </CardContent>
       </Card>
 
-      {f.trace && (
-        <Section title="Steps: what ran, what it cost, why">
-          <RunSteps run={f.trace} live={f.running} />
-        </Section>
-      )}
-
       {f.waiting === "test" && (
         <Section title="The test (frozen once approved)">
           <Pre text={f.diff} />
         </Section>
       )}
 
-      <Section title="Problem">
-        <Pre text={f.problem} className="bg-transparent p-0 font-sans text-sm" />
-      </Section>
-      {f.route === "feature" && (
-        <Section title="Acceptance criteria">
-          <List items={f.criteria} ordered />
+      {/* at a gate the spec is what you review: above the steps; after it, below */}
+      {f.waiting && spec}
+      {f.trace && (
+        <Section title="Steps: what ran, what it cost, why">
+          <RunSteps run={f.trace} live={f.running} />
         </Section>
       )}
-      <Section title="Files">
-        <List items={f.files.map((x) => `${x.path}: ${x.why}`)} />
-      </Section>
-      <Section title="Plan">
-        <List items={f.plan} ordered />
-      </Section>
-      <Section title="Open questions (answered by approving the plan)">
-        <List items={f.open_questions} />
-      </Section>
+      {!f.waiting && spec}
     </div>
   );
 }

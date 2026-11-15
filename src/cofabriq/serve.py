@@ -48,6 +48,8 @@ from cofabriq.targets import clone_dir
 
 _NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 _REPO = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9][A-Za-z0-9_.-]*$")
+_COMMIT = re.compile(r"^[0-9a-f]{40}$")
+_AROUND = 8  # lines of code shown above and below the spec's line
 _STAMP = re.compile(r"(\d{8}T\d{6})")
 
 type RunKind = Literal["eval", "features", "wrong", "gate", "run"]
@@ -195,8 +197,21 @@ class FlowView(FlowSummary):
     assumptions: list[str]
     open_questions: list[str]
     diff: str  # the frozen test, at the test gate
+    commit: str  # the spec's: its paths and code lines are at it; "" before refine
+    tests: list[FileNote]
     trace: str  # its steps so far: /api/traces/<trace>; "" untraced
     record: str  # the finished run: /api/runs/<record>/<number>; "" before
+
+
+class CodeLines(BaseModel):
+    """A few lines of one file at a commit, read from the clone: the plan
+    gate's "current code" next to what the spec will change. The target's
+    text: shown as text."""
+
+    path: str
+    start: int = Field(description="The first line's number, 1-based.")
+    lines: list[str]
+    focus: int | None = Field(description="The line the spec points at.")
 
 
 class StepTree(BaseModel):
@@ -613,6 +628,31 @@ def build(
         """Every step's title, sentence and why (docs/steps/), keyed by `doc`."""
         return runsteps.load_docs(docs_dir)
 
+    @app.get("/api/code/{owner}/{name}", response_model=CodeLines)
+    def code(
+        owner: str, name: str, commit: str, path: str, line: int | None = None
+    ) -> CodeLines:
+        """Up to 17 lines of a file at a commit, around `line` (the top of the
+        file without one). Only a file in that commit's tree of the local
+        clone: never a path from outside it."""
+        repo = f"{owner}/{name}"
+        if not _REPO.match(repo) or not _COMMIT.match(commit):
+            raise HTTPException(status_code=404, detail="no such file")
+        files = files_at(repo, commit)
+        if files is None or path not in files:
+            raise HTTPException(status_code=404, detail="no such file at this commit")
+        try:
+            text = git_mod.git(clone_dir(clones_dir, repo), "show", f"{commit}:{path}")
+        except (subprocess.CalledProcessError, UnicodeDecodeError) as exc:
+            raise HTTPException(status_code=404, detail="not a text file") from exc
+        lines = text.splitlines()
+        focus = line if line is not None and 1 <= line <= len(lines) else None
+        start = max(1, (focus or 1) - _AROUND) if focus else 1
+        end = min(len(lines), (focus + _AROUND) if focus else 2 * _AROUND + 1)
+        return CodeLines(
+            path=path, start=start, lines=lines[start - 1 : end], focus=focus
+        )
+
     def runnable(repo: str) -> bool:
         return load_rules(targets_dir, repo) is not None
 
@@ -730,6 +770,10 @@ def _flow_routes(app: FastAPI, flows: FlowRunner) -> None:
             assumptions=spec.assumptions if spec else [],
             open_questions=spec.open_questions if spec else [],
             diff=f.diff,
+            commit=f.state.refined.commit if f.state.refined else "",
+            tests=[FileNote(path=x.path, why=x.why) for x in spec.tests]
+            if spec
+            else [],
             trace=tracing.run_id(f.state.trace),
             record=f.state.record,
         )

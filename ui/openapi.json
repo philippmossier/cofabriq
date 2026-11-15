@@ -261,6 +261,89 @@
         }
       }
     },
+    "/api/code/{owner}/{name}": {
+      "get": {
+        "summary": "Code",
+        "description": "Up to 17 lines of a file at a commit, around `line` (the top of the\nfile without one). Only a file in that commit's tree of the local\nclone: never a path from outside it.",
+        "operationId": "code",
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Owner"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          },
+          {
+            "name": "commit",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Commit"
+            }
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Path"
+            }
+          },
+          {
+            "name": "line",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Line"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodeLines"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/repos": {
       "get": {
         "summary": "Repos",
@@ -656,6 +739,47 @@
         "title": "Code",
         "description": "The function a step stands for."
       },
+      "CodeLines": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "start": {
+            "type": "integer",
+            "title": "Start",
+            "description": "The first line's number, 1-based."
+          },
+          "lines": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Lines"
+          },
+          "focus": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Focus",
+            "description": "The line the spec points at."
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "start",
+          "lines",
+          "focus"
+        ],
+        "title": "CodeLines",
+        "description": "A few lines of one file at a commit, read from the clone: the plan\ngate's \"current code\" next to what the spec will change. The target's\ntext: shown as text."
+      },
       "FileNote": {
         "properties": {
           "path": {
@@ -885,6 +1009,17 @@
             "type": "string",
             "title": "Diff"
           },
+          "commit": {
+            "type": "string",
+            "title": "Commit"
+          },
+          "tests": {
+            "items": {
+              "$ref": "#/components/schemas/FileNote"
+            },
+            "type": "array",
+            "title": "Tests"
+          },
           "trace": {
             "type": "string",
             "title": "Trace"
@@ -913,6 +1048,8 @@
           "assumptions",
           "open_questions",
           "diff",
+          "commit",
+          "tests",
           "trace",
           "record"
         ],

@@ -1,11 +1,11 @@
 import { Link, useParams } from "@tanstack/react-router";
 import { useState } from "react";
 import { type SpecSummary, useSpec, useSpecs } from "@/api/generated";
-import { List, Loading, Missing, Pre, Section } from "@/components/bits";
+import { List, Loading, Missing, Section } from "@/components/bits";
+import { SpecReview } from "@/components/spec-review";
 import { usd, when } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import {
   Table,
   TableBody,
@@ -133,44 +133,7 @@ export function SpecPage() {
         </Card>
       )}
 
-      <Section title="Problem">
-        <Pre text={s.problem} className="bg-transparent p-0 font-sans text-sm" />
-      </Section>
-
-      {s.route === "feature" && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Acceptance criteria</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <List items={s.criteria} ordered />
-          </CardContent>
-        </Card>
-      )}
-
-      <div className="grid gap-6 md:grid-cols-2">
-        <Section title="Files">
-          <List items={s.files.map((f) => `${f.path}: ${f.why}`)} />
-        </Section>
-        <Section title="Tests">
-          <List items={s.tests.map((f) => `${f.path}: ${f.why}`)} />
-        </Section>
-      </div>
-
-      <Section title="Plan">
-        <List items={s.plan} ordered />
-      </Section>
-
-      <Separator />
-
-      <div className="grid gap-6 md:grid-cols-2">
-        <Section title="Assumptions">
-          <List items={s.assumptions} />
-        </Section>
-        <Section title="Open questions (answered by approving the plan)">
-          <List items={s.open_questions} />
-        </Section>
-      </div>
+      <SpecReview s={s} />
 
       {s.unknown_paths.length > 0 && (
         <Section title="Paths not in the repo at this commit">
