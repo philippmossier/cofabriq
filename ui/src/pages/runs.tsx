@@ -2,6 +2,7 @@ import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router"
 import { type RunSummary, type Step, useRun, useRuns } from "@/api/generated";
 import { EVAL_TABS, type EvalTab } from "@/lib/evals";
 import { Checks, List, Loading, Missing, Pre, Section, Status, Verdict } from "@/components/bits";
+import { DiffView } from "@/components/code";
 import { ResultCard } from "@/components/result-card";
 import { RunSteps } from "@/components/run-steps";
 import { SpecsList } from "@/pages/specs";
@@ -186,10 +187,19 @@ export function RunPage() {
         <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
           <Badge variant="secondary">{t.kind}</Badge>
           <Status value={t.status} />
-          <span>judge</span>
-          <Verdict ok={t.judge} yes="green" no="red" />
-          <span>agent's test on the reference</span>
-          <Verdict ok={t.valid} yes="valid" no="invalid" />
+          {/* only a planted bug has an answer key to judge against */}
+          {t.judge != null && (
+            <>
+              <span>judge</span>
+              <Verdict ok={t.judge} yes="green" no="red" />
+            </>
+          )}
+          {t.valid != null && (
+            <>
+              <span>agent's test on the reference</span>
+              <Verdict ok={t.valid} yes="valid" no="invalid" />
+            </>
+          )}
           <span>
             · {t.repo} at {t.commit.slice(0, 7)} · {usd(t.cost_usd)}
           </span>
@@ -288,7 +298,7 @@ export function RunPage() {
       )}
 
       <Section title={`Diff (${t.changed.length} files)`}>
-        {t.diff ? <Pre text={t.diff} /> : <p className="text-sm text-muted-foreground">(no change)</p>}
+        <DiffView diff={t.diff} />
       </Section>
 
       {t.pr_body && (

@@ -6,7 +6,7 @@ import { useFlow, useFlowAnswer, useFlowList } from "@/api/generated";
 import { FlowResult } from "@/components/result-card";
 import { StartFlow } from "@/components/start-flow";
 import { againRoute, refreshFlow } from "@/lib/flows";
-import { Loading, Missing, Pre, Section, Status } from "@/components/bits";
+import { Loading, Missing, Section, Status } from "@/components/bits";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,6 +18,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { DiffView } from "@/components/code";
 import { RunSteps } from "@/components/run-steps";
 import { SpecReview } from "@/components/spec-review";
 import { dropToken, useWriteToken, writeAuth } from "@/lib/token";
@@ -117,9 +118,13 @@ export function FlowPage() {
       { owner, name, number: Number(number), data: { approve, reason: approve ? "" : reason } },
       {
         onSuccess: async (r) => {
-          if ((r.status as number) === 401) dropToken(); // the server restarted: a dead token
+          if ((r.status as number) === 401) {
+            dropToken(); // the server restarted: a dead token
+            return;
+          }
+          setReason(""); // answered: the next gate (or a new flow) starts empty
           // it says "running" at once: don't wait for the next poll
-          else await refreshFlow(client, owner, name, Number(number));
+          await refreshFlow(client, owner, name, Number(number));
         },
       },
     );
@@ -231,7 +236,7 @@ export function FlowPage() {
 
       {f.waiting === "test" && (
         <Section title="The test (frozen once approved)">
-          <Pre text={f.diff} />
+          <DiffView diff={f.diff} />
         </Section>
       )}
 

@@ -18,6 +18,7 @@ from cofabriq.loop.refine import (
     FileChange,
     NoCriteria,
     Spec,
+    checked_lines,
     prompt,
     refine,
     route_for,
@@ -174,6 +175,33 @@ def test_feature_spec_needs_criteria(tmp_path: Path) -> None:
     with_criteria = spec("src/a.ts").model_copy(update={"criteria": ["f(1) is 2"]})
     refined = refine(issue(3), clone, FakeAgent(with_criteria), "feature")
     assert refined.route == "feature" and refined.spec.criteria == ["f(1) is 2"]
+
+
+@pytest.mark.parametrize(
+    ("at", "kept"),
+    [
+        (["74", "78-83"], ["74", "78-83"]),
+        (["L74", "78 - 83", "74"], ["74", "78-83"]),  # GitHub style, spaces, twice
+        (["0", "101", "83-78", "around 74", "90-101"], []),  # outside or not lines
+    ],
+)
+def test_lines_are_kept_only_where_the_file_has_them(
+    at: list[str], kept: list[str]
+) -> None:
+    assert checked_lines(at, 100) == kept
+    assert checked_lines(at, None) == []  # a new file has no lines yet
+
+
+def test_refine_checks_each_files_lines_against_the_commit(tmp_path: Path) -> None:
+    clone = init_repo(tmp_path / "clone", {"src/a.ts": "x\n" * 10})
+    given = spec("src/a.ts", tests=("src/a.test.ts",))
+    given.files[0].at = ["3", "8-12"]  # the file has 10 lines
+    given.tests[0].at = ["1"]  # the test file is new
+
+    refined = refine(issue(3), clone, FakeAgent(given))
+
+    assert refined.spec.files[0].at == ["3"]
+    assert refined.spec.tests[0].at == []
 
 
 def test_bug_spec_drops_criteria(tmp_path: Path) -> None:

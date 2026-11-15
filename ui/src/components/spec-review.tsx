@@ -1,8 +1,8 @@
 import { type ReactNode, useState } from "react";
 import { type FileNote, useCode } from "@/api/generated";
 import { List, Section } from "@/components/bits";
+import { CodeLines } from "@/components/code";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
 
 /** What the plan gate and a spec page show: the fields of a spec. */
 export type SpecLike = {
@@ -24,8 +24,14 @@ export type SpecLike = {
 const REF = /((?:[\w.-]+\/)*[\w.-]+\.[A-Za-z]{1,5}):(\d+)(?:-(\d+))?/g;
 const AROUND = 8; // the server's lines above and below a range (serve.py)
 
+/** What a marked line is: one the change touches, or one the spec only
+ * mentions (as evidence, in the cause). */
+type Mark = "change" | "mention";
+
 /** One snippet: lines `from` to `to`, with the referenced lines marked. */
-type Span = { from: number; to: number; marks: Set<number> };
+type Span = { from: number; to: number; marks: Map<number, Mark> };
+
+const MARK: Record<Mark, string> = { change: "bg-amber-200/70", mention: "bg-sky-100" };
 
 /** A reference's file: a spec path as written, or the one spec path it is
  * the file name of; a full path the spec doesn't list is taken as is. */
@@ -41,27 +47,47 @@ function blob(s: SpecLike, path: string, line?: number): string {
   return `https://github.com/${s.repo}/blob/${s.commit}/${file}${line ? `#L${line}` : ""}`;
 }
 
-/** Every place the spec points at in `path` (lines and ranges, from all
- * its text), merged into one snippet where their windows would touch. */
-function spansIn(s: SpecLike, path: string, texts: string[]): Span[] {
+type Ref = [from: number, to: number, mark: Mark];
+
+function range(from: number, to: number | undefined): [number, number] {
+  const end = to === undefined ? from : Math.max(from, to);
+  return [from, Math.min(end, from + 200)]; // a typo'd range stays a snippet
+}
+
+/** The places of `file` the spec names: the lines its change touches
+ * (`at`, checked by refine; older specs: what the file's own sentence
+ * cites), then the ones the rest of the spec only mentions. Merged into
+ * one snippet where their windows would touch. */
+function spansIn(s: SpecLike, file: FileNote, texts: string[]): Span[] {
   const known = [...s.files, ...s.tests].map((f) => f.path);
-  const refs: [number, number][] = [];
-  for (const text of texts) {
-    for (const m of text.matchAll(REF)) {
-      if (resolve(m[1]!, known) !== path) continue;
-      const from = Number(m[2]);
-      const to = m[3] ? Math.max(from, Number(m[3])) : from;
-      refs.push([from, Math.min(to, from + 200)]); // a typo'd range stays a snippet
-    }
-  }
-  refs.sort((a, b) => a[0] - b[0]);
+  const cited = (text: string): [number, number][] =>
+    [...text.matchAll(REF)]
+      .filter((m) => resolve(m[1]!, known) === file.path)
+      .map((m) => range(Number(m[2]), m[3] ? Number(m[3]) : undefined));
+  // in the file's own sentence a bare "line 74" / "lines 100-107" is this file
+  const bare = [...file.why.matchAll(/\blines? (\d+)(?:\s*-\s*(\d+))?/gi)].map((m) =>
+    range(Number(m[1]), m[2] ? Number(m[2]) : undefined),
+  );
+  const change: [number, number][] =
+    file.at.length > 0
+      ? file.at.map((a) => {
+          const [from, to] = a.split("-").map(Number);
+          return range(from!, to);
+        })
+      : [...cited(file.why), ...bare];
+  const refs: Ref[] = [
+    ...change.map(([f, t]): Ref => [f, t, "change"]),
+    ...texts.flatMap(cited).map(([f, t]): Ref => [f, t, "mention"]),
+  ].sort((a, b) => a[0] - b[0]);
   const spans: Span[] = [];
-  for (const [from, to] of refs) {
+  for (const [from, to, mark] of refs) {
     const last = spans.at(-1);
     if (last && from - last.to <= 2 * AROUND + 1) last.to = Math.max(last.to, to);
-    else spans.push({ from, to, marks: new Set() });
+    else spans.push({ from, to, marks: new Map() });
     const span = spans.at(-1)!;
-    for (let n = from; n <= to; n++) span.marks.add(n);
+    for (let n = from; n <= to; n++) {
+      if (span.marks.get(n) !== "change") span.marks.set(n, mark); // a change wins
+    }
   }
   return spans;
 }
@@ -94,15 +120,20 @@ function SpecText({ s, text }: { s: SpecLike; text: string }) {
     out.push(part.slice(last));
     return out;
   };
+  // only `a span` (single backticks, no line break inside) is code; a fence
+  // (```) or a stray backtick stays as written
+  const parts = text.split(/(?<!`)`([^`\n]+)`(?!`)/);
   return (
     <>
-      {text.split("`").map((part, i) =>
+      {parts.map((part, i) =>
         i % 2 ? (
           <code key={i} className="rounded bg-muted px-1 font-mono text-xs">
             {linked(part, String(i))}
           </code>
         ) : (
-          <span key={i}>{linked(part, String(i))}</span>
+          <span key={i} className="whitespace-pre-line">
+            {linked(part, String(i))}
+          </span>
         ),
       )}
     </>
@@ -128,17 +159,15 @@ function CurrentCode({ s, path, span, open: initial }: { s: SpecLike; path: stri
       {open && q.isPending && <p className="text-xs text-muted-foreground">Loading…</p>}
       {open && !q.isPending && !c && <p className="text-xs text-muted-foreground">Not in the local clone.</p>}
       {c && (
-        <pre className="mt-1 max-h-80 overflow-auto rounded-md bg-muted py-2 font-mono text-xs leading-relaxed">
-          {c.lines.map((text, i) => {
-            const n = c.start + i;
-            return (
-              <div key={n} className={cn("flex px-3", span?.marks.has(n) && "bg-amber-200/60")}>
-                <span className="w-10 shrink-0 pr-3 text-right text-muted-foreground select-none">{n}</span>
-                <span className="whitespace-pre">{text}</span>
-              </div>
-            );
-          })}
-        </pre>
+        <CodeLines
+          path={path}
+          start={c.start}
+          lines={c.lines}
+          mark={(n) => {
+            const m = span?.marks.get(n);
+            return m ? MARK[m] : undefined;
+          }}
+        />
       )}
     </details>
   );
@@ -186,9 +215,13 @@ export function SpecReview({ s }: { s: SpecLike }) {
       </Section>
 
       <Section title="The change">
+        <p className="text-xs text-muted-foreground">
+          <span className="rounded bg-amber-200/70 px-1">yellow</span>: the lines the change touches ·{" "}
+          <span className="rounded bg-sky-100 px-1">blue</span>: lines the spec only mentions
+        </p>
         <div className="space-y-4">
           {s.files.map((f) => {
-            const spans = spansIn(s, f.path, [f.why, ...texts]);
+            const spans = spansIn(s, f, texts);
             const isNew = s.unknown_paths.includes(f.path);
             return (
               <div key={f.path} className="space-y-1.5 rounded-md border p-3">

@@ -70,6 +70,8 @@ export interface CodeLines {
 export interface FileNote {
   path: string;
   why: string;
+  /** The lines it changes: "74", "78-83". */
+  at: string[];
 }
 
 export interface FindingView {

@@ -798,12 +798,21 @@
           "why": {
             "type": "string",
             "title": "Why"
+          },
+          "at": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "At",
+            "description": "The lines it changes: \"74\", \"78-83\"."
           }
         },
         "type": "object",
         "required": [
           "path",
-          "why"
+          "why",
+          "at"
         ],
         "title": "FileNote"
       },
