@@ -126,5 +126,7 @@
     }
   html {
     @apply font-sans;
+    /* room for the scrollbar on every page: a long page doesn't shift the layout */
+    scrollbar-gutter: stable;
     }
 }
