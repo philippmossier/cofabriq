@@ -67,11 +67,25 @@ export interface CodeLines {
   total: number;
 }
 
+/**
+ * A place of the change, sketched by the agent; not run.
+ */
+export interface EditNote {
+  /** The lines as they are, found in the file. */
+  old: string;
+  /** What the agent proposes they become. */
+  new: string;
+  /** Where `old` starts in the file. */
+  line: number;
+}
+
 export interface FileNote {
   path: string;
   why: string;
   /** The lines it changes: "74", "78-83". */
   at: string[];
+  /** Sketches checked against the file. */
+  edits: EditNote[];
 }
 
 export interface FindingView {
@@ -146,6 +160,7 @@ export interface FlowView {
   assumptions: string[];
   open_questions: string[];
   diff: string;
+  red: string;
   commit: string;
   tests: FileNote[];
   unknown_paths: string[];

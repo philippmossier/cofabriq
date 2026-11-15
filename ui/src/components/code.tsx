@@ -90,6 +90,33 @@ export function CodeLines({
   );
 }
 
+/** One place of a change as the agent proposes it at the plan gate: its lines
+ * as they are (found in the file at `line`) and what they become. Not run. */
+export function ProposedEdit({ path, line, old, next }: { path: string; line: number; old: string; next: string }) {
+  const rows = [
+    ...old.split("\n").map((text, i) => ({ kind: "del" as const, text, n: line + i })),
+    ...(next ? next.split("\n") : []).map((text, i) => ({ kind: "add" as const, text, n: line + i })),
+  ];
+  return (
+    <pre className="overflow-auto rounded-md border bg-white py-1 font-mono text-xs leading-relaxed">
+      <Highlighted
+        path={path}
+        lines={rows.map((r) => r.text)}
+        row={(i, code) => {
+          const r = rows[i]!;
+          return (
+            <div key={i} className={cn("flex px-1", ROW[r.kind])}>
+              <span className={cn(NUM, "w-9 pr-2")}>{r.n}</span>
+              <span className="w-4 shrink-0 text-muted-foreground select-none">{SIGN[r.kind]}</span>
+              <span className="whitespace-pre">{code}</span>
+            </div>
+          );
+        }}
+      />
+    </pre>
+  );
+}
+
 const ROW = { add: "bg-emerald-50", del: "bg-red-50", ctx: "" };
 const SIGN = { add: "+", del: "−", ctx: " " };
 

@@ -178,6 +178,7 @@ def refine_feature(
     commit: str,
     worktree: Path,
     agent: Agent,
+    testing: str = "",
 ) -> Refined:
     """Refine on the feature's removed state: a worktree at `commit` with
     the removal committed, the ticket as the issue, the feature route. The
@@ -186,7 +187,9 @@ def refine_feature(
     add_worktree(clone, worktree, commit)
     try:
         remove(worktree, removal_path(features_file, feature.key))
-        refined = refine(ticket(feature, repo), worktree, agent, feature.route)
+        refined = refine(
+            ticket(feature, repo), worktree, agent, feature.route, testing=testing
+        )
     finally:
         remove_worktree(clone, worktree)
     return refined.model_copy(update={"commit": commit})

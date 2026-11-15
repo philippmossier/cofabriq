@@ -789,6 +789,33 @@
         "title": "CodeLines",
         "description": "A few lines of one file at a commit, read from the clone: the plan\ngate's \"current code\" next to what the spec will change. The target's\ntext: shown as text."
       },
+      "EditNote": {
+        "properties": {
+          "old": {
+            "type": "string",
+            "title": "Old",
+            "description": "The lines as they are, found in the file."
+          },
+          "new": {
+            "type": "string",
+            "title": "New",
+            "description": "What the agent proposes they become."
+          },
+          "line": {
+            "type": "integer",
+            "title": "Line",
+            "description": "Where `old` starts in the file."
+          }
+        },
+        "type": "object",
+        "required": [
+          "old",
+          "new",
+          "line"
+        ],
+        "title": "EditNote",
+        "description": "A place of the change, sketched by the agent; not run."
+      },
       "FileNote": {
         "properties": {
           "path": {
@@ -806,13 +833,22 @@
             "type": "array",
             "title": "At",
             "description": "The lines it changes: \"74\", \"78-83\"."
+          },
+          "edits": {
+            "items": {
+              "$ref": "#/components/schemas/EditNote"
+            },
+            "type": "array",
+            "title": "Edits",
+            "description": "Sketches checked against the file."
           }
         },
         "type": "object",
         "required": [
           "path",
           "why",
-          "at"
+          "at",
+          "edits"
         ],
         "title": "FileNote"
       },
@@ -1027,6 +1063,10 @@
             "type": "string",
             "title": "Diff"
           },
+          "red": {
+            "type": "string",
+            "title": "Red"
+          },
           "commit": {
             "type": "string",
             "title": "Commit"
@@ -1073,6 +1113,7 @@
           "assumptions",
           "open_questions",
           "diff",
+          "red",
           "commit",
           "tests",
           "unknown_paths",

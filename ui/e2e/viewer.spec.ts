@@ -2,7 +2,8 @@ import { type Page, expect, test } from "@playwright/test";
 
 // The viewer on recorded runs of the playground (e2e/fixtures/data): what each page shows.
 // Fixtures: #51 (approved, a two-part run with a plan gate), #8 (approved with two open
-// concerns, a new test file), a gate eval, the eval specs of 2026-11-15, the issue store.
+// concerns, a new test file), a gate eval, two eval spec runs of 2026-11-15 (the later one
+// with sketches), the issue store.
 
 const R51 = "philippmossier-local-ai-chat-playground-51-20261115T133809";
 const R8 = "philippmossier-local-ai-chat-playground-8-20261115T155711";
@@ -77,7 +78,8 @@ test("the step tree: two parts of the run, the wait at the gate, four levels", a
 
 test("a spec reads as a review: cause, change, proof, what to check", async ({ page }) => {
   await page.goto(`/evals?tab=specs`);
-  await page.getByRole("link", { name: "copy-button-under-answer" }).click();
+  await expect(page.getByRole("link", { name: "copy-button-under-answer" })).toHaveCount(2); // two runs
+  await page.goto(`/specs/${SPECS}/copy-button-under-answer`); // the one without sketches
 
   await expect(section(page, "The cause")).toBeVisible();
   const change = section(page, "The change");
@@ -89,6 +91,18 @@ test("a spec reads as a review: cause, change, proof, what to check", async ({ p
 
   await page.getByRole("link", { name: "← Evals" }).click();
   await expect(page).toHaveURL(/\/evals\?tab=specs$/);
+});
+
+test("a spec's sketch shows the lines as they are and as proposed, labelled not run", async ({ page }) => {
+  // the eval specs of 2026-11-15 19:03: refine asked for sketches, kept when old is in the file
+  await page.goto("/specs/eval-20261115T190323/title-ellipsis");
+
+  const change = section(page, "The change");
+  await expect(change.getByText(/proposed by the agent, not run/)).toBeVisible();
+  const sketch = change.locator("pre", { hasText: "TITLE_LENGTH" }).first();
+  await expect(sketch.locator(".bg-red-50")).toContainText("flat.length < TITLE_LENGTH");
+  await expect(sketch.locator(".bg-emerald-50")).toContainText("flat.length <= TITLE_LENGTH");
+  await expect(sketch).toContainText("52"); // where old starts, found by cofabriq
 });
 
 test("in the agent's text a `span` is code and a fence stays as written", async ({ page }) => {

@@ -1,7 +1,7 @@
 import { type ReactNode, useState } from "react";
 import { type FileNote, useCode } from "@/api/generated";
 import { List, Section } from "@/components/bits";
-import { CodeLines } from "@/components/code";
+import { CodeLines, ProposedEdit } from "@/components/code";
 import { Badge } from "@/components/ui/badge";
 
 /** What the plan gate and a spec page show: the fields of a spec. */
@@ -229,6 +229,17 @@ export function SpecReview({ s }: { s: SpecLike }) {
                 <p className="text-sm">
                   <SpecText s={s} text={f.why} />
                 </p>
+                {f.edits.length > 0 && (
+                  <div className="space-y-1.5">
+                    <p className="text-xs text-muted-foreground">
+                      proposed by the agent, not run: its old lines are checked against the file; the build
+                      writes the real change against the test
+                    </p>
+                    {f.edits.map((e, i) => (
+                      <ProposedEdit key={i} path={f.path} line={e.line} old={e.old} next={e.new} />
+                    ))}
+                  </div>
+                )}
                 {isNew ? (
                   <p className="text-xs text-muted-foreground">Not in the repo yet: the change creates it.</p>
                 ) : spans.length === 0 ? (
@@ -240,7 +251,8 @@ export function SpecReview({ s }: { s: SpecLike }) {
                       s={s}
                       path={f.path}
                       span={span}
-                      open={s.files.length === 1 && spans.length <= 3}
+                      // with sketches, the code around them is one click away
+                      open={s.files.length === 1 && spans.length <= 3 && f.edits.length === 0}
                     />
                   ))
                 )}
