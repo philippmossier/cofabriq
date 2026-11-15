@@ -30,6 +30,7 @@ class RunRecord(BaseModel):
     gate: Gated | None = None  # None: no review ran (red loop, halted)
     draft: pr_mod.Draft | None = None  # None: blocked, or no review
     published: dict[str, object] | None = None  # the PR, or {"error": ...}
+    trace: str = ""  # the run's id in data/traces (its steps), "" untraced
 
 
 def sentinel_for(

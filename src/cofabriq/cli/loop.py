@@ -14,6 +14,7 @@ from fastapi import FastAPI
 from langgraph.graph.state import CompiledStateGraph
 from rich.console import Console
 
+from cofabriq import runsteps, tracing
 from cofabriq.cli.common import (
     app,
     claude_code,
@@ -23,7 +24,7 @@ from cofabriq.cli.common import (
     target_repo,
     write_token_for,
 )
-from cofabriq.cli.render import show_draft, show_gate, show_loop, show_spec
+from cofabriq.cli.render import show_draft, show_gate, show_loop, show_spec, show_steps
 from cofabriq.config import get_settings
 from cofabriq.eval import loop as loop_eval
 from cofabriq.eval.bugs import fix_path, load_bugs, planted_for, repro_path
@@ -216,6 +217,7 @@ def _api(
         port=port,
         write_token=write_token,
         flows=flows,
+        trace_dir=settings.trace_dir,
     )
 
 
@@ -358,12 +360,24 @@ def flow_resume(
 
 
 @flow_app.command("show")
-def flow_show(number: int, repo: str = PLAYGROUND) -> None:
-    """Where a flow stands, read from its checkpoints."""
+def flow_show(number: int, repo: str = PLAYGROUND, steps: bool = False) -> None:
+    """Where a flow stands, read from its checkpoints. `--steps`: every step
+    it ran so far, with time, cost and result (data/traces)."""
     target = check_repo(repo)
     deps, dsn = _flow_deps(target)
+    thread = f"{target}#{number}"
     with graph_mod.compiled(deps, dsn) as graph:
-        _flow_report(graph, f"{target}#{number}")
+        _flow_report(graph, thread)
+        found = graph_mod.read_status(graph, thread)
+    if not steps or found is None:
+        return
+    settings = get_settings()
+    run = tracing.run_id(found.state.trace)
+    tree = runsteps.load_steps(settings.trace_dir, run, runsteps.load_docs())
+    if tree is None:
+        typer.echo("no steps kept for this flow (it ran before data/traces)", err=True)
+        raise typer.Exit(code=1)
+    show_steps(tree)
 
 
 @app.command()

@@ -13,7 +13,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { writeAuth, writeToken } from "@/lib/token";
+import { RunSteps } from "@/components/run-steps";
+import { dropToken, useWriteToken, writeAuth } from "@/lib/token";
 
 const POLL_MS = 3000;
 
@@ -92,19 +93,22 @@ export function FlowPage() {
       refetchInterval: POLL_MS,
     },
   });
+  const token = useWriteToken();
   const answer = useFlowAnswer({ fetch: writeAuth() });
   const [reason, setReason] = useState("");
   if (q.isPending) return <Loading what="the flow" />;
   const f = q.data;
   if (!f) return <Missing what="flow" />;
-  const canAnswer = f.waiting !== null && !f.running && writeToken() !== null;
+  const canAnswer = f.waiting !== null && !f.running && token !== null;
   const send = (approve: boolean) =>
-    answer.mutate({
-      owner,
-      name,
-      number: Number(number),
-      data: { approve, reason: approve ? "" : reason },
-    });
+    answer.mutate(
+      { owner, name, number: Number(number), data: { approve, reason: approve ? "" : reason } },
+      // 401: the server restarted with a new token; this one is dead
+      { onSuccess: (r) => (r.status as number) === 401 && dropToken() },
+    );
+  // the guard's 401 / 403 aren't in the schema: a plain number
+  const refused: number | null =
+    answer.data && answer.data.status !== 200 ? answer.data.status : null;
 
   return (
     <div className="space-y-6">
@@ -136,10 +140,19 @@ export function FlowPage() {
         </CardHeader>
         <CardContent className="space-y-3">
           {f.error && <p className="text-sm text-destructive">{f.error}</p>}
-          {f.waiting && !writeToken() && (
+          {f.waiting && !token && refused !== 401 && (
             <p className="text-sm text-muted-foreground">
               Read-only here: open the URL that <code>cofabriq serve --write</code> printed.
             </p>
+          )}
+          {!f.waiting && !f.running && f.record && (
+            <Link
+              to="/runs/$file/$key"
+              params={{ file: f.record, key: String(f.number) }}
+              className="text-sm font-medium hover:underline"
+            >
+              Open the run: test, diff, review, draft PR →
+            </Link>
           )}
           {f.waiting && (
             <div className="flex gap-2">
@@ -163,13 +176,28 @@ export function FlowPage() {
               />
             </div>
           )}
-          {answer.data && answer.data.status !== 200 && (
+          {answer.isPending && <p className="text-sm text-muted-foreground">Sending…</p>}
+          {refused === 401 && (
             <p className="text-sm text-destructive">
-              Refused ({answer.data.status}): the token may be stale; open the printed URL again.
+              Refused: the server restarted with a new token. Open the new link it printed.
             </p>
+          )}
+          {refused === 403 && (
+            <p className="text-sm text-destructive">
+              Refused: open the UI at the address the server printed (127.0.0.1, not localhost).
+            </p>
+          )}
+          {refused !== null && refused !== 401 && refused !== 403 && (
+            <p className="text-sm text-destructive">Refused ({refused}).</p>
           )}
         </CardContent>
       </Card>
+
+      {f.trace && (
+        <Section title="Steps: what ran, what it cost, why">
+          <RunSteps run={f.trace} live={f.running} />
+        </Section>
+      )}
 
       {f.waiting === "test" && (
         <Section title="The test (frozen once approved)">

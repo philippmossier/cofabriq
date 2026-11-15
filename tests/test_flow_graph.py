@@ -72,7 +72,8 @@ def test_a_red_build_is_recorded_without_a_review(tmp_path: Path) -> None:
     )
     state = run_graph(d, FlowState(issue=issue(3), route="bug"), YES)
     assert state.outcome == "escalated" and state.gated is None
-    assert set(stored(d, state)) == {"result", "evidence"}  # no gate, no draft
+    # no gate, no draft; its steps' trace id
+    assert set(stored(d, state)) == {"result", "evidence", "trace"}
 
 
 def test_a_given_spec_skips_refine_and_a_planted_repro_goes_to_the_agent(

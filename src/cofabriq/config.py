@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     runs_dir: Path = Path("data/runs")  # one JSON per `cofabriq run`
     lessons_dir: Path = Path("data/lessons")  # rejections, proposed rules
     human_dir: Path = Path("data/human")  # `eval human`: the PR set, the timings
+    trace_dir: Path = Path("data/traces")  # each flow's steps, for the viewer
     # traces (off when unset): an OTLP/HTTP base URL and its headers, under
     # OpenTelemetry's own names (compose's Jaeger: http://localhost:4318)
     otel_exporter_otlp_endpoint: str | None = None

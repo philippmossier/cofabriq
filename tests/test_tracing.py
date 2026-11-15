@@ -84,6 +84,9 @@ def test_a_structured_call_is_a_chat_span_with_tokens_and_cost(
         "gen_ai.usage.output_tokens": 100,
         "cofabriq.cost_usd": pytest.approx(1000 * 0.10e-6 + 100 * 0.50e-6),
         "cofabriq.llm.what": "#12",
+        "code.function.name": "cofabriq.llm.structured",
+        "code.file.path": "src/cofabriq/llm.py",
+        "code.line.number": llm.structured.__code__.co_firstlineno,
     }  # no prompt text: "secret" is in no attribute
 
 
@@ -125,12 +128,14 @@ def test_a_sandbox_command_is_a_span_and_red_is_no_error(
     Podman(image="node:24-slim", binary="false")("pnpm test", tmp_path, network=False)
 
     span = one(spans, "sandbox.run")
-    assert dict(span.attributes or {}) == {
+    attributes = dict(span.attributes or {})
+    assert {k: v for k, v in attributes.items() if k.startswith("cofabriq.")} == {
         "cofabriq.sandbox.command": "pnpm test",
         "cofabriq.sandbox.image": "node:24-slim",
         "cofabriq.sandbox.network": False,
         "cofabriq.sandbox.ok": False,
     }
+    assert attributes["code.function.name"] == "cofabriq.loop.sandbox.Podman.__call__"
     assert span.status.status_code == StatusCode.UNSET
 
 

@@ -161,8 +161,13 @@ class ClaudeCode:
         if reason is not None:
             raise Halted(f"stopped: {reason}")
         with tracing.agent(
-            "claude-code", self.model, self.tools, self.budget_usd
+            "claude-code",
+            self.model,
+            self.tools,
+            self.budget_usd,
+            code=ClaudeCode.__call__,
         ) as span:
+            tracing.capture(span, prompt=prompt)
             start = time.perf_counter()
             with tempfile.TemporaryDirectory(prefix="cofabriq-claude-") as config:
                 done = subprocess.run(
@@ -182,6 +187,7 @@ class ClaudeCode:
                 tracing.agent_ran(span, self.model, exc.cost_usd, 0)
                 raise
             tracing.agent_ran(span, run.model, run.cost_usd, run.turns)
+            tracing.capture(span, answer=run.output)
         return run
 
 

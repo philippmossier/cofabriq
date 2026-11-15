@@ -7,6 +7,7 @@ from rich.padding import Padding
 from rich.table import Table
 from rich.text import Text
 
+from cofabriq import runsteps, tracing
 from cofabriq.eval import loop as loop_eval
 from cofabriq.issues import triage as triage_mod
 from cofabriq.loop import gate as gate_mod
@@ -103,6 +104,40 @@ def _render_card(out: Console, card: triage_mod.TriageCard) -> None:
         row("conflict", reason, "yellow")
     row("run", f"${r.cost_usd:.4f}, {r.latency_ms / 1000:.1f} s, {r.model}", "dim")
     flush()
+
+
+_MARK = {"ok": "✓", "error": "✗", "running": "⟳", "paused": "⏸"}
+
+
+def show_steps(roots: list[runsteps.RunStep]) -> None:
+    """A run's steps as a tree: one line per step with its time, cost and
+    turns, then the totals. A red sandbox command is `ok` with `red`: the
+    reproducer wants red."""
+    out = Console(highlight=False)
+    for root in roots:
+        _step_line(out, root, 0)
+    t = runsteps.totals(roots)
+    out.print(
+        f"{t.seconds:.0f} s, {t.agents} agent runs, {t.turns} turns, "
+        f"${t.cost_usd:.2f} (list price)"
+    )
+
+
+def _step_line(out: Console, s: runsteps.RunStep, depth: int) -> None:
+    secs = "running" if s.ms is None else f"{s.ms / 1000:.1f} s"
+    extra: list[str] = []
+    if s.attrs.get("cofabriq.sandbox.ok") is False:
+        extra.append("red")
+    if (turns := s.attrs.get(tracing.TURNS)) is not None:
+        extra.append(f"{turns} turns")
+    if isinstance(cost := s.attrs.get(tracing.COST), float | int):
+        extra.append(f"${cost:.2f}")
+    label = s.title if not s.detail else f"{s.title}: {s.detail}"
+    line = Text(f"{'  ' * depth}{_MARK[s.status]} {label}  ")
+    line.append(f"{secs}  {'  '.join(extra)}".rstrip(), style="dim")
+    out.print(line)
+    for child in s.children:
+        _step_line(out, child, depth + 1)
 
 
 def show_spec(refined: refine_mod.Refined) -> None:

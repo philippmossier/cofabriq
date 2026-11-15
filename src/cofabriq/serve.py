@@ -5,6 +5,8 @@ the built UI.
     data/runs/*.json     runs:  {key: Judged} (eval-, features-, wrong-),
                                 [GateCase] (gate-), or one run record
                                 (<owner>-<name>-<n>-<stamp>.json, `run`)
+    data/traces/         a flow's steps while and after it runs
+                                (`runsteps.py`), what each step got and gave
 
 The API returns its own response models, not the stored ones: a stored
 shape can change without changing the UI's contract (ADR-009). Everything
@@ -27,9 +29,10 @@ from typing import Literal
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, TypeAdapter, ValidationError
+from pydantic import BaseModel, Field, JsonValue, TypeAdapter, ValidationError
 
 from cofabriq import git as git_mod
+from cofabriq import runsteps, tracing
 from cofabriq.eval.loop import Judged
 from cofabriq.files import STAMP
 from cofabriq.issues.model import check_repo
@@ -163,6 +166,7 @@ class RunTrace(RunSummary):
     pr_body: str | None
     sentinel: list[str]  # the target's invariant broken: why it's blocked
     evidence: list[str]  # screenshot URLs of the browser test after the change
+    trace: str  # its steps: /api/traces/<trace>; "" for a run before traces
 
 
 class FlowSummary(BaseModel):
@@ -188,6 +192,16 @@ class FlowView(FlowSummary):
     assumptions: list[str]
     open_questions: list[str]
     diff: str  # the frozen test, at the test gate
+    trace: str  # its steps so far: /api/traces/<trace>; "" untraced
+    record: str  # the finished run: /api/runs/<record>/<number>; "" before
+
+
+class StepTree(BaseModel):
+    """A run's steps so far: the roots are its flow invocations in order
+    (`flow start` up to the first gate, then one per answered gate)."""
+
+    steps: list[runsteps.RunStep]
+    totals: runsteps.Totals
 
 
 class Answer(GateAnswer):
@@ -223,6 +237,7 @@ def _file(folder: Path, name: str) -> Path:
 
 _object = TypeAdapter(dict[str, object])
 _objects = TypeAdapter(list[dict[str, object]])
+_json = TypeAdapter(dict[str, JsonValue])
 
 
 def _load(path: Path) -> object:
@@ -279,6 +294,7 @@ class _Stored(BaseModel):
     gated: Gated | None = None
     pr_body: str | None = None
     evidence: list[str] = []  # file names in the run's folder
+    trace: str = ""  # the run's id in data/traces
 
 
 def _runs_in(path: Path) -> list[_Stored]:
@@ -309,6 +325,7 @@ def _runs_in(path: Path) -> list[_Stored]:
             gated=record.gate,
             pr_body=body.read_text("utf-8") if body.is_file() else None,
             evidence=record.evidence,
+            trace=record.trace,
         )
     ]
 
@@ -399,6 +416,7 @@ def _trace(s: _Stored) -> RunTrace:
         pr_body=s.pr_body,
         sentinel=s.gated.sentinel if s.gated is not None else [],
         evidence=[f"/api/runs/{s.file}/evidence/{n}" for n in s.evidence],
+        trace=s.trace,
     )
 
 
@@ -413,6 +431,8 @@ def build(
     port: int | None = None,
     write_token: str | None = None,
     flows: FlowRunner | None = None,
+    trace_dir: Path = Path("data/traces"),
+    docs_dir: Path = runsteps.DOCS,
 ) -> FastAPI:
     """The app over these folders. `ui_dir`: the built UI (`ui/dist`), served
     at `/` when it exists. `port`: the port it serves on; with it, the
@@ -426,6 +446,8 @@ def build(
         # operation ids = the route function names: the UI's generated hooks
         # read `useSpecs`, `useRun`, not `specsApiSpecsGet`
         generate_unique_id_function=lambda route: route.name,
+        # no span per request: the page polls, and each poll would be a trace
+        telemetry={"tracing": False},
     )
 
     @cache
@@ -514,6 +536,28 @@ def build(
                 return _trace(s)
         raise HTTPException(status_code=404, detail="no such run")
 
+    @app.get("/api/traces/{run}", response_model=StepTree)
+    def trace(run: str) -> StepTree:
+        """A run's steps as a tree, the running one included (poll it)."""
+        found = runsteps.load_steps(trace_dir, run, runsteps.load_docs(docs_dir))
+        if found is None:
+            raise HTTPException(status_code=404, detail="no such trace")
+        return StepTree(steps=found, totals=runsteps.totals(found))
+
+    @app.get("/api/traces/{run}/payloads/{span}", response_model=dict[str, JsonValue])
+    def payload(run: str, span: str) -> dict[str, JsonValue]:
+        """What one step got and gave: a prompt and its answer, a command's
+        output, the state a node changed. Untrusted text: show it as text."""
+        found = runsteps.load_payload(trace_dir, run, span)
+        if found is None:
+            raise HTTPException(status_code=404, detail="nothing kept for this step")
+        return _json.validate_python(found)
+
+    @app.get("/api/step-docs", response_model=dict[str, runsteps.StepDoc])
+    def step_docs() -> dict[str, runsteps.StepDoc]:
+        """Every step's title, sentence and why (docs/steps/), keyed by `doc`."""
+        return runsteps.load_docs(docs_dir)
+
     if flows is not None:
         _flow_routes(app, flows)
 
@@ -587,6 +631,8 @@ def _flow_routes(app: FastAPI, flows: FlowRunner) -> None:
             assumptions=spec.assumptions if spec else [],
             open_questions=spec.open_questions if spec else [],
             diff=f.diff,
+            trace=tracing.run_id(f.state.trace),
+            record=f.state.record,
         )
 
     @app.post("/api/flows/{owner}/{name}/{number}/answer", response_model=Answered)

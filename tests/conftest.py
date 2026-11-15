@@ -1,4 +1,5 @@
 import os
+import tempfile
 import uuid
 from collections.abc import Iterator
 from pathlib import Path
@@ -14,15 +15,19 @@ from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from psycopg import sql
 
+from cofabriq import tracing
 from cofabriq.config import get_settings
 from cofabriq.context.store import graph, postgres
 from tests.gitrepo import init_repo
 
-# Every span goes to memory, never to a backend a dev's `.env` names:
-# `tracing.setup` keeps a provider that is already set.
+# Every span goes to memory and to a throwaway run store, never to a backend
+# a dev's `.env` names or to data/traces: `tracing.setup` keeps a provider
+# that is already set.
 SPANS = InMemorySpanExporter()
+STORE = tracing.RunStore(Path(tempfile.mkdtemp(prefix="cofabriq-traces-")), "c0ffee")
 _provider = TracerProvider()
 _provider.add_span_processor(SimpleSpanProcessor(SPANS))
+tracing.use_store(_provider, STORE)
 trace.set_tracer_provider(_provider)
 
 
@@ -31,6 +36,13 @@ def spans() -> InMemorySpanExporter:
     """The spans finished during the test."""
     SPANS.clear()
     return SPANS
+
+
+@pytest.fixture
+def run_store(tmp_path: Path) -> tracing.RunStore:
+    """The run store, writing into this test's own folder."""
+    STORE.directory = tmp_path / "traces"
+    return STORE
 
 
 def unreachable(service: str) -> NoReturn:
