@@ -968,9 +968,15 @@
             "description": "The issue on GitHub."
           },
           "flow": {
-            "type": "boolean",
-            "title": "Flow",
-            "description": "It has a flow: open it instead of starting."
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FlowSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Its flow, where it waits or how it ended; null: none yet."
           }
         },
         "type": "object",
@@ -1469,6 +1475,17 @@
           "trace": {
             "type": "string",
             "title": "Trace"
+          },
+          "pr_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pr Url"
           }
         },
         "type": "object",
@@ -1494,7 +1511,8 @@
           "pr_body",
           "sentinel",
           "evidence",
-          "trace"
+          "trace",
+          "pr_url"
         ],
         "title": "RunTrace"
       },
@@ -1726,6 +1744,12 @@
           "route": {
             "$ref": "#/components/schemas/Route",
             "description": "`feature` writes acceptance criteria."
+          },
+          "again": {
+            "type": "boolean",
+            "title": "Again",
+            "description": "Replace the issue's ended flow; why it ended goes to refine.",
+            "default": false
           }
         },
         "type": "object",

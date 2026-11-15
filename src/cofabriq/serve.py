@@ -169,6 +169,7 @@ class RunTrace(RunSummary):
     sentinel: list[str]  # the target's invariant broken: why it's blocked
     evidence: list[str]  # screenshot URLs of the browser test after the change
     trace: str  # its steps: /api/traces/<trace>; "" for a run before traces
+    pr_url: str | None  # the draft PR `run --apply` opened; None: dry run
 
 
 class FlowSummary(BaseModel):
@@ -224,11 +225,17 @@ class IssueRow(BaseModel):
     comments: int
     updated_at: datetime
     url: str = Field(description="The issue on GitHub.")
-    flow: bool = Field(description="It has a flow: open it instead of starting.")
+    flow: FlowSummary | None = Field(
+        description="Its flow, where it waits or how it ended; null: none yet."
+    )
 
 
 class Start(BaseModel):
     route: Route = Field(description="`feature` writes acceptance criteria.")
+    again: bool = Field(
+        default=False,
+        description="Replace the issue's ended flow; why it ended goes to refine.",
+    )
 
 
 class Started(BaseModel):
@@ -330,6 +337,7 @@ class _Stored(BaseModel):
     pr_body: str | None = None
     evidence: list[str] = []  # file names in the run's folder
     trace: str = ""  # the run's id in data/traces
+    pr_url: str | None = None
 
 
 def _runs_in(path: Path) -> list[_Stored]:
@@ -361,8 +369,17 @@ def _runs_in(path: Path) -> list[_Stored]:
             pr_body=body.read_text("utf-8") if body.is_file() else None,
             evidence=record.evidence,
             trace=record.trace,
+            pr_url=_pr_url(record.published),
         )
     ]
+
+
+def _pr_url(published: dict[str, object] | None) -> str | None:
+    """The PR `run --apply` opened; None for a dry run or a failed publish."""
+    url = (published or {}).get("url")
+    return (
+        url if isinstance(url, str) and url.startswith("https://github.com/") else None
+    )
 
 
 def _judged(file: str, kind: RunKind, entries: dict[str, object]) -> list[_Stored]:
@@ -452,6 +469,7 @@ def _trace(s: _Stored) -> RunTrace:
         sentinel=s.gated.sentinel if s.gated is not None else [],
         evidence=[f"/api/runs/{s.file}/evidence/{n}" for n in s.evidence],
         trace=s.trace,
+        pr_url=s.pr_url,
     )
 
 
@@ -616,7 +634,12 @@ def build(
         repo = f"{owner}/{name}"
         if not _REPO.match(repo) or not runnable(repo):
             raise HTTPException(status_code=404, detail="no such repo")
-        with_flow = set(flows.threads()) if flows is not None else set[str]()
+        by_number: dict[int, FlowSummary] = {}
+        for t in flows.threads() if flows is not None else []:
+            if t.startswith(f"{repo}#") and flows is not None:
+                status = flows.status(t)
+                if status is not None:
+                    by_number[status.state.issue.number] = _flow_summary(status)
         found = sorted(
             load_issues(issues_dir, repo), key=lambda i: i.number, reverse=True
         )
@@ -629,7 +652,7 @@ def build(
                 comments=i.comment_count,
                 updated_at=i.updated_at,
                 url=f"https://github.com/{repo}/issues/{i.number}",
-                flow=f"{repo}#{i.number}" in with_flow,
+                flow=by_number.get(i.number),
             )
             for i in found
         ]
@@ -729,6 +752,8 @@ def _flow_routes(app: FastAPI, flows: FlowRunner) -> None:
         Paid: an agent run."""
         repo = thread(owner, name, number).split("#", 1)[0]
         try:
-            return Started(thread=flows.start(repo, number, start.route))
+            return Started(
+                thread=flows.start(repo, number, start.route, again=start.again)
+            )
         except Refused as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc

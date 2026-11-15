@@ -335,14 +335,15 @@ def flow_start(
     issue = _prepared(target, number, steps)
     deps, dsn = _flow_deps(target)
     thread = graph_mod.thread_id(issue)
-    config = graph_mod.thread_config(thread)
     with graph_mod.compiled(deps, dsn) as graph:
-        if graph.get_state(config).values:
+        earlier = ""
+        if (found := graph_mod.read_status(graph, thread)) is not None:
             if not restart:
                 typer.echo(f"{thread} has a flow: `flow show`, or --restart", err=True)
                 raise typer.Exit(code=1)
+            earlier = found.state.lesson  # why it ended: refine reads it
             graph.checkpointer.delete_thread(thread)  # pyright: ignore[reportOptionalMemberAccess,reportAttributeAccessIssue]
-        state = graph_mod.FlowState(issue=issue, route=route)
+        state = graph_mod.FlowState(issue=issue, route=route, earlier=earlier)
         graph_mod.invoke(graph, state, thread)
         _flow_report(graph, thread)
 

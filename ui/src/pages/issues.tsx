@@ -1,10 +1,10 @@
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { ExternalLink } from "lucide-react";
 import { useState } from "react";
-import { type IssueRow, Route, useFlowStart, useIssues, useRepos } from "@/api/generated";
-import { Loading } from "@/components/bits";
+import { type FlowSummary, useIssues, useRepos } from "@/api/generated";
+import { Loading, Status } from "@/components/bits";
+import { StartFlow } from "@/components/start-flow";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -14,7 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { when } from "@/lib/format";
-import { dropToken, useWriteToken, writeAuth } from "@/lib/token";
+import { useWriteToken } from "@/lib/token";
 
 /** Where a run starts: a repo's stored issues, each with a Start. */
 export function IssuesPage() {
@@ -138,12 +138,13 @@ function IssueTable({ repo, canStart }: { repo: string; canStart: boolean }) {
                   <Link
                     to="/flows/$owner/$name/$number"
                     params={{ owner, name, number: String(i.number) }}
-                    className="text-sm font-medium hover:underline"
+                    className="flex items-center gap-2 text-sm hover:underline"
                   >
-                    Open its flow →
+                    <FlowState flow={i.flow} />
+                    <span className="font-medium">Open →</span>
                   </Link>
                 ) : (
-                  <StartIssue owner={owner} name={name} issue={i} canStart={canStart} />
+                  <StartFlow owner={owner} name={name} number={i.number} canStart={canStart} />
                 )}
               </TableCell>
             </TableRow>
@@ -154,67 +155,15 @@ function IssueTable({ repo, canStart }: { repo: string; canStart: boolean }) {
   );
 }
 
-/** Bug or feature (the route), then Start: on success the flow's page,
- * where refine runs live; a refusal says why in the row. */
-function StartIssue({
-  owner,
-  name,
-  issue,
-  canStart,
-}: {
-  owner: string;
-  name: string;
-  issue: IssueRow;
-  canStart: boolean;
-}) {
-  const [route, setRoute] = useState<Route>(Route.bug);
-  const navigate = useNavigate();
-  const start = useFlowStart({ fetch: writeAuth() });
-  const number = issue.number;
-  const send = () =>
-    start.mutate(
-      { owner, name, number, data: { route } },
-      {
-        onSuccess: (r) => {
-          if (r.status === 200) {
-            void navigate({ to: "/flows/$owner/$name/$number", params: { owner, name, number: String(number) } });
-          } else if ((r.status as number) === 401) {
-            dropToken(); // the server restarted with a new token
-          }
-        },
-      },
-    );
-  const r = start.data;
-  // the guard's 401 / 403 aren't in the schema: a plain number
-  const status: number | null = r && r.status !== 200 ? r.status : null;
-  const why =
-    r?.status === 409
-      ? r.data.detail
-      : status === 401
-        ? "The server restarted with a new token: open the new link it printed."
-        : status === 403
-          ? "Open the UI at the address the server printed (127.0.0.1, not localhost)."
-          : status !== null
-            ? `Refused (${status}).`
-            : "";
+/** Where an issue's flow stands, as one badge: working, waiting at a gate,
+ * or how it ended. */
+export function FlowState({ flow }: { flow: FlowSummary }) {
+  if (flow.running) return <Badge variant="secondary">working…</Badge>;
+  if (flow.waiting) return <Badge>waits at the {flow.waiting} gate</Badge>;
   return (
-    <div className="space-y-1">
-      <div className="flex items-center gap-2">
-        <select
-          className="rounded-md border px-2 py-1 text-sm"
-          value={route}
-          onChange={(e) => setRoute(e.target.value as Route)}
-          disabled={!canStart}
-          title="feature: the spec gets acceptance criteria, a test gate before the build"
-        >
-          <option value={Route.bug}>bug</option>
-          <option value={Route.feature}>feature</option>
-        </select>
-        <Button size="sm" disabled={!canStart || start.isPending} onClick={send}>
-          {start.isPending ? "Checking…" : "Start"}
-        </Button>
-      </div>
-      {why && <p className="text-xs text-destructive">{why}</p>}
-    </div>
+    <span className="flex items-center gap-1.5">
+      <Status value={flow.outcome.split(":")[0]!} />
+      <span className="text-xs text-muted-foreground">{flow.route}</span>
+    </span>
   );
 }

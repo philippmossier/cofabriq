@@ -1,6 +1,8 @@
 import { Link, useParams } from "@tanstack/react-router";
 import { useState } from "react";
-import { useFlow, useFlowAnswer, useFlowList } from "@/api/generated";
+import { Route, useFlow, useFlowAnswer, useFlowList } from "@/api/generated";
+import { FlowResult } from "@/components/result-card";
+import { StartFlow } from "@/components/start-flow";
 import { List, Loading, Missing, Pre, Section, Status } from "@/components/bits";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -148,14 +150,23 @@ export function FlowPage() {
               Read-only here: open the URL that <code>cofabriq serve --write</code> printed.
             </p>
           )}
-          {!f.waiting && !f.running && f.record && (
-            <Link
-              to="/runs/$file/$key"
-              params={{ file: f.record, key: String(f.number) }}
-              className="text-sm font-medium hover:underline"
-            >
-              Open the run: test, diff, review, draft PR →
-            </Link>
+          {!f.waiting && !f.running && f.record && <FlowResult file={f.record} number={f.number} />}
+          {!f.waiting && !f.running && (
+            <div className="space-y-1 border-t pt-3">
+              <p className="text-sm text-muted-foreground">
+                {f.outcome === "approved"
+                  ? "Run it again: a new flow replaces this one (nothing was merged, so the bug is still there). The old run stays under Runs."
+                  : "Wrong type, or a plan you rejected? Start again: a new flow replaces this one, and refine reads why this one ended. The old run stays under Runs."}
+              </p>
+              <StartFlow
+                owner={owner}
+                name={name}
+                number={f.number}
+                canStart={token !== null}
+                route={f.route === "feature" ? Route.bug : Route.feature}
+                again
+              />
+            </div>
           )}
           {f.waiting && (
             <div className="flex gap-2">

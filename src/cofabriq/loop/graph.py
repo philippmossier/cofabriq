@@ -100,6 +100,7 @@ class FlowState(BaseModel):
     result: LoopResult | None = None  # the loop's, before the review gate
     gated: gate_mod.Gated | None = None
     trace: str = ""  # the first trace's `traceparent`: each resume links to it
+    earlier: str = ""  # why the last attempt on this issue ended (refine reads it)
 
     @property
     def outcome(self) -> str:
@@ -108,6 +109,13 @@ class FlowState(BaseModel):
         if self.gated is not None:
             return self.gated.status
         return self.result.status if self.result is not None else self.stage
+
+    @property
+    def lesson(self) -> str:
+        """What a new attempt should know: why this one stopped short (a
+        rejected plan's reason, a spec that wasn't ready); "" after a fix
+        or with no reason given."""
+        return "" if self.outcome in ("approved", "green") else self.note
 
 
 class GateAnswer(BaseModel):
@@ -200,7 +208,9 @@ def build_graph(deps: Deps) -> StateGraph[FlowState]:
         refined = s.refined
         try:
             if refined is None:
-                refined = refine_mod.refine(s.issue, deps.clone, deps.reader, s.route)
+                refined = refine_mod.refine(
+                    s.issue, deps.clone, deps.reader, s.route, s.earlier
+                )
         except (AgentError, refine_mod.NoCriteria) as exc:  # back to the dev
             return {"stage": "failed", "note": f"not ready: {exc}"}
         except Halted as exc:
@@ -588,21 +598,33 @@ class FlowRunner:
             found.error = self._errors.get(thread, "")
         return found
 
-    def start(self, repo: str, number: int, route: refine_mod.Route) -> str:
+    def start(
+        self, repo: str, number: int, route: refine_mod.Route, again: bool = False
+    ) -> str:
         """Prepare the issue, then refine in the background up to the plan
-        gate; the flow's thread. Refused: a flow is there, or `prepare`
-        said no. Nothing is restarted from here: that deletes checkpoints."""
+        gate; the flow's thread. `again`: an ended flow on the issue is
+        replaced (its checkpoints deleted; its trace, record and lessons stay
+        in data/), and why it ended goes to refine. Refused: a flow is there
+        (without `again`) or still going, or `prepare` said no."""
         thread = f"{repo}#{number}"
-        if self.status(thread) is not None:
+        current = self.status(thread)
+        if current is not None and not again:
             raise Refused(f"#{number} has a flow already: open it")
+        if current is not None and (current.running or current.waiting):
+            raise Refused(f"#{number} is still going: answer or reject its gate first")
         issue = self.prepare(repo, number)
         with self._lock:
-            if thread in self._running or thread in self._starting:
+            if thread in self._running:
                 raise Refused(f"#{number} is starting already")
             self._running.add(thread)
             self._errors.pop(thread, None)
-            state = FlowState(issue=issue, route=route)
+            self._traces.pop(thread, None)
+            earlier = current.state.lesson if current is not None else ""
+            state = FlowState(issue=issue, route=route, earlier=earlier)
             self._starting[thread] = state
+        if current is not None:  # claimed above: no other start can race this
+            with checkpoints(self.dsn) as saver:
+                saver.delete_thread(thread)
         worker = threading.Thread(
             target=self._work, args=(thread, state, 0.0), daemon=True
         )

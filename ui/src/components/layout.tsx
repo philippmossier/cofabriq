@@ -19,8 +19,8 @@ export function Layout() {
           <Link to="/runs" className={tab} activeProps={active}>
             Runs
           </Link>
-          <Link to="/specs" className={tab} activeProps={active}>
-            Specs
+          <Link to="/evals" search={{ tab: "eval" }} className={tab} activeProps={active}>
+            Evals
           </Link>
         </nav>
         <span className="ml-auto text-xs text-muted-foreground">

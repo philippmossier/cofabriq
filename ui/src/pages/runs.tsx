@@ -1,8 +1,10 @@
-import { Link, useParams } from "@tanstack/react-router";
-import { useState } from "react";
-import { type RunKind, type RunSummary, type Step, useRun, useRuns } from "@/api/generated";
+import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
+import { type RunSummary, type Step, useRun, useRuns } from "@/api/generated";
+import { EVAL_TABS, type EvalTab } from "@/lib/evals";
 import { Checks, List, Loading, Missing, Pre, Section, Status, Verdict } from "@/components/bits";
+import { ResultCard } from "@/components/result-card";
 import { RunSteps } from "@/components/run-steps";
+import { SpecsList } from "@/pages/specs";
 import { usd, when } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,29 +18,64 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-type Filter = "all" | RunKind;
-
+/** Runs on issues: `cofabriq run` and the flows. The eval kinds are under
+ * Evals. */
 export function RunsPage() {
-  const [kind, setKind] = useState<Filter>("all");
   const q = useRuns({ query: { select: (r) => (r.status === 200 ? r.data : []) } });
   if (q.isPending) return <Loading what="runs" />;
-  const rows = (q.data ?? []).filter((r: RunSummary) => kind === "all" || r.kind === kind);
+  const rows = (q.data ?? []).filter((r) => r.kind === "run");
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-4">
         <h1 className="font-heading text-xl font-semibold">Runs</h1>
-        <Tabs value={kind} onValueChange={(v) => setKind(v as Filter)}>
+        <span className="text-sm text-muted-foreground">
+          {rows.length} runs on issues, newest first; the benchmark runs are under Evals
+        </span>
+      </div>
+      <RunTable rows={rows} />
+    </div>
+  );
+}
+
+/** Eval output on the planted set: what cofabriq measures about itself.
+ * The tab lives in the URL, so a run's "back" returns to it. */
+export function EvalsPage() {
+  const { tab } = useSearch({ from: "/evals" });
+  const navigate = useNavigate({ from: "/evals" });
+  const onTab = (t: EvalTab) => void navigate({ search: { tab: t } });
+  const q = useRuns({ query: { select: (r) => (r.status === 200 ? r.data : []) } });
+  if (q.isPending) return <Loading what="evals" />;
+  const rows = (q.data ?? []).filter((r) => r.kind === tab);
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-4">
+        <h1 className="font-heading text-xl font-semibold">Evals</h1>
+        <Tabs value={tab} onValueChange={(v) => onTab(v as EvalTab)}>
           <TabsList>
-            <TabsTrigger value="all">All</TabsTrigger>
-            <TabsTrigger value="run">run</TabsTrigger>
-            <TabsTrigger value="eval">eval</TabsTrigger>
-            <TabsTrigger value="features">features</TabsTrigger>
-            <TabsTrigger value="gate">gate</TabsTrigger>
-            <TabsTrigger value="wrong">wrong</TabsTrigger>
+            {EVAL_TABS.map((t) => (
+              <TabsTrigger key={t} value={t}>
+                {t}
+              </TabsTrigger>
+            ))}
           </TabsList>
         </Tabs>
-        <span className="text-sm text-muted-foreground">{rows.length} runs</span>
       </div>
+      <p className="text-sm text-muted-foreground">{EVAL_ABOUT[tab]}</p>
+      {tab === "specs" ? <SpecsList /> : <RunTable rows={rows} />}
+    </div>
+  );
+}
+
+const EVAL_ABOUT: Record<EvalTab, string> = {
+  eval: "The loop on the planted bugs (eval loop): did the agent's test reproduce the bug, did the hidden repro pass on its fix.",
+  features: "The feature route on removed features (eval loop --features): the hidden reference tests on the agent's code.",
+  gate: "The review gate on right and proven-wrong fixes (eval gate): right ones published, wrong ones blocked.",
+  wrong: "Fixes an agent was told to get plausibly wrong (eval loop --wrong): the reviewer's negatives.",
+  specs: "Specs from eval refine on the planted set; a flow's spec lives with its flow.",
+};
+
+function RunTable({ rows }: { rows: RunSummary[] }) {
+  return (
       <Table>
         <TableHeader>
           <TableRow>
@@ -61,8 +98,9 @@ export function RunsPage() {
                   params={{ file: r.file, key: r.key }}
                   className="font-medium hover:underline"
                 >
-                  {r.key}
+                  {r.kind === "run" ? `#${r.number}` : r.key}
                 </Link>
+                {r.kind === "run" && <div className="text-xs text-muted-foreground">{r.repo}</div>}
               </TableCell>
               <TableCell>
                 <Badge variant="secondary">{r.kind}</Badge>
@@ -83,7 +121,6 @@ export function RunsPage() {
           ))}
         </TableBody>
       </Table>
-    </div>
   );
 }
 
@@ -136,10 +173,16 @@ export function RunPage() {
   return (
     <div className="space-y-6">
       <div className="space-y-1">
-        <Link to="/runs" className="text-sm text-muted-foreground hover:underline">
-          ← Runs
-        </Link>
-        <h1 className="font-heading text-xl font-semibold">{t.key}</h1>
+        {t.kind === "run" ? (
+          <Link to="/runs" className="text-sm text-muted-foreground hover:underline">
+            ← Runs
+          </Link>
+        ) : (
+          <Link to="/evals" search={{ tab: t.kind }} className="text-sm text-muted-foreground hover:underline">
+            ← Evals
+          </Link>
+        )}
+        <h1 className="font-heading text-xl font-semibold">{t.kind === "run" ? `#${t.number}` : t.key}</h1>
         <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
           <Badge variant="secondary">{t.kind}</Badge>
           <Status value={t.status} />
@@ -163,6 +206,8 @@ export function RunPage() {
           </CardContent>
         </Card>
       )}
+
+      {t.kind === "run" && <ResultCard t={t} />}
 
       {t.trace && (
         <Section title="Steps: what ran, what it cost, why">

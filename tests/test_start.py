@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from cofabriq.issues.fetch import fetch_issues
 from cofabriq.issues.model import Issue
-from cofabriq.loop.graph import FlowRunner, FlowStatus, Refused
+from cofabriq.loop.graph import FlowRunner, FlowStatus, GateAnswer, Refused
 from cofabriq.serve import build
 from tests.builders import REPO, issue
 from tests.fakes import EditingAgent, deps
@@ -25,7 +25,7 @@ checks = []
 
 
 def runner(tmp_path: Path, dsn: str, prepare: "PrepareFake") -> FlowRunner:
-    d = deps(tmp_path, EditingAgent(), [])
+    d = deps(tmp_path, EditingAgent(), ["f(1) is 2"])  # a feature needs one
     return FlowRunner(dsn, lambda repo, spent: d, prepare=prepare)
 
 
@@ -71,6 +71,24 @@ def test_a_started_flow_refines_in_the_background_and_waits_at_the_plan_gate(
     assert prepare.asked == [3]  # the second start never got that far
 
 
+def test_start_again_replaces_an_ended_flow_and_hands_on_why_it_ended(
+    tmp_path: Path, pg_dsn: str
+) -> None:
+    r = runner(tmp_path, pg_dsn, PrepareFake())
+    thread = r.start(REPO, 3, "bug")
+    settled(r, thread)
+    with pytest.raises(Refused, match="still going"):  # waits at the plan gate
+        r.start(REPO, 3, "bug", again=True)
+    r.answer(thread, GateAnswer(approve=False, reason="it's a regression"))
+    assert settled(r, thread).state.outcome == "rejected"
+
+    r.start(REPO, 3, "feature", again=True)
+
+    again = settled(r, thread)
+    assert (again.state.route, again.waiting) == ("feature", "plan")
+    assert again.state.earlier == "plan rejected: it's a regression"
+
+
 def test_what_prepare_refuses_starts_nothing(tmp_path: Path, pg_dsn: str) -> None:
     r = runner(tmp_path, pg_dsn, PrepareFake(refuse="#4 is blocked by #2"))
 
@@ -110,8 +128,8 @@ def test_the_issue_list_is_the_store_of_a_runnable_repo(tmp_path: Path) -> None:
     assert c.get("/api/repos").json() == [{"repo": REPO, "issues": 2}]
     rows = c.get(f"/api/issues/{REPO}").json()
     assert [(r["number"], r["title"], r["flow"]) for r in rows] == [
-        (2, "new", False),
-        (1, "old", False),
+        (2, "new", None),
+        (1, "old", None),
     ]
     assert rows[0]["url"] == f"https://github.com/{REPO}/issues/2"
     # a repo without `[loop]` is no repo to start flows on

@@ -161,8 +161,8 @@ export interface IssueRow {
   updated_at: string;
   /** The issue on GitHub. */
   url: string;
-  /** It has a flow: open it instead of starting. */
-  flow: boolean;
+  /** Its flow, where it waits or how it ended; null: none yet. */
+  flow: FlowSummary | null;
 }
 
 export interface JsonValue {}
@@ -326,6 +326,7 @@ export interface RunTrace {
   sentinel: string[];
   evidence: string[];
   trace: string;
+  pr_url: string | null;
 }
 
 export type SpecSummaryRoute = typeof SpecSummaryRoute[keyof typeof SpecSummaryRoute];
@@ -383,6 +384,8 @@ export interface SpecView {
 export interface Start {
   /** `feature` writes acceptance criteria. */
   route: Route;
+  /** Replace the issue's ended flow; why it ended goes to refine. */
+  again?: boolean;
 }
 
 export interface Started {

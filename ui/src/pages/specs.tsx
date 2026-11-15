@@ -31,7 +31,8 @@ function Readiness({ reasons }: { reasons: string[] | null | undefined }) {
   );
 }
 
-export function SpecsPage() {
+/** The specs `eval refine` stored (the Evals page's specs tab). */
+export function SpecsList() {
   const [route, setRoute] = useState<Route>("all");
   const q = useSpecs({ query: { select: (r) => (r.status === 200 ? r.data : []) } });
   if (q.isPending) return <Loading what="specs" />;
@@ -39,7 +40,6 @@ export function SpecsPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-4">
-        <h1 className="font-heading text-xl font-semibold">Specs</h1>
         <Tabs value={route} onValueChange={(v) => setRoute(v as Route)}>
           <TabsList>
             <TabsTrigger value="all">All</TabsTrigger>
@@ -106,8 +106,8 @@ export function SpecPage() {
   return (
     <div className="space-y-6">
       <div className="space-y-1">
-        <Link to="/specs" className="text-sm text-muted-foreground hover:underline">
-          ← Specs
+        <Link to="/evals" search={{ tab: "specs" }} className="text-sm text-muted-foreground hover:underline">
+          ← Evals
         </Link>
         <h1 className="font-heading text-xl font-semibold">{s.key}</h1>
         <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
