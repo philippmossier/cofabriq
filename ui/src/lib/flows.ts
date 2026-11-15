@@ -1,10 +1,11 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { Route, getFlowListQueryKey, getFlowQueryKey, getIssuesQueryKey } from "@/api/generated";
 
-/** The route Start again suggests: the other one after a flow that went
- * wrong (the likeliest mistake is the type), the same after a fix. */
+/** The route Start again suggests: the other one after a plan or spec that
+ * went back (the likeliest mistake is the type), the same otherwise (a fix,
+ * a run cut off or stopped later on). */
 export function againRoute(flow: { route: Route; outcome: string }): Route {
-  if (flow.outcome.startsWith("approved")) return flow.route;
+  if (!/^(rejected|failed)/.test(flow.outcome)) return flow.route;
   return flow.route === Route.feature ? Route.bug : Route.feature;
 }
 

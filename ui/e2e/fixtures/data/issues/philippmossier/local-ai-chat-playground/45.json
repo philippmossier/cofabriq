@@ -1,0 +1,18 @@
+{
+  "repo": "philippmossier/local-ai-chat-playground",
+  "number": 45,
+  "title": "Add Dependabot for npm and GitHub Actions",
+  "body": "Nothing tells us when `@huggingface/transformers`, Vite or the actions in `ci.yml` have updates. A `.github/dependabot.yml` with weekly npm and github-actions updates would keep them current. Note that a transformers.js update may also need `scripts/copy-ort.mjs` to copy a new WebAssembly runtime.",
+  "state": "open",
+  "state_reason": null,
+  "author": "philippmossier",
+  "labels": [],
+  "created_at": "2026-10-16T09:54:29Z",
+  "updated_at": "2026-10-16T09:54:29Z",
+  "closed_at": null,
+  "closed_by": null,
+  "comment_count": 0,
+  "comments": [],
+  "duplicate_of": [],
+  "duplicates": []
+}

@@ -1,0 +1,18 @@
+{
+  "repo": "philippmossier/local-ai-chat-playground",
+  "number": 32,
+  "title": "Export a conversation as Markdown",
+  "body": "I would like to save a conversation as a `.md` file to keep it in my notes. A button in the chat header (\"Export\") that downloads the whole conversation with the model name and date would be enough.",
+  "state": "open",
+  "state_reason": null,
+  "author": "philippmossier",
+  "labels": [],
+  "created_at": "2026-10-16T09:53:50Z",
+  "updated_at": "2026-10-16T09:53:50Z",
+  "closed_at": null,
+  "closed_by": null,
+  "comment_count": 0,
+  "comments": [],
+  "duplicate_of": [],
+  "duplicates": []
+}

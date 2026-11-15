@@ -1,0 +1,73 @@
+{
+  "update": {
+    "refined": {
+      "repo": "philippmossier/local-ai-chat-playground",
+      "number": 51,
+      "commit": "50c141408e067f3a878ad49b131a40f583600034",
+      "route": "bug",
+      "spec": {
+        "problem": "Off-by-one in `titleFrom` at src/lib/chat/store.ts:52. The guard is `flat.length < TITLE_LENGTH` (TITLE_LENGTH = 42, line 48), so a message that is exactly 42 characters long after whitespace is collapsed still goes to the truncation branch. That branch returns `flat.slice(0, 41) + \"…\"`, which is also 42 characters. The title ends up no shorter than the original, and the last character (here probably the \"?\") is swapped for \"…\". Longer questions are cut correctly, which matches the report. Titles of 42 characters or fewer should be shown unchanged. The sidebar's CSS `truncate` at src/components/chat-sidebar.tsx:88 is a separate, visual-only ellipsis that appears only when the text overflows the sidebar width. It is not the cause.",
+        "files": [
+          {
+            "path": "src/lib/chat/store.ts",
+            "why": "Change the guard in titleFrom (line 52) from `<` to `<=` so a title of exactly TITLE_LENGTH characters is kept whole."
+          }
+        ],
+        "tests": [
+          {
+            "path": "src/lib/chat/chat.test.ts",
+            "why": "Extend the titleFrom tests (lines 100-107): a 42-character input comes back unchanged with no ellipsis, a 43-character input is cut to 42 characters ending in \"…\", and the existing 100-character case still passes."
+          }
+        ],
+        "criteria": [],
+        "plan": [
+          "In src/lib/chat/store.ts:52 change `flat.length < TITLE_LENGTH` to `flat.length <= TITLE_LENGTH`.",
+          "Add boundary tests in src/lib/chat/chat.test.ts for 42 characters (unchanged) and 43 characters (truncated to 42, ending in \"…\").",
+          "Run pnpm check-types && pnpm lint && pnpm test."
+        ],
+        "assumptions": [
+          "The reporter's question plus extra words came to exactly 42 characters after whitespace was collapsed. They say \"nothing is missing\", but in fact the final character, probably \"?\", was replaced by \"…\".",
+          "Titles already stored in localStorage keep their old value. A title is set only once, when the chat is created (store.ts:110), so the fix applies to new chats only.",
+          "TITLE_LENGTH = 42 stays the intended maximum length, counting the ellipsis."
+        ],
+        "open_questions": [],
+        "size": "S"
+      },
+      "unknown_paths": [],
+      "run": {
+        "output": {
+          "problem": "Off-by-one in `titleFrom` at src/lib/chat/store.ts:52. The guard is `flat.length < TITLE_LENGTH` (TITLE_LENGTH = 42, line 48), so a message that is exactly 42 characters long after whitespace is collapsed still goes to the truncation branch. That branch returns `flat.slice(0, 41) + \"…\"`, which is also 42 characters. The title ends up no shorter than the original, and the last character (here probably the \"?\") is swapped for \"…\". Longer questions are cut correctly, which matches the report. Titles of 42 characters or fewer should be shown unchanged. The sidebar's CSS `truncate` at src/components/chat-sidebar.tsx:88 is a separate, visual-only ellipsis that appears only when the text overflows the sidebar width. It is not the cause.",
+          "files": [
+            {
+              "path": "src/lib/chat/store.ts",
+              "why": "Change the guard in titleFrom (line 52) from `<` to `<=` so a title of exactly TITLE_LENGTH characters is kept whole."
+            }
+          ],
+          "tests": [
+            {
+              "path": "src/lib/chat/chat.test.ts",
+              "why": "Extend the titleFrom tests (lines 100-107): a 42-character input comes back unchanged with no ellipsis, a 43-character input is cut to 42 characters ending in \"…\", and the existing 100-character case still passes."
+            }
+          ],
+          "plan": [
+            "In src/lib/chat/store.ts:52 change `flat.length < TITLE_LENGTH` to `flat.length <= TITLE_LENGTH`.",
+            "Add boundary tests in src/lib/chat/chat.test.ts for 42 characters (unchanged) and 43 characters (truncated to 42, ending in \"…\").",
+            "Run pnpm check-types && pnpm lint && pnpm test."
+          ],
+          "assumptions": [
+            "The reporter's question plus extra words came to exactly 42 characters after whitespace was collapsed. They say \"nothing is missing\", but in fact the final character, probably \"?\", was replaced by \"…\".",
+            "Titles already stored in localStorage keep their old value. A title is set only once, when the chat is created (store.ts:110), so the fix applies to new chats only.",
+            "TITLE_LENGTH = 42 stays the intended maximum length, counting the ellipsis."
+          ],
+          "open_questions": [],
+          "size": "S"
+        },
+        "model": "claude-opus-5-5",
+        "cost_usd": 0.11345059999999998,
+        "turns": 6,
+        "latency_ms": 16944
+      }
+    },
+    "trace": "00-877bcb0d38c3b9cc8b054c95c1ba2611-893762e10422de7a-03"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "repo": "philippmossier/local-ai-chat-playground",
+  "number": 58,
+  "title": "\"Neue Modelle verfügbar\" beim allerersten Besuch",
+  "body": "Ich habe die App zum ersten Mal geöffnet (frisches Browserprofil), das Modell gestartet, und sofort kam die Meldung \"Neue Modelle verfügbar\" mit einer Liste. Neu im Vergleich zu was? Ich war vorher nie da.",
+  "state": "open",
+  "state_reason": null,
+  "author": "philippmossier",
+  "labels": [],
+  "created_at": "2026-10-16T09:55:09Z",
+  "updated_at": "2026-10-16T09:55:09Z",
+  "closed_at": null,
+  "closed_by": null,
+  "comment_count": 0,
+  "comments": [],
+  "duplicate_of": [],
+  "duplicates": []
+}

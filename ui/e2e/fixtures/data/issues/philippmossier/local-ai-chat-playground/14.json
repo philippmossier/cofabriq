@@ -1,0 +1,17 @@
+{
+  "repo": "philippmossier/local-ai-chat-playground",
+  "number": 14,
+  "title": "Generation gets very slow after switching models twice",
+  "body": "1. Start with Qwen3 1.7B, chat: about 30 tokens/s\n2. Switch to Gemma 4 E2B, chat: about 20 tokens/s\n3. Switch back to Qwen3 1.7B: now only 4 tokens/s\n\nReloading the page fixes it. Looks like the old model stays in GPU memory? M2 Pro, Chrome 141.",
+  "state": "open",
+  "state_reason": null,
+  "author": "philippmossier",
+  "labels": [],
+  "created_at": "2026-10-13T13:09:07Z",
+  "updated_at": "2026-10-13T13:09:07Z",
+  "closed_at": null,
+  "comment_count": 0,
+  "comments": [],
+  "duplicate_of": [],
+  "duplicates": []
+}

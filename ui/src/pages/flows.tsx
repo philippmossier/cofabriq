@@ -166,7 +166,9 @@ export function FlowPage() {
                 ? "Approve the plan? No code is written before you do."
                 : f.waiting === "test"
                   ? "Approve the test? It is frozen from here: the build can't change it."
-                  : `Done: ${f.outcome}`}
+                  : f.outcome.startsWith("cut off")
+                    ? `Stopped mid-run (${f.outcome}): Start again below.`
+                    : `Done: ${f.outcome}`}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">

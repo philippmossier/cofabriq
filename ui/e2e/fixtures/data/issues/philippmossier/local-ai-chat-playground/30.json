@@ -1,0 +1,18 @@
+{
+  "repo": "philippmossier/local-ai-chat-playground",
+  "number": 30,
+  "title": "Chat history is gone after closing the browser",
+  "body": "Yesterday I had three conversations in the sidebar. Today I opened the app again and the sidebar is empty. The model was still cached (it started without downloading).\n\nBrave 1.84 on Linux. I did not click \"delete everything\".",
+  "state": "open",
+  "state_reason": null,
+  "author": "philippmossier",
+  "labels": [],
+  "created_at": "2026-10-16T09:53:43Z",
+  "updated_at": "2026-10-16T09:53:43Z",
+  "closed_at": null,
+  "closed_by": null,
+  "comment_count": 0,
+  "comments": [],
+  "duplicate_of": [],
+  "duplicates": []
+}

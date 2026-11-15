@@ -1,0 +1,18 @@
+{
+  "repo": "philippmossier/local-ai-chat-playground",
+  "number": 52,
+  "title": "Welcome page says I'm on a phone, I'm on a Chromebook",
+  "body": "Under \"Your computer\" it says \"On phones and tablets only the smallest model is offered, to save battery and data.\" I'm on a Chromebook with 4 GB of RAM, not a phone. Only the small model being offered is fine, but the reason is wrong and confused my colleague.",
+  "state": "open",
+  "state_reason": null,
+  "author": "philippmossier",
+  "labels": [],
+  "created_at": "2026-10-16T09:54:51Z",
+  "updated_at": "2026-10-16T09:54:51Z",
+  "closed_at": null,
+  "closed_by": null,
+  "comment_count": 0,
+  "comments": [],
+  "duplicate_of": [],
+  "duplicates": []
+}

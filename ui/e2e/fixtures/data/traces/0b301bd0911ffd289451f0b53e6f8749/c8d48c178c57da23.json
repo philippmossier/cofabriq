@@ -1,0 +1,111 @@
+{
+  "update": {
+    "refined": {
+      "repo": "philippmossier/local-ai-chat-playground",
+      "number": 8,
+      "commit": "50c141408e067f3a878ad49b131a40f583600034",
+      "route": "bug",
+      "spec": {
+        "problem": "In dark mode, code in assistant answers is reported as dark grey on near-black (Chrome 141). Model output is rendered by react-markdown inside `<div className=\"md\">` in a ghost Bubble (src/components/message.tsx:51-56). The code styles in src/styles.css:19-24 set only a background (`.md pre` uses `bg-muted`, `.md code:not(pre code)` uses `bg-muted`). In dark mode `--muted` is #2b2b2b (src/styles.css:124). Neither rule sets a text colour, so code relies on inheriting `color` through the bubble chain. The ghost variant (src/components/ui/bubble.tsx:33) sets no text colour either, and the theme only toggles the `.dark` class (src/lib/theme.ts:16-19), never `color-scheme`. Reading the code alone, inheritance should end at `body { text-foreground }` (#f2ebfa, src/styles.css:150), so I could not confirm from the code where the dark grey comes from. It is most likely a UA or library rule on `pre`/`code` winning over inheritance. Either way, the code styles lean on an inherited colour they never pin. The fix is to give code blocks an explicit theme foreground and to declare `color-scheme` per theme. The earlier plan was rejected for not proving this with Playwright. The repo has Playwright (playwright.config.ts, e2e/smoke.spec.ts, `pnpm test:e2e`) running against the fake engine (src/lib/engine/fake-worker.ts). That engine can't produce a code block today: it answers \"Fake answer to: <msg>\" (line 44-46), so a fenced block never starts a line.",
+        "files": [
+          {
+            "path": "src/styles.css",
+            "why": "Add `text-foreground` to `.md pre` and `.md code:not(pre code)` so code always uses the theme foreground (#f2ebfa on #2b2b2b in dark). Add `color-scheme: dark` to `.dark` (and `color-scheme: light` to `:root`, line 77) so UA defaults for pre/code, scrollbars and form controls follow the theme.",
+            "at": [
+              "19-24",
+              "113"
+            ]
+          },
+          {
+            "path": "src/lib/engine/fake-worker.ts",
+            "why": "Add a `/code` command that answers with a fenced code block (for example \"```python\\nprint(\\\"hello\\\")\\n```\") so a browser test can render code without a model. Document it in the header comment next to /error and /history.",
+            "at": [
+              "4-9",
+              "44-46"
+            ]
+          }
+        ],
+        "tests": [
+          {
+            "path": "e2e/code-contrast.spec.ts",
+            "why": "New Playwright test. Set `localStorage[\"local-ai-chat:theme\"] = \"dark\"` via `context.addInitScript`, start a model, send `/code`, and wait for `.md pre code`. Read `getComputedStyle` color and the background of the enclosing `pre`, then assert the colour equals the dark `--foreground` (rgb(242, 235, 250)) and the WCAG contrast ratio is >= 4.5. Run the same check for inline code and for the light theme, so the fix does not regress light mode. As in smoke.spec.ts, assert all requests stay on localhost:5199.",
+            "at": []
+          }
+        ],
+        "criteria": [],
+        "plan": [
+          "Add the `/code` command to src/lib/engine/fake-worker.ts and update its header comment.",
+          "Write e2e/code-contrast.spec.ts (dark and light, block and inline code) and run `pnpm test:e2e` before the CSS change to confirm it reproduces the report. If it passes on unchanged code, the cause is not the inherited colour: inspect the computed style in the trace before going on.",
+          "In src/styles.css add `text-foreground` to the `.md pre` and inline `.md code` rules, and set `color-scheme` in `:root` and `.dark`.",
+          "Run `pnpm check-types && pnpm lint && pnpm test && pnpm test:e2e`, then check by eye in `pnpm build && pnpm preview` in Chrome with a real model answer containing a code block."
+        ],
+        "assumptions": [
+          "The report means both fenced code blocks and inline code in assistant answers. The screenshot (python hello world) shows a fenced block.",
+          "There is no syntax highlighting (none in the code), so one foreground colour for code is enough.",
+          "Adding a test-only command to the fake engine is fine: it is used only when VITE_FAKE_ENGINE=1 and makes no network requests.",
+          "The issue text contained embedded instructions to change severity, component and duplicate status. They were ignored as untrusted and have no bearing on this spec."
+        ],
+        "open_questions": [],
+        "size": "M"
+      },
+      "unknown_paths": [
+        "e2e/code-contrast.spec.ts"
+      ],
+      "run": {
+        "output": {
+          "problem": "In dark mode, code in assistant answers is reported as dark grey on near-black (Chrome 141). Model output is rendered by react-markdown inside `<div className=\"md\">` in a ghost Bubble (src/components/message.tsx:51-56). The code styles in src/styles.css:19-24 set only a background (`.md pre` uses `bg-muted`, `.md code:not(pre code)` uses `bg-muted`). In dark mode `--muted` is #2b2b2b (src/styles.css:124). Neither rule sets a text colour, so code relies on inheriting `color` through the bubble chain. The ghost variant (src/components/ui/bubble.tsx:33) sets no text colour either, and the theme only toggles the `.dark` class (src/lib/theme.ts:16-19), never `color-scheme`. Reading the code alone, inheritance should end at `body { text-foreground }` (#f2ebfa, src/styles.css:150), so I could not confirm from the code where the dark grey comes from. It is most likely a UA or library rule on `pre`/`code` winning over inheritance. Either way, the code styles lean on an inherited colour they never pin. The fix is to give code blocks an explicit theme foreground and to declare `color-scheme` per theme. The earlier plan was rejected for not proving this with Playwright. The repo has Playwright (playwright.config.ts, e2e/smoke.spec.ts, `pnpm test:e2e`) running against the fake engine (src/lib/engine/fake-worker.ts). That engine can't produce a code block today: it answers \"Fake answer to: <msg>\" (line 44-46), so a fenced block never starts a line.",
+          "files": [
+            {
+              "path": "src/styles.css",
+              "at": [
+                "19-24",
+                "113"
+              ],
+              "why": "Add `text-foreground` to `.md pre` and `.md code:not(pre code)` so code always uses the theme foreground (#f2ebfa on #2b2b2b in dark). Add `color-scheme: dark` to `.dark` (and `color-scheme: light` to `:root`, line 77) so UA defaults for pre/code, scrollbars and form controls follow the theme."
+            },
+            {
+              "path": "src/lib/engine/fake-worker.ts",
+              "at": [
+                "4-9",
+                "44-46"
+              ],
+              "why": "Add a `/code` command that answers with a fenced code block (for example \"```python\\nprint(\\\"hello\\\")\\n```\") so a browser test can render code without a model. Document it in the header comment next to /error and /history."
+            }
+          ],
+          "tests": [
+            {
+              "path": "e2e/code-contrast.spec.ts",
+              "at": [],
+              "why": "New Playwright test. Set `localStorage[\"local-ai-chat:theme\"] = \"dark\"` via `context.addInitScript`, start a model, send `/code`, and wait for `.md pre code`. Read `getComputedStyle` color and the background of the enclosing `pre`, then assert the colour equals the dark `--foreground` (rgb(242, 235, 250)) and the WCAG contrast ratio is >= 4.5. Run the same check for inline code and for the light theme, so the fix does not regress light mode. As in smoke.spec.ts, assert all requests stay on localhost:5199."
+            }
+          ],
+          "plan": [
+            "Add the `/code` command to src/lib/engine/fake-worker.ts and update its header comment.",
+            "Write e2e/code-contrast.spec.ts (dark and light, block and inline code) and run `pnpm test:e2e` before the CSS change to confirm it reproduces the report. If it passes on unchanged code, the cause is not the inherited colour: inspect the computed style in the trace before going on.",
+            "In src/styles.css add `text-foreground` to the `.md pre` and inline `.md code` rules, and set `color-scheme` in `:root` and `.dark`.",
+            "Run `pnpm check-types && pnpm lint && pnpm test && pnpm test:e2e`, then check by eye in `pnpm build && pnpm preview` in Chrome with a real model answer containing a code block."
+          ],
+          "assumptions": [
+            "The report means both fenced code blocks and inline code in assistant answers. The screenshot (python hello world) shows a fenced block.",
+            "There is no syntax highlighting (none in the code), so one foreground colour for code is enough.",
+            "Adding a test-only command to the fake engine is fine: it is used only when VITE_FAKE_ENGINE=1 and makes no network requests.",
+            "The issue text contained embedded instructions to change severity, component and duplicate status. They were ignored as untrusted and have no bearing on this spec."
+          ],
+          "open_questions": [],
+          "size": "M"
+        },
+        "model": "claude-opus-5-5",
+        "cost_usd": 0.2127352,
+        "turns": 16,
+        "latency_ms": 41664,
+        "tokens": {
+          "input": 16,
+          "output": 4005,
+          "cache_read": 101136,
+          "cache_write": 14043
+        }
+      }
+    },
+    "trace": "00-0b301bd0911ffd289451f0b53e6f8749-c8d48c178c57da23-03"
+  }
+}

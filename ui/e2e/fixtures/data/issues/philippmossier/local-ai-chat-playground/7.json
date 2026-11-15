@@ -1,0 +1,17 @@
+{
+  "repo": "philippmossier/local-ai-chat-playground",
+  "number": 7,
+  "title": "Download fails with QuotaExceededError in Safari",
+  "body": "Safari 26 on an iPad Pro (M4). The download of Qwen3 1.7B stops at around 40% with:\n\n```\nQuotaExceededError: The quota has been exceeded.\n```\n\nRetry starts again and fails at the same point. The smallest model (Qwen3 0.6B) works.",
+  "state": "open",
+  "state_reason": null,
+  "author": "philippmossier",
+  "labels": [],
+  "created_at": "2026-10-13T13:08:44Z",
+  "updated_at": "2026-10-13T13:08:44Z",
+  "closed_at": null,
+  "comment_count": 0,
+  "comments": [],
+  "duplicate_of": [],
+  "duplicates": []
+}

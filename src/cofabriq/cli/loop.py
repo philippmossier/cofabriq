@@ -49,7 +49,7 @@ from cofabriq.loop.engine import (
 )
 from cofabriq.loop.sandbox import Podman
 from cofabriq.serve import build as build_api
-from cofabriq.serve_guard import new_token
+from cofabriq.serve_guard import new_token, write_token_file
 from cofabriq.steps import Steps
 from cofabriq.targets import PLAYGROUND, clone_dir, repo_slug
 
@@ -246,11 +246,17 @@ def _no_deps(repo: str, spent: float) -> graph_mod.Deps:
 
 
 @app.command()
-def serve(port: int = 8765, ui: Path = Path("ui/dist"), write: bool = False) -> None:
+def serve(
+    port: int = 8765,
+    ui: Path = Path("ui/dist"),
+    write: bool = False,
+    token_file: Path | None = None,
+) -> None:
     """The API over data/refine and data/runs, plus the built UI
     (`ui/dist`, when built), on 127.0.0.1 only. API docs at /api/docs.
     Read-only, unless `--write`: then the browser gate answers flows' gates
-    (the token is printed once)."""
+    (the token is printed once). `--token-file`: also written there, readable
+    by you only, for a script that drives the gate (`make journey`)."""
 
     typer.echo(f"http://127.0.0.1:{port}  (API docs: /api/docs; Ctrl+C stops)")
     if not write:  # no token: the guard refuses every non-GET
@@ -259,6 +265,8 @@ def serve(port: int = 8765, ui: Path = Path("ui/dist"), write: bool = False) -> 
     # --write: the browser gate. The token is shown once, in the URL's
     # fragment (never sent to the server, so in no log)
     token = new_token()
+    if token_file is not None:
+        write_token_file(token_file, token)
     steps = Steps(Console(stderr=True, soft_wrap=True))  # Start's checks, logged here
     runner = graph_mod.FlowRunner(
         get_settings().postgres_dsn,

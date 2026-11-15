@@ -1,0 +1,18 @@
+{
+  "repo": "philippmossier/local-ai-chat-playground",
+  "number": 55,
+  "title": "App says my computer is too slow, then suggests a BIGGER model",
+  "body": "After the first answer (which was really slow, maybe 3 words per second) a banner said it's too slow and offered to switch to... Gemma 4 E4B, which is the biggest one. That would make it even slower? I was on Gemma 4 E2B.",
+  "state": "open",
+  "state_reason": null,
+  "author": "philippmossier",
+  "labels": [],
+  "created_at": "2026-10-16T09:55:00Z",
+  "updated_at": "2026-10-16T09:55:00Z",
+  "closed_at": null,
+  "closed_by": null,
+  "comment_count": 0,
+  "comments": [],
+  "duplicate_of": [],
+  "duplicates": []
+}

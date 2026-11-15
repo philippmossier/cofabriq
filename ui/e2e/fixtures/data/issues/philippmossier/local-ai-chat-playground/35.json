@@ -1,0 +1,18 @@
+{
+  "repo": "philippmossier/local-ai-chat-playground",
+  "number": 35,
+  "title": "Which model should I use on a MacBook Air M1 with 8 GB?",
+  "body": "The app recommends Qwen3 1.7B but a friend says Gemma 4 E2B runs fine on the same machine. What is the recommendation based on, and is it safe to pick the bigger one?",
+  "state": "open",
+  "state_reason": null,
+  "author": "philippmossier",
+  "labels": [],
+  "created_at": "2026-10-16T09:53:59Z",
+  "updated_at": "2026-10-16T09:53:59Z",
+  "closed_at": null,
+  "closed_by": null,
+  "comment_count": 0,
+  "comments": [],
+  "duplicate_of": [],
+  "duplicates": []
+}

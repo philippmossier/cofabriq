@@ -1,4 +1,4 @@
-.PHONY: setup up down check check-ui ui fmt schema health
+.PHONY: setup up down check check-ui ui e2e journey fmt schema health
 
 setup:  ## install deps into .venv, create .env if missing
 	uv sync
@@ -27,6 +27,12 @@ check-ui: ## the UI: client regenerated from the schema, types, lint
 
 ui:     ## build the UI into ui/dist (served by `cofabriq serve`)
 	cd ui && pnpm build
+
+e2e:    ## the viewer in a browser on recorded runs (ui/e2e/fixtures): free, seconds
+	cd ui && pnpm build && pnpm exec playwright test
+
+journey: ## one live issue through the UI: Start, gates, result -> data/journey/ (JOURNEY_ISSUE, JOURNEY_ROUTE)
+	cd ui && pnpm build && pnpm exec playwright test -c playwright.journey.config.ts
 
 fmt:    ## autofix lint + format
 	uv run ruff check --fix .

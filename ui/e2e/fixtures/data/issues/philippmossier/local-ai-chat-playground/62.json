@@ -1,0 +1,18 @@
+{
+  "repo": "philippmossier/local-ai-chat-playground",
+  "number": 62,
+  "title": "My message stays in the input after sending",
+  "body": "After I press Enter the message is sent (and answered), but the text is still in the box. I have to delete it by hand every time.",
+  "state": "open",
+  "state_reason": null,
+  "author": "philippmossier",
+  "labels": [],
+  "created_at": "2026-10-16T09:55:21Z",
+  "updated_at": "2026-10-16T09:55:21Z",
+  "closed_at": null,
+  "closed_by": null,
+  "comment_count": 0,
+  "comments": [],
+  "duplicate_of": [],
+  "duplicates": []
+}

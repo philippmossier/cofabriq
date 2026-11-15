@@ -1,0 +1,18 @@
+{
+  "repo": "philippmossier/local-ai-chat-playground",
+  "number": 47,
+  "title": "Network counter is not 0 after the first message",
+  "body": "Model was cached, I sent my first message, and the \"what leaves this device\" panel counted requests to huggingface.co. I thought nothing is sent after the download?",
+  "state": "open",
+  "state_reason": null,
+  "author": "philippmossier",
+  "labels": [],
+  "created_at": "2026-10-16T09:54:35Z",
+  "updated_at": "2026-10-16T09:54:35Z",
+  "closed_at": null,
+  "closed_by": null,
+  "comment_count": 0,
+  "comments": [],
+  "duplicate_of": [],
+  "duplicates": []
+}

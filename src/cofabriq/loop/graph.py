@@ -514,6 +514,8 @@ class FlowStatus(BaseModel):
     diff: str = ""  # the frozen test, at the test gate
     running: bool = False  # an answer is being worked off right now
     error: str = ""  # the last answer's run failed
+    # steps left but no gate and nothing running: the process stopped mid-run
+    cut_off: bool = False
 
 
 def read_status(graph: CompiledStateGraph[FlowState], thread: str) -> FlowStatus | None:
@@ -529,6 +531,7 @@ def read_status(graph: CompiledStateGraph[FlowState], thread: str) -> FlowStatus
         state=FlowState.model_validate(snap.values),
         waiting=gate["gate"] if gate else None,
         diff=gate.get("diff", "") if gate else "",
+        cut_off=bool(snap.next) and gate is None,
     )
 
 
@@ -596,6 +599,8 @@ class FlowRunner:
                 found.state = found.state.model_copy(update={"trace": trace})
             found.running = thread in self._running
             found.error = self._errors.get(thread, "")
+            # steps left are only a cut-off run when this server isn't working them
+            found.cut_off = found.cut_off and not found.running
         return found
 
     def start(

@@ -1,0 +1,18 @@
+{
+  "repo": "philippmossier/local-ai-chat-playground",
+  "number": 65,
+  "title": "Newest chats are at the bottom of the list",
+  "body": "The chat history in the sidebar is sorted oldest first, so with a lot of chats I have to scroll down every time to find the one from today.",
+  "state": "open",
+  "state_reason": null,
+  "author": "philippmossier",
+  "labels": [],
+  "created_at": "2026-10-16T09:55:31Z",
+  "updated_at": "2026-10-16T09:55:31Z",
+  "closed_at": null,
+  "closed_by": null,
+  "comment_count": 0,
+  "comments": [],
+  "duplicate_of": [],
+  "duplicates": []
+}

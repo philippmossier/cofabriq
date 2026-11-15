@@ -1,0 +1,18 @@
+{
+  "repo": "philippmossier/local-ai-chat-playground",
+  "number": 70,
+  "title": "The model doesn't remember what I said one message ago",
+  "body": "I told it my name, it answered, then I asked \"what's my name?\" and it had no idea. Follow-up questions never work, every message is treated like a new conversation. Tried two different models.",
+  "state": "open",
+  "state_reason": null,
+  "author": "philippmossier",
+  "labels": [],
+  "created_at": "2026-10-16T09:55:46Z",
+  "updated_at": "2026-10-16T09:55:46Z",
+  "closed_at": null,
+  "closed_by": null,
+  "comment_count": 0,
+  "comments": [],
+  "duplicate_of": [],
+  "duplicates": []
+}

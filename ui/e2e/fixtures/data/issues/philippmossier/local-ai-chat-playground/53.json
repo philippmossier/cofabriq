@@ -1,0 +1,18 @@
+{
+  "repo": "philippmossier/local-ai-chat-playground",
+  "number": 53,
+  "title": "After reloading, the app opens a different chat than the one I was in",
+  "body": "Steps:\n1. Have a few chats\n2. Click an older one in the sidebar\n3. Reload the page\n\nIt opens some other chat, not the one I was reading. I have to find it again in the sidebar every time.",
+  "state": "open",
+  "state_reason": null,
+  "author": "philippmossier",
+  "labels": [],
+  "created_at": "2026-10-16T09:54:54Z",
+  "updated_at": "2026-10-16T09:54:54Z",
+  "closed_at": null,
+  "closed_by": null,
+  "comment_count": 0,
+  "comments": [],
+  "duplicate_of": [],
+  "duplicates": []
+}

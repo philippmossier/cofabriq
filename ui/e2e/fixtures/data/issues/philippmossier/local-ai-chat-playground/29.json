@@ -1,0 +1,18 @@
+{
+  "repo": "philippmossier/local-ai-chat-playground",
+  "number": 29,
+  "title": "Dark theme",
+  "body": "Would be great to have a dark theme, the white background is very bright in the evening.",
+  "state": "closed",
+  "state_reason": "completed",
+  "author": "philippmossier",
+  "labels": [],
+  "created_at": "2026-10-16T09:53:39Z",
+  "updated_at": "2026-10-16T09:53:40Z",
+  "closed_at": "2026-10-16T09:53:40Z",
+  "closed_by": null,
+  "comment_count": 0,
+  "comments": [],
+  "duplicate_of": [],
+  "duplicates": []
+}

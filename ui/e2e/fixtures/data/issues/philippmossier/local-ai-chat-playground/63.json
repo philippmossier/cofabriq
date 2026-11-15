@@ -1,0 +1,18 @@
+{
+  "repo": "philippmossier/local-ai-chat-playground",
+  "number": 63,
+  "title": "Stop button is greyed out, can't stop a long answer",
+  "body": "When the model starts rambling I want to stop it, but the square stop button is disabled while it writes. I have to wait until it's done.",
+  "state": "open",
+  "state_reason": null,
+  "author": "philippmossier",
+  "labels": [],
+  "created_at": "2026-10-16T09:55:24Z",
+  "updated_at": "2026-10-16T09:55:24Z",
+  "closed_at": null,
+  "closed_by": null,
+  "comment_count": 0,
+  "comments": [],
+  "duplicate_of": [],
+  "duplicates": []
+}

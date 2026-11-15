@@ -1,0 +1,18 @@
+{
+  "repo": "philippmossier/local-ai-chat-playground",
+  "number": 51,
+  "title": "Chat title is cut off with \"…\" even though it fits",
+  "body": "I asked \"What is the difference between RAM and VRAM?\" plus a few words and the sidebar shows the title with a \"…\" at the end, but nothing is actually missing. Longer questions look fine. Minor, just looks sloppy.",
+  "state": "open",
+  "state_reason": null,
+  "author": "philippmossier",
+  "labels": [],
+  "created_at": "2026-10-16T09:54:48Z",
+  "updated_at": "2026-10-16T09:54:48Z",
+  "closed_at": null,
+  "closed_by": null,
+  "comment_count": 0,
+  "comments": [],
+  "duplicate_of": [],
+  "duplicates": []
+}

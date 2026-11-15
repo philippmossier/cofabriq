@@ -1,0 +1,18 @@
+{
+  "repo": "philippmossier/local-ai-chat-playground",
+  "number": 66,
+  "title": "Copy button under answers is gone",
+  "body": "There used to be a Copy button and the speed (tokens/s) under each answer. Both are missing now, on old and new answers.",
+  "state": "open",
+  "state_reason": null,
+  "author": "philippmossier",
+  "labels": [],
+  "created_at": "2026-10-16T09:55:34Z",
+  "updated_at": "2026-10-16T09:55:34Z",
+  "closed_at": null,
+  "closed_by": null,
+  "comment_count": 0,
+  "comments": [],
+  "duplicate_of": [],
+  "duplicates": []
+}

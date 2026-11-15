@@ -1,0 +1,18 @@
+{
+  "repo": "philippmossier/local-ai-chat-playground",
+  "number": 61,
+  "title": "Can't write multi-line messages, Shift+Enter sends right away",
+  "body": "The placeholder says Shift+Enter for a new line, but Shift+Enter sends the message immediately. I wanted to paste a list with line breaks.\n\nChrome on macOS.",
+  "state": "open",
+  "state_reason": null,
+  "author": "philippmossier",
+  "labels": [],
+  "created_at": "2026-10-16T09:55:19Z",
+  "updated_at": "2026-10-16T09:55:19Z",
+  "closed_at": null,
+  "closed_by": null,
+  "comment_count": 0,
+  "comments": [],
+  "duplicate_of": [],
+  "duplicates": []
+}

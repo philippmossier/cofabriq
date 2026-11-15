@@ -16,12 +16,16 @@ requests to localhost. So:
 
 The token is printed once at start as a URL fragment (`/#token=...`): the
 browser never sends the fragment to the server, so it is in no log, and
-the UI keeps it in sessionStorage (gone with the tab).
+the UI keeps it in sessionStorage (gone with the tab). For a script that
+drives the gate (`make journey`), `--token-file` also writes it to a file
+only its owner can read.
 """
 
 import hmac
+import os
 import secrets
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
@@ -31,6 +35,16 @@ SAFE = {"GET", "HEAD", "OPTIONS"}
 
 def new_token() -> str:
     return secrets.token_urlsafe(32)
+
+
+def write_token_file(path: Path, token: str) -> None:
+    """The token, readable by its owner only (0600) from the moment the
+    file exists; an old file is truncated and narrowed too."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    os.fchmod(fd, 0o600)  # O_CREAT's mode applies to a new file only
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(token)
 
 
 def guard(

@@ -1,7 +1,9 @@
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from cofabriq.serve_guard import guard
+from cofabriq.serve_guard import guard, write_token_file
 
 PORT = 8765
 UI = f"http://127.0.0.1:{PORT}"
@@ -51,3 +53,15 @@ def test_a_write_needs_origin_json_and_the_token() -> None:
     assert write(c, authorization="Bearer wrong") == 401
     assert write(c, authorization="") == 401
     assert write(c, host="evil.example:8765") == 403
+
+
+def test_the_token_file_is_its_owners_only(tmp_path: Path) -> None:
+    path = tmp_path / "gate" / "token"
+    path.parent.mkdir()
+    path.write_text("an older, longer token")
+    path.chmod(0o644)  # left readable by someone else
+
+    write_token_file(path, "t0k3n")
+
+    assert path.read_text() == "t0k3n"
+    assert path.stat().st_mode & 0o777 == 0o600

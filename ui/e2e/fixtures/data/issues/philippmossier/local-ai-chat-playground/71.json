@@ -1,0 +1,18 @@
+{
+  "repo": "philippmossier/local-ai-chat-playground",
+  "number": 71,
+  "title": "After an error the chat is stuck, can't send anything",
+  "body": "Got \"Something went wrong: ...\" on one answer (probably memory). After that the stop button stays there forever and I can't send another message. Only a reload helps.",
+  "state": "open",
+  "state_reason": null,
+  "author": "philippmossier",
+  "labels": [],
+  "created_at": "2026-10-16T09:55:49Z",
+  "updated_at": "2026-10-16T09:55:49Z",
+  "closed_at": null,
+  "closed_by": null,
+  "comment_count": 0,
+  "comments": [],
+  "duplicate_of": [],
+  "duplicates": []
+}
