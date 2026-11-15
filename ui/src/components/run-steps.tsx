@@ -156,6 +156,9 @@ function Row({ run, step, root, depth, level, docs }: RowProps) {
           </span>
         </span>
       </div>
+      {shows(level, "data") && (
+        <Facts step={step} open={details} onToggle={() => setDetails(!details)} indent={depth * 20 + 52} />
+      )}
       {shows(level, "why") && depth === 1 && doc && (
         <p className="pb-1 text-xs text-muted-foreground" style={{ paddingLeft: depth * 20 + 52 }}>
           <Inline text={doc.summary} />
@@ -176,6 +179,51 @@ function Row({ run, step, root, depth, level, docs }: RowProps) {
         step.children.map((c) => (
           <Row key={c.id} run={run} step={c} root={root} depth={depth + 1} level={level} docs={docs} />
         ))}
+    </div>
+  );
+}
+
+// already on the row (detail, chips) or meaningless to a reader
+const ON_ROW = new Set([
+  TURNS,
+  COST,
+  "gen_ai.operation.name",
+  "gen_ai.provider.name",
+  "gen_ai.agent.name",
+  "gen_ai.request.model",
+  "gen_ai.response.model",
+  "cofabriq.llm.what",
+  "cofabriq.sandbox.command",
+  "cofabriq.sandbox.network",
+  SANDBOX_OK,
+  "cofabriq.paused",
+  "cofabriq.resume",
+]);
+
+function fact(key: string, value: RunStep["attrs"][string]): string {
+  const name = key.replace(/^(gen_ai|cofabriq)\.(agent\.|sandbox\.|usage\.)?/, "");
+  if (Array.isArray(value)) return `${name}: ${value.join(", ")}`;
+  if (typeof value === "number" && key.endsWith("_usd")) return `${name.replace(/_usd$/, "")}: ${usd(value)}`;
+  return `${name}: ${String(value)}`;
+}
+
+/** The Data level, without a click: the span's other attributes, and the
+ * toggle for what the step got and gave. */
+function Facts({ step, open, onToggle, indent }: { step: RunStep; open: boolean; onToggle: () => void; indent: number }) {
+  const facts = Object.entries(step.attrs)
+    .filter(([k]) => !ON_ROW.has(k) && !k.startsWith("code."))
+    .map(([k, v]) => fact(k, v));
+  if (facts.length === 0 && !step.payload) return null;
+  return (
+    <div className="flex flex-wrap gap-x-3 pb-1 text-xs text-muted-foreground" style={{ paddingLeft: indent }}>
+      {facts.map((f) => (
+        <span key={f}>{f}</span>
+      ))}
+      {step.payload && (
+        <button type="button" onClick={onToggle} className="font-medium text-foreground hover:underline">
+          {open ? "▾" : "▸"} what it got and gave
+        </button>
+      )}
     </div>
   );
 }
