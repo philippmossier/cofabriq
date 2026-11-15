@@ -13,12 +13,12 @@ features removed on purpose.
 | Folder | What's in it |
 | --- | --- |
 | `src/cofabriq/` | the Python package: the CLI and everything it runs (below) |
-| `ui/` | the viewer and browser gate: Vite, React, TanStack Router + Query, shadcn; its API client is generated from `ui/openapi.json` |
+| `ui/` | the viewer and browser gate: Vite, React, TanStack Router + Query, shadcn; its API client is generated from `ui/openapi.json`; `e2e/` its browser tests (recorded runs in `e2e/fixtures/data/`, and the live journey) |
 | `targets/` | one TOML file per repository cofabriq works on: its components, how to install and test it, its risk tiers, its invariant (`[sentinel]`) |
 | `playground/` | the demo app's answer keys: `seed.toml` (issues with expected labels), `bugs.toml` + `bugs/` (22 planted bugs, their repros and reference fixes), `features.toml` + `features/` (9 removed features), `hard.toml` + `hard/` (5 harder bugs), `playground.py` (seed or reset the demo repo) |
 | `evals/` | frozen eval sets from real repos (issue numbers only): duplicates, missing info, impact |
 | `tests/` | pytest, one file per module, no network; what several modules share lives apart: `builders.py` (the smallest valid issue, spec, loop result, review), `fakes.py` (agents, the host sandbox, the embedder, recorded GitHub pages), `gitrepo.py` (throwaway git repos) |
-| `docs/` | `adr/` (10 decisions), `evals.md` (every number), `how-it-works.md`, `intake.md`, this file, `demo/` (screenshots) |
+| `docs/` | `adr/` (11 decisions), `evals.md` (every number), `how-it-works.md`, `intake.md`, this file, `steps/` (one page per step of a run, shown in the step view), `demo/` (screenshots) |
 | `skills/ticket/` | the `/ticket` Claude Code skill: a rough note into a ticket |
 | `data/` | not in git: everything cofabriq fetches and produces (below) |
 
@@ -28,6 +28,8 @@ features removed on purpose.
 | --- | --- |
 | `cli/` | every command, one module per layer: `context.py` (documents, the decision graph, MCP, the repo map), `issues.py` (`fetch-issues`, `triage`, `impact`), `loop.py` (`refine`, `run`, `flow`, `intake`, `serve`, `lessons`, `stop`), `evals.py` (`eval ...`); `common.py` holds the typer apps and the helpers they share, `render.py` the terminal output |
 | `config.py` | settings from `.env` |
+| `tracing.py` | OpenTelemetry: every graph node, agent session, OpenAI call and sandbox command is a span (metadata only); each run's spans go to `data/traces/`, and to an OTLP backend when one is set |
+| `runsteps.py` | reads a run's spans back as a step tree for the step view: time, cost, turns, payloads, the step docs |
 | `targets.py` | the per-repo target file (`targets/<owner>-<name>.toml`, one table per concern), the repo slug and the clone folder, the playground's name |
 | `git.py` | every git call on a target repo, a clone or a worktree, without the caller's `GIT_*` variables (inside a git hook they point at the wrong repo) |
 | `files.py` | result files under `data/`: the time stamp in their names, the stamped writes of runs and evals, the newest record per key over them, the atomic write every cache and index goes through |
@@ -119,6 +121,8 @@ graph LR
 | `data/runs/` | `run`, flows, evals | run records, PR bodies (`*.pr.md`), screenshots (`<run>/`) |
 | `data/verdicts/`, `data/rerank/` | `eval dedupe`, `triage` | cached duplicate verdicts and reranked candidate lists |
 | `data/lessons/` | gate rejections, `lessons --propose` | rejection reasons, proposed rules |
+| `data/traces/` | every run and flow | each run's steps (`<run>.jsonl`, a line per start and end) and what each step got and gave (`<run>/`) |
+| `data/journey/` | `make journey` | one folder per live journey: screenshots, page text, the run's JSON, the draft PR body |
 | `data/STOP` | `cofabriq stop` | while it exists, no agent starts |
 
 ## User journeys
@@ -147,6 +151,8 @@ sequenceDiagram
     Dev-->>C: yes
     C->>A: write a failing test
     C->>S: test: must be red
+    C->>Dev: test gate: how it fails, approve?
+    Dev-->>C: yes (or: write it again, with a reason)
     loop max 3 attempts
         C->>A: fix (the test is frozen)
         C->>S: test, types, lint, all tests
@@ -187,7 +193,34 @@ sequenceDiagram
     C-->>B: done: PR body and run in the viewer
 ```
 
-### 4. Measure (every version)
+### 4. Start and judge a run in the browser (0.8)
+
+```mermaid
+sequenceDiagram
+    actor Dev
+    participant B as Browser (serve --write)
+    participant C as cofabriq (background thread)
+    participant T as data/traces
+    Dev->>B: Issues: Start #51
+    B->>C: start (intake checks, then refine)
+    C->>T: a line per step start and end
+    B->>T: poll the step tree every second
+    C-->>B: plan gate: lines to touch, sketches, proof
+    Dev->>B: Approve the plan
+    C-->>B: test gate: how the test fails
+    Dev->>B: Write it again: "also test a title one character shorter"
+    C->>C: worktree reset, a new test with the reason
+    C-->>B: test gate again
+    Dev->>B: Approve the test (frozen from here)
+    C->>C: build, checks, sentinel, review
+    C-->>B: result card, the run, the draft PR body
+```
+
+At most 3 rewrites per flow; "Stop the run" ends it, and every rejection is
+kept for `lessons`. A finished flow can be started again: refine then reads
+why the last one ended.
+
+### 5. Measure (every version)
 
 ```mermaid
 flowchart LR
@@ -198,7 +231,7 @@ flowchart LR
     G --> D["docs/evals.md"]
 ```
 
-### 5. Learn from what went wrong (0.6)
+### 6. Learn from what went wrong (0.6)
 
 ```mermaid
 flowchart LR
@@ -220,15 +253,15 @@ There are three kinds:
 `--propose` is one read-only agent run over all signals of a repo. It writes
 at most 5 rules in total per run, each citing the signal ids it comes from; a
 rule that cites an id that doesn't exist is dropped in code. The result is a
-draft in `data/lessons/` and is never written into the target. A rejection
-ends the flow (there is no revise loop yet); the reason is kept only as a
-signal.
+draft in `data/lessons/` and is never written into the target. A rejected
+plan ends the flow; a rejected test is written again with the reason (0.8),
+and either reason is kept as a signal.
 
 Where the signals come from today: the proven findings in the first draft
 (36 signals, 5 rules) all come from the 8 fixes an implementer was told to get
 wrong on purpose, since the loop makes no natural mistakes on the demo sets.
 
-### 6. Stop everything
+### 7. Stop everything
 
 `cofabriq stop` creates `data/STOP`; every agent checks it before it starts,
 so runs and evals end at their next step with status `halted` (no retry spends
@@ -238,11 +271,11 @@ an attempt on it). `cofabriq stop --clear` lets them run again.
 
 1. `README.md`, then this file.
 2. `docs/how-it-works.md`: each step in prose.
-3. `docs/adr/006` to `010`: the decisions that shaped the loop.
+3. `docs/adr/006` to `011`: the decisions that shaped the loop.
 4. Code, in the order of journey 2: `loop/refine.py`, `loop/run.py`
    (`start_stage` to `pack`), `loop/engine.py`, `loop/sandbox.py`,
    `loop/gate.py`, `loop/sentinel.py`, `loop/pr.py`; then `loop/graph.py` and
-   `serve.py` for journey 3.
+   `serve.py` for journey 3, `tracing.py` and `runsteps.py` for journey 4.
 5. `targets/philippmossier-local-ai-chat-playground.toml`: everything the loop
    knows about a target, in one file.
 6. `docs/evals.md`: the numbers and what they don't show.
