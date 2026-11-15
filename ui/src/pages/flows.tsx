@@ -1,9 +1,11 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
+import { LoaderCircle } from "lucide-react";
 import { useState } from "react";
 import { useFlow, useFlowAnswer, useFlowList } from "@/api/generated";
 import { FlowResult } from "@/components/result-card";
 import { StartFlow } from "@/components/start-flow";
-import { againRoute } from "@/lib/flows";
+import { againRoute, refreshFlow } from "@/lib/flows";
 import { List, Loading, Missing, Pre, Section, Status } from "@/components/bits";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -98,6 +100,7 @@ export function FlowPage() {
     },
   });
   const token = useWriteToken();
+  const client = useQueryClient();
   const answer = useFlowAnswer({ fetch: writeAuth() });
   const [reason, setReason] = useState("");
   if (q.isPending) return <Loading what="the flow" />;
@@ -107,9 +110,16 @@ export function FlowPage() {
   const send = (approve: boolean) =>
     answer.mutate(
       { owner, name, number: Number(number), data: { approve, reason: approve ? "" : reason } },
-      // 401: the server restarted with a new token; this one is dead
-      { onSuccess: (r) => (r.status as number) === 401 && dropToken() },
+      {
+        onSuccess: async (r) => {
+          if ((r.status as number) === 401) dropToken(); // the server restarted: a dead token
+          // it says "running" at once: don't wait for the next poll
+          else await refreshFlow(client, owner, name, Number(number));
+        },
+      },
     );
+  // which button was pressed: it gets the spinner
+  const sending = answer.isPending ? answer.variables.data.approve : null;
   // the guard's 401 / 403 aren't in the schema: a plain number
   const refused: number | null =
     answer.data && answer.data.status !== 200 ? answer.data.status : null;
@@ -172,6 +182,7 @@ export function FlowPage() {
           {f.waiting && (
             <div className="flex gap-2">
               <Button disabled={!canAnswer || answer.isPending} onClick={() => send(true)}>
+                {sending === true && <LoaderCircle className="animate-spin" />}
                 Approve
               </Button>
               <Button
@@ -179,6 +190,7 @@ export function FlowPage() {
                 disabled={!canAnswer || answer.isPending}
                 onClick={() => send(false)}
               >
+                {sending === false && <LoaderCircle className="animate-spin" />}
                 Reject
               </Button>
               <input
@@ -191,7 +203,6 @@ export function FlowPage() {
               />
             </div>
           )}
-          {answer.isPending && <p className="text-sm text-muted-foreground">Sending…</p>}
           {refused === 401 && (
             <p className="text-sm text-destructive">
               Refused: the server restarted with a new token. Open the new link it printed.

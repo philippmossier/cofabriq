@@ -1,7 +1,10 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
+import { LoaderCircle } from "lucide-react";
 import { useState } from "react";
 import { Route, useFlowStart } from "@/api/generated";
 import { Button } from "@/components/ui/button";
+import { refreshFlow } from "@/lib/flows";
 import { dropToken, writeAuth } from "@/lib/token";
 
 /** Bug or feature (the route), then Start: on success the flow's page,
@@ -24,13 +27,16 @@ export function StartFlow({
 }) {
   const [route, setRoute] = useState<Route>(initial);
   const navigate = useNavigate();
+  const client = useQueryClient();
   const start = useFlowStart({ fetch: writeAuth() });
   const send = () =>
     start.mutate(
       { owner, name, number, data: { route, again } },
       {
-        onSuccess: (r) => {
+        onSuccess: async (r) => {
           if (r.status === 200) {
+            // the flow says "running" at once: don't wait for the page's next poll
+            await refreshFlow(client, owner, name, number);
             void navigate({ to: "/flows/$owner/$name/$number", params: { owner, name, number: String(number) } });
           } else if ((r.status as number) === 401) {
             dropToken(); // the server restarted with a new token
@@ -39,6 +45,8 @@ export function StartFlow({
       },
     );
   const r = start.data;
+  // pending, or started and on the way to the flow: never clickable twice
+  const busy = start.isPending || r?.status === 200;
   // the guard's 401 / 403 aren't in the schema: a plain number
   const status: number | null = r && r.status !== 200 ? r.status : null;
   const why =
@@ -64,8 +72,9 @@ export function StartFlow({
           <option value={Route.bug}>bug</option>
           <option value={Route.feature}>feature</option>
         </select>
-        <Button size="sm" disabled={!canStart || start.isPending} onClick={send}>
-          {start.isPending ? "Checking…" : again ? "Start again" : "Start"}
+        <Button size="sm" disabled={!canStart || busy} onClick={send}>
+          {busy && <LoaderCircle className="animate-spin" />}
+          {start.isPending ? "Checking the issue…" : busy ? "Starting…" : again ? "Start again" : "Start"}
         </Button>
       </div>
       {why && <p className="text-xs text-destructive">{why}</p>}
