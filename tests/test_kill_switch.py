@@ -27,6 +27,14 @@ def fake_claude(tmp_path: Path, cost: float) -> Path:
         "structured_output": {"summary": "s"},
         "total_cost_usd": cost,
         "num_turns": 2,
+        "modelUsage": {
+            "claude-opus-5-5": {
+                "inputTokens": 10,
+                "outputTokens": 300,
+                "cacheReadInputTokens": 9000,
+                "cacheCreationInputTokens": 1000,
+            }
+        },
     }
     script = tmp_path / "claude"
     script.write_text(
