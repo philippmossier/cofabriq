@@ -41,7 +41,7 @@ from cofabriq.loop.gate import Gated
 from cofabriq.loop.graph import FlowRunner, FlowStatus, GateAnswer, Refused
 from cofabriq.loop.intake import not_ready
 from cofabriq.loop.record import RunRecord
-from cofabriq.loop.refine import FileChange, Refined, Route
+from cofabriq.loop.refine import FileChange, Refined, Route, Spec
 from cofabriq.loop.run import Attempt, CheckResult, LoopResult, load_rules
 from cofabriq.serve_guard import guard
 from cofabriq.targets import clone_dir
@@ -88,6 +88,18 @@ class FileNote(BaseModel):
     edits: list[EditNote] = Field(description="Sketches checked against the file.")
 
 
+class ProofNote(BaseModel):
+    """How the spec says a failing test will show it."""
+
+    kind: Literal["unit", "browser", "proxy", "none"]
+    how: str
+
+
+def _proof(spec: Spec | None) -> ProofNote | None:
+    p = spec.proof if spec is not None else None
+    return ProofNote(kind=p.kind, how=p.how) if p is not None else None
+
+
 def _note(f: FileChange) -> FileNote:
     return FileNote(
         path=f.path,
@@ -108,6 +120,7 @@ class SpecView(BaseModel):
     problem: str
     files: list[FileNote]
     tests: list[FileNote]
+    proof: ProofNote | None
     criteria: list[str]
     plan: list[str]
     assumptions: list[str]
@@ -219,8 +232,10 @@ class FlowView(FlowSummary):
     open_questions: list[str]
     diff: str  # the frozen test, at the test gate
     red: str  # its run on the unchanged code: how it fails now
+    retests_left: int  # tests the dev may still send back at the test gate
     commit: str  # the spec's: its paths and code lines are at it; "" before refine
     tests: list[FileNote]
+    proof: ProofNote | None
     unknown_paths: list[str]  # not in the repo at the commit: new files
     trace: str  # its steps so far: /api/traces/<trace>; "" untraced
     record: str  # the finished run: /api/runs/<record>/<number>; "" before
@@ -596,6 +611,7 @@ def build(
             problem=s.problem,
             files=[_note(f) for f in s.files],
             tests=[_note(f) for f in s.tests],
+            proof=_proof(s),
             criteria=s.criteria,
             plan=s.plan,
             assumptions=s.assumptions,
@@ -803,8 +819,10 @@ def _flow_routes(app: FastAPI, flows: FlowRunner) -> None:
             open_questions=spec.open_questions if spec else [],
             diff=f.diff,
             red=f.red,
+            retests_left=f.retests_left,
             commit=f.state.refined.commit if f.state.refined else "",
             tests=[_note(x) for x in spec.tests] if spec else [],
+            proof=_proof(spec),
             unknown_paths=f.state.refined.unknown_paths if f.state.refined else [],
             trace=tracing.run_id(f.state.trace),
             record=f.state.record,

@@ -562,10 +562,12 @@ def test_stage(
     agent: Agent,
     sandbox: Sandbox,
     route: Route = "bug",
+    context: tuple[str, ...] = (),
 ) -> Progress:
     """2. the test before any code: the agent writes it (a repro, or a
     feature's acceptance test), or the planted repro runs. It must fail on
-    the unchanged code: else status no_repro / not_red."""
+    the unchanged code: else status no_repro / not_red. `context`: prompt
+    parts after the spec, fenced (a test the dev sent back, and why)."""
     if not p.planted:
         p.reproduced, p.repro, p.red = reproduce(
             spec=spec,
@@ -574,6 +576,7 @@ def test_stage(
             agent=agent,
             sandbox=sandbox,
             instructions=ACCEPTANCE if route == "feature" else REPRODUCE,
+            context=context,
             route=route,
         )
         if p.red is None:

@@ -27,6 +27,7 @@ export interface Answer {
   approve: boolean;
   /** @maxLength 500 */
   reason?: string;
+  again?: boolean;
 }
 
 export interface Answered {
@@ -142,6 +143,24 @@ export const FlowViewWaiting = {
   test: 'test',
 } as const;
 
+export type ProofNoteKind = typeof ProofNoteKind[keyof typeof ProofNoteKind];
+
+
+export const ProofNoteKind = {
+  unit: 'unit',
+  browser: 'browser',
+  proxy: 'proxy',
+  none: 'none',
+} as const;
+
+/**
+ * How the spec says a failing test will show it.
+ */
+export interface ProofNote {
+  kind: ProofNoteKind;
+  how: string;
+}
+
 export interface FlowView {
   thread: string;
   repo: string;
@@ -161,8 +180,10 @@ export interface FlowView {
   open_questions: string[];
   diff: string;
   red: string;
+  retests_left: number;
   commit: string;
   tests: FileNote[];
+  proof: ProofNote | null;
   unknown_paths: string[];
   trace: string;
   record: string;
@@ -404,6 +425,7 @@ export interface SpecView {
   problem: string;
   files: FileNote[];
   tests: FileNote[];
+  proof: ProofNote | null;
   criteria: string[];
   plan: string[];
   assumptions: string[];

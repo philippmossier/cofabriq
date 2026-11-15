@@ -1,5 +1,6 @@
 import { type ReactNode, useState } from "react";
-import { type FileNote, useCode } from "@/api/generated";
+import { type FileNote, type ProofNote, useCode } from "@/api/generated";
+import { cn } from "@/lib/utils";
 import { List, Section } from "@/components/bits";
 import { CodeLines, ProposedEdit } from "@/components/code";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +19,19 @@ export type SpecLike = {
   assumptions: string[];
   open_questions: string[];
   unknown_paths: string[]; // not in the repo at the commit: files to create
+  proof?: ProofNote | null; // how a failing test will show it; none on older specs
+};
+
+/** How the fix is proven, as the spec says: a proxy is a stand-in to judge. */
+const PROOF: Record<ProofNote["kind"], { short: string; label: string; tone: string }> = {
+  unit: { short: "unit test", label: "A unit test:", tone: "border-emerald-500" },
+  browser: { short: "browser test", label: "A browser test:", tone: "border-emerald-500" },
+  proxy: {
+    short: "stand-in measure",
+    label: "A stand-in measure (judge whether it measures the reported problem):",
+    tone: "border-amber-500 bg-amber-50",
+  },
+  none: { short: "nothing: no test can", label: "No test can prove it here:", tone: "border-destructive bg-red-50" },
 };
 
 // `src/lib/chat/store.ts:52`, `store.ts:48`, `a.tsx:97-117`
@@ -205,7 +219,8 @@ export function SpecReview({ s }: { s: SpecLike }) {
     <div className="space-y-6">
       <p className="text-sm text-muted-foreground">
         {s.route} · size {s.size ?? "?"} · {n(s.files.length, "file changes", "files change")} · tests in{" "}
-        {n(s.tests.length, "file", "files")} · {n(toCheck, "thing", "things")} to check
+        {n(s.tests.length, "file", "files")}
+        {s.proof && <> · proven by a {PROOF[s.proof.kind].short}</>} · {n(toCheck, "thing", "things")} to check
       </p>
 
       <Section title="The cause">
@@ -270,6 +285,12 @@ export function SpecReview({ s }: { s: SpecLike }) {
             : "The proof: a test written before any code, which must fail first"
         }
       >
+        {s.proof && (
+          <div className={cn("rounded-md border-l-4 py-1 pl-3 text-sm", PROOF[s.proof.kind].tone)}>
+            <span className="font-medium">{PROOF[s.proof.kind].label}</span>{" "}
+            <SpecText s={s} text={s.proof.how} />
+          </div>
+        )}
         {s.route === "feature" && <List items={s.criteria} ordered />}
         <ul className="space-y-1.5 text-sm">
           {s.tests.map((t) => (

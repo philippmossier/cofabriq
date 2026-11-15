@@ -674,6 +674,11 @@
             "maxLength": 500,
             "title": "Reason",
             "default": ""
+          },
+          "again": {
+            "type": "boolean",
+            "title": "Again",
+            "default": false
           }
         },
         "type": "object",
@@ -1067,6 +1072,10 @@
             "type": "string",
             "title": "Red"
           },
+          "retests_left": {
+            "type": "integer",
+            "title": "Retests Left"
+          },
           "commit": {
             "type": "string",
             "title": "Commit"
@@ -1077,6 +1086,16 @@
             },
             "type": "array",
             "title": "Tests"
+          },
+          "proof": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProofNote"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "unknown_paths": {
             "items": {
@@ -1114,8 +1133,10 @@
           "open_questions",
           "diff",
           "red",
+          "retests_left",
           "commit",
           "tests",
+          "proof",
           "unknown_paths",
           "trace",
           "record"
@@ -1198,6 +1219,31 @@
         "description": "One stored issue, as the Issues page lists it."
       },
       "JsonValue": {},
+      "ProofNote": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "unit",
+              "browser",
+              "proxy",
+              "none"
+            ],
+            "title": "Kind"
+          },
+          "how": {
+            "type": "string",
+            "title": "How"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "how"
+        ],
+        "title": "ProofNote",
+        "description": "How the spec says a failing test will show it."
+      },
       "ProofView": {
         "properties": {
           "finding": {
@@ -1857,6 +1903,16 @@
             "type": "array",
             "title": "Tests"
           },
+          "proof": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProofNote"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "criteria": {
             "items": {
               "type": "string"
@@ -1931,6 +1987,7 @@
           "problem",
           "files",
           "tests",
+          "proof",
           "criteria",
           "plan",
           "assumptions",

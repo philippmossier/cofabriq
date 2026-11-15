@@ -178,6 +178,40 @@ def test_feature_flow_pauses_twice_and_resumes_in_a_new_graph(tmp_path: Path) ->
     assert not (tmp_path / "work").exists() or not any((tmp_path / "work").iterdir())
 
 
+def test_a_test_sent_back_is_written_again_with_the_reason(tmp_path: Path) -> None:
+    editor = EditingAgent(
+        write("src/a.test.sh", REPRO),  # sent back
+        write("src/b.test.sh", REPRO),  # written again (another file), approved
+        write("src/a.ts", "fixed\n"),
+    )
+    d = deps(tmp_path, editor, [])
+    again = GateAnswer(approve=False, reason="check the title, not the log", again=True)
+
+    state = run_graph(d, FlowState(issue=issue(3), route="bug"), YES, again, YES)
+
+    assert editor.roles == ["reproduce", "reproduce", "implement"]
+    second = editor.prompts[1]
+    assert "<rejected_test>" in second and "src/a.test.sh" in second
+    assert "check the title, not the log" in second
+    # the rejected test is gone: only the new one is the repro
+    assert state.result is not None and state.result.repro == ["src/b.test.sh"]
+    assert state.retests == 1 and state.outcome == "approved"
+
+
+def test_a_test_sent_back_too_often_ends_the_run(tmp_path: Path) -> None:
+    writes = [write("src/a.test.sh", REPRO)] * 4
+    d = deps(tmp_path, EditingAgent(*writes), [])
+    again = GateAnswer(approve=False, reason="still wrong", again=True)
+
+    state = run_graph(d, FlowState(issue=issue(3), route="bug"), YES, *[again] * 4)
+
+    assert state.retests == 3  # the fourth "again" has none left: it ends
+    assert (state.outcome, state.note) == (
+        "test_rejected",
+        "test rejected: still wrong",
+    )
+
+
 def test_a_rejected_plan_ends_the_flow(tmp_path: Path) -> None:
     d = deps(tmp_path, EditingAgent(), [])
     graph = build_graph(d).compile(checkpointer=InMemorySaver())

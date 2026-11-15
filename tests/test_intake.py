@@ -2,6 +2,7 @@ import httpx
 
 from cofabriq.issues.model import Issue, IssueRef
 from cofabriq.loop.intake import blockers, not_ready, slices
+from cofabriq.loop.refine import Proof
 from tests.builders import REPO, issue, refined
 from tests.fakes import one, page, replay, source
 
@@ -65,6 +66,18 @@ def test_readiness_reasons() -> None:
     ok.files[1].why = "new module for the feature"
     assert not_ready(refined(criteria=["f(1) is 2"], files=ok.files), tracked) == []
     assert not_ready(refined("bug", files=ok.files), tracked) == []
+
+
+def test_a_spec_no_test_can_prove_goes_back_before_any_test_is_paid_for() -> None:
+    tracked = {"src/a.ts", "src/new.ts"}
+    gpu = Proof(kind="none", how="only shows on one GPU driver, not in a headless box")
+    proxy = Proof(kind="proxy", how="rows in the DOM stand in for laggy scrolling")
+
+    assert not_ready(refined("bug", proof=gpu), tracked) == [
+        "no test can prove it here: only shows on one GPU driver, not in a headless box"
+    ]
+    assert not_ready(refined("bug", proof=proxy), tracked) == []  # a stand-in is fine
+    assert not_ready(refined("bug"), tracked) == []  # specs from before have none
 
 
 def test_github_reads_native_blockers() -> None:

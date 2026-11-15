@@ -25,6 +25,7 @@ from cofabriq.loop.refine import (
     Edit,
     FileChange,
     NoCriteria,
+    Route,
     Spec,
     checked_edits,
     checked_lines,
@@ -167,6 +168,13 @@ def test_route_follows_the_triage_type() -> None:
 def test_feature_prompt_asks_for_criteria() -> None:
     assert "criteria" in prompt(issue(1), "feature")
     assert "criteria" not in prompt(issue(1), "bug")
+
+
+@pytest.mark.parametrize("route", ["bug", "feature"])
+def test_both_routes_ask_how_the_fix_is_proven(route: Route) -> None:
+    text = prompt(issue(1), route)
+    assert "- proof:" in text and "proxy" in text and "none (no test" in text
+    assert "proof" in Spec.model_json_schema()["properties"]
 
 
 def test_refine_plans_tests_under_the_test_writers_rules() -> None:

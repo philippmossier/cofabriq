@@ -13,6 +13,8 @@ import { TOKEN_FILE } from "../playwright.journey.config.ts";
 const REPO = "philippmossier/local-ai-chat-playground";
 const ISSUE = Number(process.env.JOURNEY_ISSUE ?? 51);
 const ROUTE = process.env.JOURNEY_ROUTE ?? "bug";
+// JOURNEY_RETEST="reason": the first test goes back to the test writer once, with it
+const RETEST = process.env.JOURNEY_RETEST ?? "";
 const [OWNER, NAME] = REPO.split("/") as [string, string];
 const OUT = path.resolve(
   import.meta.dirname,
@@ -88,6 +90,15 @@ test(`#${ISSUE} (${ROUTE}): Start, the gates, the result`, async ({ page }) => {
     await expect(page.getByText("the lines the change touches")).toBeVisible();
     await api(page, `/api/flows/${OWNER}/${NAME}/${ISSUE}`, "flow-at-plan-gate.json");
     state = await approve(page, "plan", 12);
+  }
+  if (state.startsWith("Approve the test") && RETEST) {
+    // send the first test back once: the test writer gets the reason, the plan stays
+    await save(page, "test-gate-sent-back");
+    await api(page, `/api/flows/${OWNER}/${NAME}/${ISSUE}`, "flow-at-first-test-gate.json");
+    await page.getByPlaceholder(/What is wrong with the test/).fill(RETEST);
+    await page.getByRole("button", { name: /^Write it again/ }).click();
+    await expect(title(page)).not.toHaveText(/^Approve the test\?/, { timeout: 60_000 });
+    state = await settled(page, 12);
   }
   if (state.startsWith("Approve the test")) {
     await save(page, "test-gate");

@@ -134,7 +134,18 @@ def _terminal_gate(at: graph_mod.FlowStatus, yes: bool) -> graph_mod.GateAnswer:
         typer.echo(at.diff)
         typer.echo("how it fails on the unchanged code (the end of the output):")
         typer.echo("\n".join(at.red.splitlines()[-40:]))
-        return _gate_answer("Does it fail for the reported reason? Build against it?")
+        answer = _gate_answer("Does it fail for the reported reason? Build against it?")
+        left = at.retests_left
+        if (
+            not answer.approve
+            and left
+            and typer.confirm(
+                f"Have it write another test with your reason ({left} left)?",
+                default=True,
+            )
+        ):
+            return answer.model_copy(update={"again": True})
+        return answer
     if asked:
         return _gate_answer(
             f"Approve the plan as the answer to its {asked} open question(s)?"
@@ -567,9 +578,14 @@ def run(
         raise typer.Exit(code=1)
     while now.waiting is not None:
         answer = _terminal_gate(now, yes)
-        if not answer.approve:  # logged for lessons; a rejected test is recorded
+        if not answer.approve and not answer.again:  # logged; a rejected test recorded
             now = _invoke(graph, answer, thread)
             break
+        if answer.again:  # another test, the plan kept: back at the test gate
+            with steps.step("test", "another test, with your reason") as done:
+                now = _invoke(graph, answer, thread)
+                done("written, for the test gate")
+            continue
         with steps.step("loop", f"repro, fix, checks in {worktree}") as done:
             now = _invoke(graph, answer, thread)
             if (res := now.state.result) is None:
