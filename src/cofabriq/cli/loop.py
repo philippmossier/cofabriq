@@ -21,7 +21,6 @@ from cofabriq.cli.common import (
     flow_app,
     github,
     loop_rules,
-    target_repo,
     write_token_for,
 )
 from cofabriq.cli.render import show_draft, show_gate, show_loop, show_spec, show_steps
@@ -55,17 +54,19 @@ from cofabriq.targets import PLAYGROUND, clone_dir, repo_slug
 
 
 @app.command()
-def refine(number: int, repo: str | None = None, json: bool = False) -> None:
+def refine(number: int, repo: str = PLAYGROUND, json: bool = False) -> None:
     """Spec for one issue from a read-only agent reading the code (paid, one
     agent run). Updates the clone in data/clones/ first and fetches the issue
     if it is new or changed on GitHub (needs GITHUB_TOKEN)."""
     settings = get_settings()
-    target = target_repo(repo)
+    target = check_repo(repo)
     agent = claude_code()
     steps = Steps(Console(stderr=True, soft_wrap=True))
     clone = clone_dir(settings.clones_dir, target)
     with steps.step("clone", f"updating {clone}") as done:
-        commit = refine_mod.update_clone(target, clone)
+        commit = refine_mod.update_clone(
+            target, clone, targets_dir=settings.targets_dir
+        )
         done(f"{clone} at {commit[:7]}")
     issue = _refresh_issue(target, number, steps)
     if issue is None:
@@ -196,9 +197,12 @@ def _prepare_start(target: str, number: int, steps: Steps) -> Issue:
         raise graph_mod.Refused(
             f"#{number} {ticket.reason}: start it once that is merged"
         )
-    clone = clone_dir(get_settings().clones_dir, target)
+    settings = get_settings()
+    clone = clone_dir(settings.clones_dir, target)
     with steps.step("clone", f"updating {clone}") as done:
-        commit = refine_mod.update_clone(target, clone)
+        commit = refine_mod.update_clone(
+            target, clone, targets_dir=settings.targets_dir
+        )
         done(f"{clone} at {commit[:7]}")
     return issue
 
@@ -437,7 +441,7 @@ def lessons(repo: str = PLAYGROUND, propose: bool = False) -> None:
     if not propose or not signals:
         return
     clone = clone_dir(settings.clones_dir, target)
-    refine_mod.update_clone(target, clone)
+    refine_mod.update_clone(target, clone, targets_dir=settings.targets_dir)
     draft = lessons_mod.propose(
         target, signals, clone, Guarded(claude_code(), Guard(1.0))
     )

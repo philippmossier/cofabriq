@@ -64,13 +64,19 @@ class Check(BaseModel):
 class Suite(BaseModel):
     """One kind of test in the target (`[[loop.suites]]`): files ending in
     `suffix` run with `cmd` (their paths appended). `dir`: where a planted
-    repro of this kind goes; `about`: one line for the test writer."""
+    repro of this kind goes; `about`: one line for the test writer.
+    `canary_*` (own targets, `repo add`): a test file named `canary_name`
+    in `dir` that must fail as `canary_fail` and pass as `canary_pass`,
+    the proof that this suite can go red at all (`loop/onboard.py`)."""
 
     name: str
     suffix: str
     cmd: str
     dir: str
     about: str = ""
+    canary_name: str = ""
+    canary_fail: str = ""
+    canary_pass: str = ""
 
 
 class ScreenshotRule(BaseModel):
@@ -548,16 +554,27 @@ def start_stage(
         prepare(worktree)
     if repro_file is not None:
         place_planted(worktree, planted[0], repro_file)
-    installed = sandbox(rules.install, worktree, network=True)
+    installed = install(rules, worktree, sandbox, planted)
     p.setup_s = round(time.perf_counter() - start, 1)
     if not installed.ok:
-        p.status, p.red = "setup_failed", CheckResult.of("install", installed)
-        return p
-    stray = [path for path in changed_paths(worktree) if path not in planted]
-    if stray:  # caches belong in the sandbox's volumes, not in the diff
-        ran = Ran(ok=False, seconds=installed.seconds, output="\n".join(stray[:20]))
-        p.status, p.red = "setup_failed", CheckResult.of("install wrote", ran)
+        p.status, p.red = "setup_failed", installed
     return p
+
+
+def install(
+    rules: LoopRules, worktree: Path, sandbox: Sandbox, planted: list[str]
+) -> CheckResult:
+    """The target's install, the only command with network. It must not
+    change a tracked file or leave an unignored one (`planted` aside):
+    caches belong in the sandbox's volumes, not in the diff."""
+    installed = sandbox(rules.install, worktree, network=True)
+    if not installed.ok:
+        return CheckResult.of("install", installed)
+    stray = [path for path in changed_paths(worktree) if path not in planted]
+    if stray:
+        ran = Ran(ok=False, seconds=installed.seconds, output="\n".join(stray[:20]))
+        return CheckResult.of("install wrote", ran)
+    return CheckResult.of("install", installed)
 
 
 def test_stage(

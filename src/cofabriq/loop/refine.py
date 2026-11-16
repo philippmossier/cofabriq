@@ -19,9 +19,10 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from cofabriq.git import files_at, git
+from cofabriq.git import files_at, git, try_git
 from cofabriq.issues.model import Issue
 from cofabriq.loop.engine import Agent, AgentRun
+from cofabriq.targets import target_table
 from cofabriq.untrusted import fenced
 
 type Size = Literal["S", "M", "L"]
@@ -380,14 +381,56 @@ def refine(
     )
 
 
-def update_clone(repo: str, clone: Path) -> str:
-    """A full clone of `repo` at the tip of its default branch: cloned if
-    missing, else fetched and checked out detached (the clone is cofabriq's
-    cache, nothing is ever committed in it). Returns the commit."""
+class CloneFrom(BaseModel):
+    """`[clone]` in an own target file (`repo add`): cofabriq's clone comes
+    from the dev's local clone, not from GitHub, so a private repo needs no
+    token. `branch` is the base of every run, as it is in that clone now."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    path: Path
+    branch: str
+
+    @property
+    def url(self) -> str:
+        """Absolute, so git never reads it as an option."""
+        return str(self.path.expanduser().resolve())
+
+
+def clone_from(targets_dir: Path, repo: str) -> CloneFrom | None:
+    table = target_table(targets_dir, repo, "clone")
+    return None if table is None else CloneFrom.model_validate(table)
+
+
+def update_clone(repo: str, clone: Path, *, targets_dir: Path) -> str:
+    """A full clone of `repo` at the tip of its base: the dev's local branch
+    for an own target with `[clone]`, else GitHub's default branch. Cloned
+    if missing, then fetched and checked out detached (the clone is
+    cofabriq's cache, nothing is ever committed in it). Returns the commit."""
+    source = clone_from(targets_dir, repo)
+    if source is None:
+        return sync_clone(clone, f"https://github.com/{repo}", "HEAD")
+    return sync_clone(clone, source.url, f"refs/heads/{source.branch}")
+
+
+def sync_clone(clone: Path, url: str, ref: str) -> str:
+    """`clone` at `ref` of `url`: cloned if missing, then fetched and
+    checked out detached. Returns the commit."""
     if not (clone / ".git").is_dir():
         clone.parent.mkdir(parents=True, exist_ok=True)
-        git(Path.cwd(), "clone", "-q", f"https://github.com/{repo}", str(clone))
-    else:
-        git(clone, "fetch", "-q", "origin", "HEAD")
-        git(clone, "checkout", "-q", "--detach", "FETCH_HEAD")
+        git(Path.cwd(), "clone", "-q", url, str(clone))
+    git(clone, "fetch", "-q", url, ref)
+    git(clone, "checkout", "-q", "--detach", "FETCH_HEAD")
     return head(clone)
+
+
+def behind(source: CloneFrom) -> int | None:
+    """Commits the dev's base branch is behind its upstream, from the refs
+    their clone already has (no fetch, no network); None without one."""
+    upstream = f"refs/remotes/origin/{source.branch}"
+    path = Path(source.url)
+    found, _ = try_git(path, "rev-parse", "--verify", "--quiet", upstream)
+    if not found:
+        return None
+    count = git(path, "rev-list", "--count", f"refs/heads/{source.branch}..{upstream}")
+    return int(count)

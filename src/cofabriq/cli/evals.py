@@ -35,13 +35,14 @@ from cofabriq.eval import gate as gate_eval
 from cofabriq.eval import human as human_eval
 from cofabriq.eval import impact as impact_eval
 from cofabriq.eval import loop as loop_eval
+from cofabriq.eval import onboard as onboard_eval
 from cofabriq.eval import readiness as readiness_eval
 from cofabriq.eval import refine as refine_eval
 from cofabriq.eval import review as review_eval
 from cofabriq.eval import triage as triage_eval
 from cofabriq.eval import witness as witness_eval
 from cofabriq.eval.bugs import PlantedBug, fix_path, load_bugs, prove_bugs, repro_path
-from cofabriq.files import write_atomic, write_stamped
+from cofabriq.files import stamp, write_atomic, write_stamped
 from cofabriq.git import files_at
 from cofabriq.issues import rerank as rerank_mod
 from cofabriq.issues import triage as triage_mod
@@ -49,6 +50,7 @@ from cofabriq.issues import vectors
 from cofabriq.issues import verdict as verdict_mod
 from cofabriq.issues.fetch import load_issues
 from cofabriq.issues.model import Issue, check_repo
+from cofabriq.loop import onboard
 from cofabriq.loop import publish as publish_mod
 from cofabriq.loop import record as record_mod
 from cofabriq.loop import refine as refine_mod
@@ -493,7 +495,7 @@ def eval_refine(
     ]
     matched = triage_eval.match(items, load_issues(settings.issues_dir, target))
     clone = clone_dir(settings.clones_dir, target)
-    commit = refine_mod.update_clone(target, clone)
+    commit = refine_mod.update_clone(target, clone, targets_dir=settings.targets_dir)
     typer.echo(f"{target} at {commit[:7]}: {len(planted)} planted bugs, {agent.model}")
 
     testing = run_mod.testing_for(settings.targets_dir, target)
@@ -609,7 +611,7 @@ def _eval_refine_features(
         features_eval.load_features(path), only, lambda f: f.key, "feature"
     )
     clone = clone_dir(settings.clones_dir, target)
-    commit = refine_mod.update_clone(target, clone)
+    commit = refine_mod.update_clone(target, clone, targets_dir=settings.targets_dir)
     typer.echo(f"{target} at {commit[:7]}: {len(feats)} features, {agent.model}")
     testing = run_mod.testing_for(settings.targets_dir, target)
 
@@ -670,7 +672,7 @@ def eval_bug_set(
     rules = loop_rules(target)
     planted = pick_only(load_bugs(bugs, seed), only, lambda b: b.key, "bug")
     clone = clone_dir(settings.clones_dir, target)
-    commit = refine_mod.update_clone(target, clone)
+    commit = refine_mod.update_clone(target, clone, targets_dir=settings.targets_dir)
     typer.echo(f"{target} at {commit[:7]}: {len(planted)} planted bugs")
     sandbox = Podman(image=rules.image, setup=rules.setup)
     worktree = settings.work_dir / "bug-set"
@@ -751,7 +753,7 @@ def eval_feature_set(
     rules = loop_rules(target)
     feats = features_eval.load_features(features)
     clone = clone_dir(settings.clones_dir, target)
-    commit = refine_mod.update_clone(target, clone)
+    commit = refine_mod.update_clone(target, clone, targets_dir=settings.targets_dir)
     typer.echo(f"{target} at {commit[:7]}: {len(feats)} removed features")
     sandbox = Podman(image=rules.image, setup=rules.setup)
     worktree = settings.work_dir / "feature-set"
@@ -829,7 +831,7 @@ def eval_loop(
     logic = [b for b in load_bugs(bugs, seed) if kind in ("all", b.kind)]
     logic = pick_only(logic, only, lambda b: b.key, f"{kind} bug")
     clone = clone_dir(settings.clones_dir, target)
-    commit = refine_mod.update_clone(target, clone)
+    commit = refine_mod.update_clone(target, clone, targets_dir=settings.targets_dir)
     specs = loop_eval.load_specs(settings.refine_dir)
     ready = [b for b in logic if b.key in specs and specs[b.key].commit == commit]
     for b in logic:
@@ -915,7 +917,7 @@ def _eval_loop_features(repo: str, only: str | None, workers: int, path: Path) -
         features_eval.load_features(path), only, lambda f: f.key, "feature"
     )
     clone = clone_dir(settings.clones_dir, target)
-    commit = refine_mod.update_clone(target, clone)
+    commit = refine_mod.update_clone(target, clone, targets_dir=settings.targets_dir)
     specs = features_eval.load_specs(settings.refine_dir)
     ready = [f for f in feats if f.key in specs and specs[f.key].commit == commit]
     for f in feats:
@@ -1325,4 +1327,53 @@ def eval_review(
     )
     adapter = TypeAdapter(list[review_eval.Case])
     out = write_stamped(settings.runs_dir, "review", adapter, results)
+    typer.echo(f"  -> {out}")
+
+
+@eval_app.command("repo-add")
+def eval_repo_add(
+    only: str | None = None, repos: Path = EVALS_DIR / "repos.toml"
+) -> None:
+    """`repo add` on each repo of the set at GitHub's default branch, then
+    `repo check` on its proposal as the agent wrote it: proven or not, and
+    what failed. Paid (one agent run per repo, about $0.40), minutes per
+    repo; needs podman. Proposals and scores in data/onboard/."""
+    settings = get_settings()
+    targets = pick_only(onboard_eval.load_set(repos), only, lambda r: r, "repo")
+    agent = claude_code()
+    scored: list[onboard_eval.Scored] = []
+    for target in targets:
+        clone = clone_dir(settings.clones_dir, target)
+        commit = refine_mod.sync_clone(clone, f"https://github.com/{target}", "HEAD")
+        try:
+            proposed = onboard.propose(target, clone, Guarded(agent, Guard(1.0)))
+        except AgentError as exc:
+            typer.echo(f"  {target:<42} agent failed: {exc}")
+            continue
+        draft = settings.onboard_dir / f"{repo_slug(target)}-{stamp()}.toml"
+        write_atomic(draft, onboard.render(proposed, None).encode())
+        rules = proposed.proposal.rules()
+        checked = onboard.check(
+            target,
+            rules,
+            config="",
+            clone=clone,
+            commit=commit,
+            worktree=settings.work_dir / f"repo-add-{repo_slug(target)}",
+            sandbox=Podman(image=rules.image, setup=rules.setup),
+        )
+        s = onboard_eval.score(proposed, checked)
+        scored.append(s)
+        mark = "proven" if s.proven else "FAILED " + ", ".join(s.failed)
+        typer.echo(
+            f"  {target:<42} {mark:<30} quotes {s.cited - len(s.unchecked)}/{s.cited}"
+            f"  ${s.cost_usd:.2f}  {s.propose_s:.0f}+{s.check_s:.0f} s"
+        )
+    t = onboard_eval.summarize(scored)
+    typer.echo(
+        f"  proven unedited {t.proven}/{t.repos}  quotes found {t.quotes_found:.2f}"
+        f"  ${t.cost_usd:.2f}/repo  {t.propose_s:.0f} s to propose"
+    )
+    adapter = TypeAdapter(list[onboard_eval.Scored])
+    out = write_stamped(settings.onboard_dir, "eval", adapter, scored)
     typer.echo(f"  -> {out}")

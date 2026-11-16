@@ -56,6 +56,10 @@ suffix = ".test.ts"
 cmd = "pnpm exec vitest run"
 dir = "src/repro"
 about = "logic in Node, no browser: functions, reducers, stores"
+# `cofabriq repo check` (0.9): proof that this suite can go red at all
+canary_name = "cofabriq-canary.test.ts"
+canary_fail = 'import { expect, test } from "vitest"; test("canary", () => { expect(1).toBe(2); });'
+canary_pass = 'import { expect, test } from "vitest"; test("canary", () => { expect(1).toBe(1); });'
 
 [[loop.suites]]
 name = "playwright"
@@ -63,6 +67,9 @@ suffix = ".spec.ts"
 cmd = "pnpm exec playwright test --retries=0 --reporter=line"
 dir = "e2e/repro"
 about = "the app in Chromium on the fake engine (no model, no GPU), for what only shows in the UI: clicks, keys, focus, layout, links; see e2e/smoke.spec.ts"
+canary_name = "cofabriq-canary.spec.ts"
+canary_fail = 'import { expect, test } from "@playwright/test"; test("canary", () => { expect(1).toBe(2); });'
+canary_pass = 'import { expect, test } from "@playwright/test"; test("canary", () => { expect(1).toBe(1); });'
 
 # Risk tier of a change (0.2): the highest tier of the components its
 # non-test files are in (via [map]); test files count as low, a component

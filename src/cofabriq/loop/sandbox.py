@@ -4,7 +4,7 @@ The coding agent edits files but runs nothing; cofabriq runs the target's
 install, repro and checks. Those execute code the agent wrote, and the
 agent is steered by issue text anyone can write. So every command runs in
 a throwaway podman container that sees only the worktree (mounted at
-/app) and two cache volumes. Only the install gets network, and it runs
+/app) and three cache volumes. Only the install gets network, and it runs
 before the agent has changed anything (the target's own lockfile, as a dev
 would install it); the repro and the checks run with `--network none`.
 """
@@ -72,7 +72,23 @@ class Podman:
             "--env",
             "pnpm_config_store_dir=/pnpm-store",  # pnpm 11 reads this name
             "--env",
+            # pnpm 10 this one; without it the store lands in the worktree
+            "npm_config_store_dir=/pnpm-store",
+            "--env",
             "COREPACK_HOME=/corepack",
+            # one more for any other toolchain (uv, pip, go, npm): what the
+            # install downloads is still there for the checks, which run
+            # without network. `z`: a label every container shares, else
+            # SELinux (podman's Linux VM) keeps one container's files from
+            # the next, and the install's tools can't run in the checks
+            "--volume",
+            "cofabriq-cache:/cache:z",
+            "--env",
+            "XDG_CACHE_HOME=/cache",  # uv, pip, go's build cache
+            "--env",
+            "GOMODCACHE=/cache/go-mod",
+            "--env",
+            "npm_config_cache=/cache/npm",
             # plain output for the agent: no interactive mode, no colours
             "--env",
             "CI=1",

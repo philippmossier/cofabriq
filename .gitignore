@@ -14,6 +14,8 @@ build/
 # Local config and data
 .env
 data/
+# the dev's own repos (cofabriq repo add), never committed
+targets/own/
 # recorded playground runs the viewer's browser test reads (make e2e)
 !ui/e2e/fixtures/data/
 CLAUDE.local.md

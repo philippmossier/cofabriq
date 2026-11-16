@@ -1,0 +1,11 @@
+# `cofabriq eval repo-add`: repos `repo add` proposes `[loop]` for, each at
+# GitHub's default branch. Proven = `repo check` green on the proposal as
+# the agent wrote it. Different stacks on purpose; each has tests in CI.
+repos = [
+  "philippmossier/local-ai-chat-playground",  # pnpm, vitest + Playwright; a hand-written [loop] ships
+  "philippmossier/cofabriq",  # uv, pytest, pyright; services the sandbox doesn't have
+  "unjs/ufo",  # pnpm, vitest
+  "sindresorhus/p-map",  # npm, ava, tests at the root
+  "pallets/click",  # uv, pytest
+  "spf13/cobra",  # Go, go test
+]

@@ -4,6 +4,50 @@ Every retrieval or agent change gets a number. The 0.2 loop is measured on
 bugs planted in a demo app (truth by construction), triage on real issue
 histories (frozen snapshots).
 
+## 0.9: your own repo, proposed and proven
+
+`repo add` proposes `[loop]` for a repo it has never seen; `repo check`
+proves it in the sandbox (install, every check green, a canary per suite red
+when written to fail and green when written to pass). `eval repo-add` runs
+both on 6 repos of different stacks at GitHub's default branch and counts a
+repo only when the proposal is proven **as the agent wrote it**. The judge is
+the check, not a reference file: a different config that proves the same
+thing counts.
+
+| Repo | Stack | Unedited | What failed |
+| --- | --- | --- | --- |
+| local-ai-chat-playground | pnpm, vitest + Playwright | proven | |
+| cofabriq | uv, pytest, pyright | no | install: the image tag doesn't exist |
+| unjs/ufo | pnpm, vitest | proven | |
+| sindresorhus/p-map | npm, ava | proven | |
+| pallets/click | uv, pytest | no | install: the image tag doesn't exist |
+| spf13/cobra | Go | no | a test fails on the untouched code: it expects a non-root user, the sandbox runs as root |
+
+`data/onboard/eval-20261116T223951.json`: **3/6 proven unedited**, 95% of
+the cited commands quoted from the file they name, $0.12 and 32 s per
+proposal, the check 20-50 s on a warm cache.
+
+- Both image misses are `ghcr.io/astral-sh/uv` tags that look right and
+  don't exist; the agent can't look up a registry. The check names it
+  (`manifest unknown`) in a second; a repair round (the failure back to the
+  agent, bounded) is the obvious next step.
+- cobra's miss is the sandbox's, not the proposal's: a dev edit can't fix a
+  test that needs a non-root user.
+- The first run scored 2/6: ufo failed because the sandbox only gave pnpm
+  11 its store folder, and pnpm 10 put its store into the worktree (the
+  install guard caught it). Fixed in the sandbox, not in the prompt.
+- By hand before the eval, cofabriq took 4 attempts and 2 edits to proven
+  (UI checks dropped: the image's Node no longer bundles corepack; `CI=` in
+  front of pytest: the sandbox sets `CI`, and cofabriq's conftest then fails
+  database tests instead of skipping them). Two lessons went into the
+  prompt as the sandbox's contract (setup runs offline too, no git in the
+  container); one into the sandbox (a cache volume every toolchain shares,
+  labelled for every container, or SELinux on podman's VM keeps one
+  container's files from the next).
+- The canary pair caught a wrong red: with the cache unreadable, the failing
+  canary went red only because the runner couldn't start; the passing
+  canary showed it.
+
 ## 0.2: the loop on planted bugs
 
 The [playground](https://github.com/philippmossier/local-ai-chat-playground)

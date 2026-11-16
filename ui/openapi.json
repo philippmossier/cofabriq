@@ -363,7 +363,7 @@
     "/api/repos": {
       "get": {
         "summary": "Repos",
-        "description": "The repos a flow can run on: an issue store (`fetch-issues`) and\n`[loop]` in the target file.",
+        "description": "The repos a flow can run on: an issue store (`fetch-issues`) and\n`[loop]` in the target file, proven if the dev's own.",
         "operationId": "repos",
         "responses": {
           "200": {
