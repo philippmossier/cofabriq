@@ -22,11 +22,14 @@ from cofabriq.loop.engine import (
     parse,
 )
 from cofabriq.loop.refine import (
+    Case,
     Edit,
     FileChange,
     NoCriteria,
+    Proof,
     Route,
     Spec,
+    agent_schema,
     checked_edits,
     checked_lines,
     prompt,
@@ -286,6 +289,38 @@ def test_bug_spec_drops_criteria(tmp_path: Path) -> None:
     stray = spec("src/a.ts").model_copy(update={"criteria": ["guess"]})
     refined = refine(issue(3), clone, FakeAgent(stray))
     assert refined.route == "bug" and refined.spec.criteria == []
+
+
+def test_a_bugs_test_is_planned_as_cases_a_features_by_its_criteria(
+    tmp_path: Path,
+) -> None:
+    clone = init_repo(tmp_path / "clone", {"src/a.ts": "x"})
+    case = Case(name="keeps 42 whole", expect="f(42 x) is unchanged", fails_now=True)
+    proof = Proof(kind="unit", how="h", cases=[case] * 7)
+    planned = spec("src/a.ts").model_copy(
+        update={"proof": proof, "criteria": ["f(1) is 2"]}
+    )
+
+    bug = refine(issue(3), clone, FakeAgent(planned)).spec.proof
+    feature = refine(issue(3), clone, FakeAgent(planned), "feature").spec.proof
+
+    assert bug is not None and bug.cases == [case] * 5  # at most 5
+    assert feature is not None and feature.cases == []
+    assert "fails_now" in prompt(issue(1), "bug")
+    assert "fails_now" not in prompt(issue(1), "feature")
+    shown = run_mod.render_spec(planned, tests=True)
+    assert "- keeps 42 whole: f(42 x) is unchanged (fails now)" in shown
+    assert "keeps 42 whole" not in run_mod.render_spec(planned)  # the builder's
+
+
+def test_the_agent_must_fill_the_proof_a_stored_spec_needs_none() -> None:
+    schema = agent_schema()
+
+    assert "proof" in schema["required"]
+    assert schema["properties"]["proof"] == {"$ref": "#/$defs/Proof"}
+    assert "cases" in schema["$defs"]["Proof"]["required"]
+    assert "proof" not in Spec.model_json_schema()["required"]
+    assert Spec.model_validate(spec("src/a.ts").model_dump()).proof is None
 
 
 def test_a_spec_stored_before_criteria_still_loads() -> None:

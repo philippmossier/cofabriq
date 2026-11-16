@@ -1,5 +1,46 @@
 import type { QueryClient } from "@tanstack/react-query";
-import { Route, getFlowListQueryKey, getFlowQueryKey, getIssuesQueryKey } from "@/api/generated";
+import {
+  type FlowSummary,
+  Phase,
+  Route,
+  getFlowListQueryKey,
+  getFlowQueryKey,
+  getIssuesQueryKey,
+} from "@/api/generated";
+
+export const issueUrl = (repo: string, number: number) => `https://github.com/${repo}/issues/${number}`;
+
+/** A flow's parts in order, as the stepper names them; `you`: a gate. */
+export const PHASES: { phase: Phase; label: string; you?: boolean }[] = [
+  { phase: Phase.spec, label: "Spec" },
+  { phase: Phase.plan, label: "Plan", you: true },
+  { phase: Phase.test, label: "Failing test" },
+  { phase: Phase.test_gate, label: "Test", you: true },
+  { phase: Phase.build, label: "Build" },
+  { phase: Phase.review, label: "Review" },
+  { phase: Phase.done, label: "Draft PR" },
+];
+
+/** How a part of the flow stands: `waits` for you at a gate, `now` runs,
+ * `stopped` is where an ended flow stopped short. */
+export type PhaseState = "done" | "now" | "waits" | "stopped" | "todo";
+
+/** Ended well: a change that passed its test (and the review, if it ran). */
+export function endedWell(outcome: string): boolean {
+  return ["approved", "unproven", "green"].includes(outcome.split(":")[0]!);
+}
+
+export function phaseStates(f: FlowSummary): PhaseState[] {
+  const at = PHASES.findIndex((p) => p.phase === f.phase);
+  const ended = !f.running && !f.waiting;
+  return PHASES.map((_, i) => {
+    if (i < at) return "done";
+    if (i > at) return "todo";
+    if (f.waiting) return "waits";
+    if (f.running) return "now";
+    return ended && endedWell(f.outcome) ? "done" : "stopped";
+  });
+}
 
 /** The route Start again suggests: the other one after a plan or spec that
  * went back (the likeliest mistake is the type), the same otherwise (a fix,

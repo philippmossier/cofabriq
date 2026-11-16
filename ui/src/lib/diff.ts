@@ -44,3 +44,31 @@ export function parseDiff(diff: string): DiffFile[] {
   }
   return files;
 }
+
+/** `old` -> `next` as diff lines, starting at line `from` of both: the
+ * longest common subsequence stays context, the rest is removed or added
+ * (a sketch is at most 30 lines a side, so the table is small). Lines
+ * that differ only in trailing spaces count as the same. */
+export function lineDiff(old: string[], next: string[], from: number): DiffLine[] {
+  const same = (a: string, b: string) => a.trimEnd() === b.trimEnd();
+  // lcs[i][j]: the common length of old[i..] and next[j..]
+  const lcs = Array.from({ length: old.length + 1 }, () => new Array<number>(next.length + 1).fill(0));
+  for (let i = old.length - 1; i >= 0; i--) {
+    for (let j = next.length - 1; j >= 0; j--) {
+      lcs[i]![j] = same(old[i]!, next[j]!) ? lcs[i + 1]![j + 1]! + 1 : Math.max(lcs[i + 1]![j]!, lcs[i]![j + 1]!);
+    }
+  }
+  const out: DiffLine[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < old.length || j < next.length) {
+    if (i < old.length && j < next.length && same(old[i]!, next[j]!)) {
+      out.push({ kind: "ctx", text: next[j]!, old: from + i++, new: from + j++ });
+    } else if (i < old.length && (j >= next.length || lcs[i + 1]![j]! >= lcs[i]![j + 1]!)) {
+      out.push({ kind: "del", text: old[i]!, old: from + i++, new: null }); // removed before added
+    } else {
+      out.push({ kind: "add", text: next[j]!, old: null, new: from + j++ });
+    }
+  }
+  return out;
+}

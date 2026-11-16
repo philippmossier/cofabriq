@@ -1,0 +1,86 @@
+{
+  "thread": "philippmossier/local-ai-chat-playground#51",
+  "repo": "philippmossier/local-ai-chat-playground",
+  "number": 51,
+  "title": "Chat title is cut off with \"…\" even though it fits",
+  "route": "bug",
+  "waiting": "plan",
+  "running": false,
+  "outcome": "waiting",
+  "error": "",
+  "size": "S",
+  "problem": "The chat title is made by `titleFrom` in `src/lib/chat/store.ts:50-53`. It keeps a title as is only when `flat.length < TITLE_LENGTH` (42). This is an off-by-one error: a question that is exactly 42 characters after whitespace is flattened fits the limit, but it still goes to the truncating branch. That branch keeps 41 characters and adds \"…\". So the \"…\" replaces only the last character (often the closing \"?\"), and the title looks cut off when it isn't. Titles longer than 42 characters are cut as intended, which is why longer questions look fine. The sidebar's CSS `truncate` (`src/components/chat-sidebar.tsx:88`) only adds an ellipsis on visual overflow and is not the cause. The existing test (`src/lib/chat/chat.test.ts:100-106`) checks only 100-character input, so it never hits the boundary.",
+  "criteria": [],
+  "files": [
+    {
+      "path": "src/lib/chat/store.ts",
+      "why": "Off-by-one: text exactly TITLE_LENGTH long is truncated. Keep it whole and truncate only when it is longer.",
+      "at": [
+        "52"
+      ],
+      "edits": [
+        {
+          "old": "  return flat.length < TITLE_LENGTH ? flat : `${flat.slice(0, TITLE_LENGTH - 1)}…`;",
+          "new": "  return flat.length <= TITLE_LENGTH ? flat : `${flat.slice(0, TITLE_LENGTH - 1)}…`;",
+          "line": 52
+        }
+      ]
+    }
+  ],
+  "plan": [
+    "Add boundary tests for titleFrom at 42 characters (unchanged) and 43 characters (truncated to 42, ending in \"…\") in src/lib/chat/chat.test.ts, and confirm the 42-character case fails now.",
+    "Change `<` to `<=` in titleFrom (src/lib/chat/store.ts:52).",
+    "Run pnpm check-types && pnpm lint && pnpm test."
+  ],
+  "assumptions": [
+    "The reporter's question came to exactly 42 characters after whitespace was flattened. In that case the \"…\" replaced only the last character, usually the \"?\", so the title looked complete.",
+    "42 characters is meant as the largest title kept whole, and the limit itself is not being changed.",
+    "Titles already saved in localStorage are not recomputed. Only new chats get the corrected title."
+  ],
+  "open_questions": [],
+  "diff": "",
+  "red": "",
+  "retests_left": 0,
+  "commit": "50c141408e067f3a878ad49b131a40f583600034",
+  "tests": [
+    {
+      "path": "src/lib/chat/chat.test.ts",
+      "why": "Add boundary cases to the titleFrom describe: a 42-character text comes back unchanged with no ellipsis, and a 43-character text is 42 long and ends with \"…\".",
+      "at": [
+        "106"
+      ],
+      "edits": []
+    }
+  ],
+  "proof": {
+    "kind": "unit",
+    "how": "In the vitest test, `titleFrom(\"x\".repeat(41) + \"?\")` must equal the input unchanged. On the current code it returns 41 x's followed by \"…\", so the test fails because a title that fits is truncated.",
+    "cases": [
+      {
+        "name": "titleFrom > keeps a title of exactly 42 characters whole",
+        "expect": "titleFrom(\"x\".repeat(41) + \"?\") returns that same 42-character string with no \"…\"",
+        "fails_now": true
+      },
+      {
+        "name": "titleFrom > keeps a 41 character title whole",
+        "expect": "titleFrom(\"x\".repeat(41)) returns \"x\".repeat(41)",
+        "fails_now": false
+      },
+      {
+        "name": "titleFrom > truncates a 43 character title to 42 with an ellipsis",
+        "expect": "titleFrom(\"x\".repeat(43)) returns \"x\".repeat(41) + \"…\" (length 42)",
+        "fails_now": false
+      },
+      {
+        "name": "titleFrom > counts length after flattening whitespace",
+        "expect": "titleFrom(\"  \" + \"x\".repeat(42) + \"\\n\") returns \"x\".repeat(42) with no \"…\"",
+        "fails_now": true
+      }
+    ]
+  },
+  "unknown_paths": [],
+  "trace": "877bcb0d38c3b9cc8b054c95c1ba2611",
+  "record": "",
+  "phase": "plan",
+  "body": "I asked \"What is the difference between RAM and VRAM?\" plus a few words and the sidebar shows the title with a \"…\" at the end, but nothing is actually missing. Longer questions look fine. Minor, just looks sloppy."
+}

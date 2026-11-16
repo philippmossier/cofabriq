@@ -1,7 +1,7 @@
 import { Highlight, type Language, themes } from "prism-react-renderer";
 import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
-import { type DiffFile, parseDiff } from "@/lib/diff";
+import { type DiffFile, lineDiff, parseDiff } from "@/lib/diff";
 import { cn } from "@/lib/utils";
 
 const LANGUAGES: Record<string, Language> = {
@@ -93,10 +93,12 @@ export function CodeLines({
 /** One place of a change as the agent proposes it at the plan gate: its lines
  * as they are (found in the file at `line`) and what they become. Not run. */
 export function ProposedEdit({ path, line, old, next }: { path: string; line: number; old: string; next: string }) {
-  const rows = [
-    ...old.split("\n").map((text, i) => ({ kind: "del" as const, text, n: line + i })),
-    ...(next ? next.split("\n") : []).map((text, i) => ({ kind: "add" as const, text, n: line + i })),
-  ];
+  // only what changes is red or green: the lines both sides share are context
+  const rows = lineDiff(old.split("\n"), next ? next.split("\n") : [], line).map((d) => ({
+    kind: d.kind,
+    text: d.text,
+    n: d.new ?? d.old,
+  }));
   return (
     <pre className="overflow-auto rounded-md border bg-white py-1 font-mono text-xs leading-relaxed">
       <Highlighted

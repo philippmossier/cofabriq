@@ -158,6 +158,16 @@ def test_the_issue_list_is_the_store_of_a_runnable_repo(tmp_path: Path) -> None:
     assert c.get("/api/issues/other/repo").status_code == 404
 
 
+def test_one_issue_comes_with_its_text(tmp_path: Path) -> None:
+    c = api(store(tmp_path, issue(1, "old", body="steps: <b>1</b>")))
+
+    one = c.get(f"/api/issues/{REPO}/1").json()
+
+    assert (one["title"], one["body"], one["flow"]) == ("old", "steps: <b>1</b>", None)
+    assert c.get(f"/api/issues/{REPO}/9").status_code == 404
+    assert c.get("/api/issues/other/repo/1").status_code == 404
+
+
 def test_start_answers_409_with_the_reason(tmp_path: Path, pg_dsn: str) -> None:
     flows = runner(tmp_path, pg_dsn, PrepareFake(refuse="#4 is blocked by #2"))
     c = api(store(tmp_path, issue(4)), flows)

@@ -1,7 +1,7 @@
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { type RunSummary, type Step, useRun, useRuns } from "@/api/generated";
 import { EVAL_TABS, type EvalTab } from "@/lib/evals";
-import { Checks, List, Loading, Missing, Pre, Section, Status, Verdict } from "@/components/bits";
+import { Checks, CopyButton, List, Loading, Missing, Pre, Section, Status, Verdict } from "@/components/bits";
 import { DiffView } from "@/components/code";
 import { ResultCard } from "@/components/result-card";
 import { RunSteps } from "@/components/run-steps";
@@ -101,7 +101,12 @@ function RunTable({ rows }: { rows: RunSummary[] }) {
                 >
                   {r.kind === "run" ? `#${r.number}` : r.key}
                 </Link>
-                {r.kind === "run" && <div className="text-xs text-muted-foreground">{r.repo}</div>}
+                {r.kind === "run" && (
+                  <div className="max-w-md truncate text-xs text-muted-foreground">
+                    {r.title ? `${r.title} · ` : ""}
+                    {r.repo}
+                  </div>
+                )}
               </TableCell>
               <TableCell>
                 <Badge variant="secondary">{r.kind}</Badge>
@@ -183,7 +188,9 @@ export function RunPage() {
             ← Evals
           </Link>
         )}
-        <h1 className="font-heading text-xl font-semibold">{t.kind === "run" ? `#${t.number}` : t.key}</h1>
+        <h1 className="font-heading text-xl font-semibold">
+          {t.kind === "run" ? `#${t.number} ${t.title}` : t.key}
+        </h1>
         <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
           <Badge variant="secondary">{t.kind}</Badge>
           <Status value={t.status} />
@@ -201,7 +208,9 @@ export function RunPage() {
             </>
           )}
           <span>
-            · {t.repo} at {t.commit.slice(0, 7)} · {usd(t.cost_usd)}
+            · {t.repo} at {t.commit.slice(0, 7)}
+            {/* a run's cost is in its result card, with the whole run's */}
+            {t.kind !== "run" && <> · {usd(t.cost_usd)}</>}
           </span>
         </div>
       </div>
@@ -255,11 +264,15 @@ export function RunPage() {
               </CardHeader>
               <CardContent className="space-y-3">
                 <p className="text-sm">{r.summary}</p>
-                <List
-                  items={r.findings.map(
-                    (f) => `[${f.severity}] ${f.path}${f.line ? `:${f.line}` : ""}: ${f.text}`,
-                  )}
-                />
+                {r.findings.length > 0 ? (
+                  <List
+                    items={r.findings.map(
+                      (f) => `[${f.severity}] ${f.path}${f.line ? `:${f.line}` : ""}: ${f.text}`,
+                    )}
+                  />
+                ) : (
+                  <p className="text-sm text-muted-foreground">No findings.</p>
+                )}
                 {r.proofs.map((p, i) => (
                   <div key={i} className="space-y-1 rounded-md border p-3 text-sm">
                     <div className="flex items-center gap-2">
@@ -302,9 +315,17 @@ export function RunPage() {
       </Section>
 
       {t.pr_body && (
-        <Section title="Draft PR body">
-          <Pre text={t.pr_body} />
-        </Section>
+        <div id="draft-pr" className="scroll-mt-6">
+          <Section title="Draft PR body">
+            <div className="flex items-center gap-3">
+              <CopyButton text={t.pr_body} />
+              <span className="text-xs text-muted-foreground">
+                {t.pr_url ? "as opened on GitHub" : "dry run: not on GitHub (`cofabriq run --apply` opens one)"}
+              </span>
+            </div>
+            <Pre text={t.pr_body} className="max-h-none" />
+          </Section>
+        </div>
       )}
     </div>
   );

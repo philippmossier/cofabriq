@@ -52,6 +52,7 @@ def test_runs_list_and_trace(tmp_path: Path) -> None:
         True,
         2,
     )
+    assert run["title"] == ""  # an eval case is no issue in the store
     trace = c.get("/api/runs/eval-20261018T010203/bug").json()
     assert [s["phase"] for s in trace["steps"]] == ["build", "build"]
     assert trace["gate"] is None and trace["rounds"] == []

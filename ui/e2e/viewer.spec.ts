@@ -1,4 +1,7 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { type Page, expect, test } from "@playwright/test";
+import type { RunStep, StepTree } from "../src/api/generated.ts";
 
 // The viewer on recorded runs of the playground (e2e/fixtures/data): what each page shows.
 // Fixtures: #51 (approved, a two-part run with a plan gate), #8 (approved with two open
@@ -22,10 +25,20 @@ test("the viewer opens on Issues, read-only without the gate's link", async ({ p
   await expect(row.getByRole("button", { name: "Start" })).toBeDisabled();
 });
 
+test("an issue opens in place, as text, before anything is paid for", async ({ page }) => {
+  await page.goto("/issues");
+
+  await page.getByRole("button", { name: /#51 Chat title/ }).click();
+
+  await expect(page.getByTestId("issue-text")).toContainText("RAM and VRAM");
+  await expect(page.getByText(/As last fetched .* Start reads it fresh/)).toBeVisible();
+});
+
 test("Runs lists the runs on issues; the benchmark runs are under Evals", async ({ page }) => {
   await page.goto("/runs");
 
   await expect(page.getByRole("link", { name: "#51" })).toBeVisible();
+  await expect(page.getByText(/Chat title is cut off .* · philippmossier/)).toBeVisible();
   await expect(page.getByRole("link", { name: "#8" })).toBeVisible();
   await expect(page.getByText("reload-active-chat-right")).toHaveCount(0);
 
@@ -119,4 +132,155 @@ test("in the agent's text a `span` is code and a fence stays as written", async 
   await expect(cause.locator("code", { hasText: "inline" })).toBeVisible();
   await expect(cause).toContainText("```");
   await expect(cause.locator("code", { hasText: "print(1)" })).toHaveCount(0);
+});
+
+// A flow lives in Postgres, which this server doesn't have: its API answers are replayed
+// from the journey of 2026-11-15 (e2e/fixtures/flows), its steps and run from the fixtures.
+const FLOW = "/flows/philippmossier/local-ai-chat-playground/51";
+
+async function replayFlow(page: Page, fixture: string, change: Record<string, unknown> = {}) {
+  const flow = {
+    ...JSON.parse(readFileSync(path.join(import.meta.dirname, "fixtures", "flows", fixture), "utf-8")),
+    ...change,
+  };
+  await page.route("**/api/flows/philippmossier/local-ai-chat-playground/51", (route) =>
+    route.fulfill({ json: flow }),
+  );
+  await page.route("**/api/flows", (route) => route.fulfill({ json: [flow] }));
+}
+
+const progress = (page: Page) => page.getByRole("list", { name: "progress" });
+
+test("a plan gate: where the flow is, what to check, the issue, the answer at hand", async ({ page }) => {
+  // a longer report than the recorded one: three lines, then "show more"
+  const body = `I asked "What is the difference between RAM and VRAM?" and the title is cut off.\n\n${"More detail. ".repeat(60)}`;
+  await replayFlow(page, "plan-gate.json", { body });
+  await page.goto(FLOW);
+
+  // the question is the answer bar's label; the spec's summary is in the header
+  const bar = page.getByRole("region", { name: "your answer" });
+  await expect(bar.getByTestId("flow-state")).toHaveText(/^Approve the plan\?/);
+  await expect(
+    page.getByText("size S · 1 file to change · tests in 1 file · proven by a unit test · 3 things to check"),
+  ).toBeVisible();
+  await expect(progress(page).locator('[aria-current="step"]')).toHaveText(/Plan/);
+  const issue = section(page, "The issue, as reported");
+  await expect(issue.getByRole("link", { name: "GitHub" })).toHaveAttribute("href", /\/issues\/51$/);
+  const clamped = (await issue.getByTestId("issue-text").boundingBox())!.height;
+  await issue.getByRole("button", { name: "show more" }).click();
+  expect((await issue.getByTestId("issue-text").boundingBox())!.height).toBeGreaterThan(2 * clamped);
+  await expect(issue.getByTestId("issue-text")).toContainText("More detail. More detail.");
+  await expect(issue.getByRole("button", { name: "show less" })).toBeVisible();
+  const cause = section(page, "The cause");
+  // the cause leads in two sentences, the evidence is one click away
+  await expect(cause.getByText(/^The chat title is made by/)).toBeVisible();
+  await expect(cause.getByText(/how the agent found it \(\d+ sentences\)/)).toBeVisible();
+  await expect(cause.getByText(/checks only 100-character input/)).toBeHidden();
+  // the planned test reads as one: the cases that fail now, the ones that must stay
+  const proof = section(page, "The proof: a test written before any code, which must fail first");
+  const red = proof.getByRole("listitem").filter({ hasText: "keeps a title of exactly 42 characters whole" });
+  await expect(red).toContainText("✗");
+  await expect(red).toContainText("fails now");
+  await expect(proof.getByText("passes now, must stay")).toHaveCount(2);
+  await expect(proof.getByText(/Add boundary cases/)).toBeHidden(); // the writer's notes, folded
+  // the steps so far are context at a gate: one line, the tree folded
+  await expect(page.getByText(/^Steps so far: \d+ agent sessions · .* · \$\d/)).toBeVisible();
+  await expect(page.getByText("Refine: read the code, write a spec")).toBeHidden();
+  // waiting for you: in the nav and the tab's title
+  await expect(page.getByRole("link", { name: /Flows\s*1/ })).toBeVisible();
+  await expect(page).toHaveTitle("(1) waiting · cofabriq");
+
+  // the answer stays on screen at the end of a long page; read-only without the link
+  await page.mouse.wheel(0, 20_000);
+  await expect(bar).toBeInViewport();
+  await expect(bar.getByRole("button", { name: "Approve", exact: true })).toBeDisabled();
+  await expect(bar.getByText("Read-only here")).toBeVisible();
+});
+
+test("a sketch marks only the lines it changes", async ({ page }) => {
+  // a one-line insert into a block, as refine sketched it for #71 (old and new both whole)
+  const plan = JSON.parse(readFileSync(path.join(import.meta.dirname, "fixtures", "flows", "plan-gate.json"), "utf-8"));
+  const edit = {
+    old: "    } finally {\n      writingChat.current = null;\n      inFlight.current = null;",
+    new: "    } finally {\n      setGenerating(false);\n      writingChat.current = null;\n      inFlight.current = null;",
+    line: 285,
+  };
+  await replayFlow(page, "plan-gate.json", { files: [{ ...plan.files[0], edits: [edit] }] });
+  await page.goto(FLOW);
+
+  const sketch = section(page, "The change").locator("pre").first();
+  await expect(sketch.locator(".bg-emerald-50")).toHaveCount(1);
+  await expect(sketch.locator(".bg-emerald-50")).toContainText("setGenerating(false);");
+  await expect(sketch.locator(".bg-red-50")).toHaveCount(0);
+  await expect(sketch).toContainText("writingChat.current = null;"); // as context
+});
+
+test("a test gate: how it fails first, the plan folded, Write it again needs a reason", async ({ page }) => {
+  await replayFlow(page, "test-gate.json");
+  const answers: unknown[] = [];
+  await page.route("**/api/flows/philippmossier/local-ai-chat-playground/51/answer", (route) => {
+    answers.push(route.request().postDataJSON());
+    return route.fulfill({ json: { started: true } });
+  });
+  await page.goto("/#token=e2e"); // the gate's link: the token goes to sessionStorage
+  await page.goto(FLOW);
+
+  await expect(page.getByTestId("flow-state")).toHaveText(/^Approve the test\?/);
+  await expect(progress(page).locator('[aria-current="step"]')).toHaveText(/Test/);
+  await expect(section(page, "How it fails on the unchanged code")).toContainText(
+    "keeps a text of exactly 42 characters whole",
+  );
+  // approved already: folded, one click away
+  await expect(page.getByText("The plan you approved")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "The cause" })).toBeHidden();
+
+  const bar = page.getByRole("region", { name: "your answer" });
+  const again = bar.getByRole("button", { name: "Write it again (2 left)" });
+  await expect(bar.getByRole("button", { name: "Approve and freeze" })).toBeEnabled();
+  await expect(again).toBeDisabled();
+  await bar.getByRole("textbox", { name: "reason" }).fill("test the 43-character case too");
+  await again.click();
+  await expect.poll(() => answers).toEqual([
+    { approve: false, reason: "test the 43-character case too", again: true },
+  ]);
+});
+
+test("while it works: the part it is in, and the step running now", async ({ page }) => {
+  // the test gate approved, the build under way: its recorded steps with the last one open
+  const flow = JSON.parse(readFileSync(path.join(import.meta.dirname, "fixtures", "flows", "done.json"), "utf-8"));
+  Object.assign(flow, { running: true, phase: "build", outcome: "tested", record: "" });
+  await page.route("**/api/flows/philippmossier/local-ai-chat-playground/51", (r) => r.fulfill({ json: flow }));
+  await page.route("**/api/flows", (r) => r.fulfill({ json: [flow] }));
+  await page.route(`**/api/traces/${flow.trace}`, async (route) => {
+    const res = await route.fetch();
+    const tree = (await res.json()) as StepTree;
+    const open = (s: RunStep | undefined): RunStep => Object.assign(s!, { status: "running", ms: null });
+    const root = open(tree.steps.at(-1));
+    const build = open(root.children.find((c) => c.title.startsWith("Build")));
+    open(build.children[0]);
+    await route.fulfill({ response: res, json: tree });
+  });
+  await page.goto(FLOW);
+
+  await expect(page.getByTestId("flow-state")).toHaveText(/^Building the fix against your test/);
+  await expect(progress(page).locator('[aria-current="step"]')).toHaveText(/Build/);
+  await expect(page.getByText(/^Now: Build: fix the code against the test · Agent session: claude-/)).toBeVisible();
+  await expect(page.getByRole("region", { name: "your answer" })).toHaveCount(0);
+});
+
+test("a finished flow: the result first, one cost, the PR body a click away", async ({ page }) => {
+  await replayFlow(page, "done.json");
+  await page.goto(FLOW);
+
+  await expect(page.getByTestId("flow-state")).toHaveText("Done: approved");
+  await expect(progress(page).getByText("Draft PR")).toBeVisible();
+  await expect(progress(page).locator('[aria-current="step"]')).toHaveCount(0);
+  const card = page.locator('[data-slot="card"]', { hasText: "Fixed:" }).last();
+  await expect(card).toContainText(/list price for the whole run: \d+ agent sessions/);
+  await expect(page.getByRole("region", { name: "your answer" })).toHaveCount(0);
+
+  await card.getByRole("link", { name: "the draft PR body" }).click();
+  await expect(page).toHaveURL(new RegExp(`/runs/${R51}/51#draft-pr$`));
+  await expect(page.getByRole("heading", { name: /^#51 Chat title is cut off/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Copy", exact: true })).toBeVisible();
 });

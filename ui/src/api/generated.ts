@@ -34,6 +34,13 @@ export interface Answered {
   started: boolean;
 }
 
+export interface CaseNote {
+  name: string;
+  expect: string;
+  /** Fails on the code as it is now: the bug. */
+  fails_now: boolean;
+}
+
 export interface Check {
   name: string;
   ok: boolean;
@@ -112,6 +119,19 @@ export const FlowSummaryWaiting = {
   test: 'test',
 } as const;
 
+export type Phase = typeof Phase[keyof typeof Phase];
+
+
+export const Phase = {
+  spec: 'spec',
+  plan: 'plan',
+  test: 'test',
+  test_gate: 'test_gate',
+  build: 'build',
+  review: 'review',
+  done: 'done',
+} as const;
+
 /**
  * A run in the browser gate: where it waits, or how it ended.
  */
@@ -123,6 +143,8 @@ export interface FlowSummary {
   route: FlowSummaryRoute;
   waiting: FlowSummaryWaiting;
   running: boolean;
+  /** The part of the run it is in, waits at, or ended in. */
+  phase: Phase;
   outcome: string;
   error: string;
 }
@@ -159,6 +181,8 @@ export const ProofNoteKind = {
 export interface ProofNote {
   kind: ProofNoteKind;
   how: string;
+  /** The planned cases; empty for a feature and older specs. */
+  cases: CaseNote[];
 }
 
 export interface FlowView {
@@ -169,8 +193,12 @@ export interface FlowView {
   route: FlowViewRoute;
   waiting: FlowViewWaiting;
   running: boolean;
+  /** The part of the run it is in, waits at, or ended in. */
+  phase: Phase;
   outcome: string;
   error: string;
+  /** The issue as it was read at the start: untrusted, show as text. */
+  body: string;
   size: string | null;
   problem: string;
   criteria: string[];
@@ -218,6 +246,25 @@ export interface IssueRow {
   url: string;
   /** Its flow, where it waits or how it ended; null: none yet. */
   flow: FlowSummary | null;
+}
+
+/**
+ * One stored issue with its text, to read before starting a flow.
+ */
+export interface IssueView {
+  number: number;
+  title: string;
+  /** `open` or `closed`, as last fetched. */
+  state: string;
+  labels: string[];
+  comments: number;
+  updated_at: string;
+  /** The issue on GitHub. */
+  url: string;
+  /** Its flow, where it waits or how it ended; null: none yet. */
+  flow: FlowSummary | null;
+  /** Untrusted: show it as text. */
+  body: string;
 }
 
 export interface JsonValue {}
@@ -350,6 +397,7 @@ export interface RunSummary {
   kind: RunKind;
   repo: string;
   number: number;
+  title: string;
   status: string;
   judge: boolean | null;
   valid: boolean | null;
@@ -364,6 +412,7 @@ export interface RunTrace {
   kind: RunKind;
   repo: string;
   number: number;
+  title: string;
   status: string;
   judge: boolean | null;
   valid: boolean | null;
@@ -1806,6 +1855,150 @@ export function useIssues<TData = Awaited<ReturnType<typeof issues>>, TError = H
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getIssuesQueryOptions(owner,name,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export type issueResponse200 = {
+  data: IssueView
+  status: 200
+}
+
+export type issueResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type issueResponseSuccess = (issueResponse200) & {
+  headers: Headers;
+};
+export type issueResponseError = (issueResponse422) & {
+  headers: Headers;
+};
+
+export type issueResponse = (issueResponseSuccess | issueResponseError)
+
+export const getIssueUrl = (owner: string,
+    name: string,
+    number: number,) => {
+
+
+
+
+  return `/api/issues/${owner}/${name}/${number}`
+}
+
+/**
+ * One stored issue with its text, as last fetched.
+ * @summary Issue
+ */
+export const issue = async (owner: string,
+    name: string,
+    number: number, options?: RequestInit): Promise<issueResponse> => {
+
+  const res = await fetch(getIssueUrl(owner,name,number),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: issueResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as issueResponse
+}
+
+
+
+
+
+export const getIssueQueryKey = (owner: string,
+    name: string,
+    number: number,) => {
+    return [
+    `/api/issues/${owner}/${name}/${number}`
+    ] as const;
+    }
+
+
+export const getIssueQueryOptions = <TData = Awaited<ReturnType<typeof issue>>, TError = HTTPValidationError>(owner: string,
+    name: string,
+    number: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof issue>>, TError, TData>>, fetch?: RequestInit}
+) => {
+
+const {query: queryOptions, fetch: fetchOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getIssueQueryKey(owner,name,number);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof issue>>> = ({ signal }) => issue(owner,name,number, { signal, ...fetchOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: owner !== null && owner !== undefined && name !== null && name !== undefined && number !== null && number !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof issue>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type IssueQueryResult = NonNullable<Awaited<ReturnType<typeof issue>>>
+export type IssueQueryError = HTTPValidationError
+
+
+export function useIssue<TData = Awaited<ReturnType<typeof issue>>, TError = HTTPValidationError>(
+ owner: string,
+    name: string,
+    number: number, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof issue>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof issue>>,
+          TError,
+          Awaited<ReturnType<typeof issue>>
+        > , 'initialData'
+      >, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useIssue<TData = Awaited<ReturnType<typeof issue>>, TError = HTTPValidationError>(
+ owner: string,
+    name: string,
+    number: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof issue>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof issue>>,
+          TError,
+          Awaited<ReturnType<typeof issue>>
+        > , 'initialData'
+      >, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useIssue<TData = Awaited<ReturnType<typeof issue>>, TError = HTTPValidationError>(
+ owner: string,
+    name: string,
+    number: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof issue>>, TError, TData>>, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Issue
+ */
+
+export function useIssue<TData = Awaited<ReturnType<typeof issue>>, TError = HTTPValidationError>(
+ owner: string,
+    name: string,
+    number: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof issue>>, TError, TData>>, fetch?: RequestInit}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getIssueQueryOptions(owner,name,number,options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 

@@ -1,6 +1,7 @@
 import { type ReactNode, useState } from "react";
 import { type FileNote, type ProofNote, useCode } from "@/api/generated";
 import { cn } from "@/lib/utils";
+import { PROOF_SHORT, specFacts } from "@/lib/spec";
 import { List, Section } from "@/components/bits";
 import { CodeLines, ProposedEdit } from "@/components/code";
 import { Badge } from "@/components/ui/badge";
@@ -23,15 +24,14 @@ export type SpecLike = {
 };
 
 /** How the fix is proven, as the spec says: a proxy is a stand-in to judge. */
-const PROOF: Record<ProofNote["kind"], { short: string; label: string; tone: string }> = {
-  unit: { short: "unit test", label: "A unit test:", tone: "border-emerald-500" },
-  browser: { short: "browser test", label: "A browser test:", tone: "border-emerald-500" },
+const PROOF: Record<ProofNote["kind"], { label: string; tone: string }> = {
+  unit: { label: "A unit test:", tone: "border-emerald-500" },
+  browser: { label: "A browser test:", tone: "border-emerald-500" },
   proxy: {
-    short: "stand-in measure",
     label: "A stand-in measure (judge whether it measures the reported problem):",
     tone: "border-amber-500 bg-amber-50",
   },
-  none: { short: "nothing: no test can", label: "No test can prove it here:", tone: "border-destructive bg-red-50" },
+  none: { label: "No test can prove it here:", tone: "border-destructive bg-red-50" },
 };
 
 // `src/lib/chat/store.ts:52`, `store.ts:48`, `a.tsx:97-117`
@@ -167,9 +167,14 @@ function CurrentCode({ s, path, span, open: initial }: { s: SpecLike; path: stri
   );
   const c = q.data;
   const where = !span ? "" : span.from === span.to ? `, line ${span.from}` : `, lines ${span.from}-${span.to}`;
+  // why these lines are shown: the change touches them, or the spec only cites them
+  const why = !span ? "" : [...span.marks.values()].includes("change") ? " (the change)" : " (cited in the spec)";
   return (
     <details open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
-      <summary className="text-xs text-muted-foreground">current code{where}</summary>
+      <summary className="cursor-pointer text-xs text-muted-foreground">
+        current code{where}
+        {why}
+      </summary>
       {open && q.isPending && <p className="text-xs text-muted-foreground">Loading…</p>}
       {open && !q.isPending && !c && <p className="text-xs text-muted-foreground">Not in the local clone.</p>}
       {c && (
@@ -209,31 +214,106 @@ function FileLink({ s, path, line }: { s: SpecLike; path: string; line?: number 
   );
 }
 
+/** The agent's prose in sentences: a sentence ends at . ! or ? before
+ * white space and a capital, a backtick or a parenthesis ("e.g. a",
+ * "store.ts:5" don't end one). Line breaks inside one stay, so a fence
+ * keeps its lines. */
+function sentences(text: string): string[] {
+  return text
+    .split(/(?<=[.!?])\s+(?=[A-Z`(])/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+}
+
+/** The cause as a lead (what is wrong, where: the first sentences, about
+ * two lines) and the evidence behind it, folded in short paragraphs. */
+function Cause({ s }: { s: SpecLike }) {
+  const all = sentences(s.problem);
+  let lead = 1;
+  while (lead < all.length && lead < 3 && all.slice(0, lead).join(" ").length < 160) lead++;
+  const rest = all.slice(lead);
+  const paras: string[] = [];
+  for (let i = 0; i < rest.length; i += 3) paras.push(rest.slice(i, i + 3).join(" "));
+  return (
+    <div className="space-y-2">
+      <p className="text-[0.95rem] leading-relaxed">
+        <SpecText s={s} text={all.slice(0, lead).join(" ")} />
+      </p>
+      {paras.length > 0 && (
+        <details className="group">
+          <summary className="cursor-pointer text-xs text-muted-foreground select-none">
+            how the agent found it ({rest.length} {rest.length === 1 ? "sentence" : "sentences"})
+          </summary>
+          <div className="mt-2 space-y-2 border-l-2 pl-3 text-sm leading-relaxed text-muted-foreground">
+            {paras.map((p, i) => (
+              <p key={i}>
+                <SpecText s={s} text={p} />
+              </p>
+            ))}
+          </div>
+        </details>
+      )}
+    </div>
+  );
+}
+
+/** The planned test as the runner will print it: the cases that must fail
+ * now (the bug) red, the ones that must stay as they are green. */
+function PlannedTest({ s }: { s: SpecLike }) {
+  const cases = s.proof?.cases ?? [];
+  return (
+    <div className="rounded-md border bg-muted/30 p-3 font-mono text-xs">
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        {s.tests.map((t) => (
+          <FileLink key={t.path} s={s} path={t.path} />
+        ))}
+        {s.proof && <span className="font-sans text-muted-foreground">{PROOF_SHORT[s.proof.kind]}</span>}
+      </div>
+      <ul className="space-y-1.5">
+        {cases.map((c, i) => (
+          <li key={i} className="grid grid-cols-[1rem_1fr] gap-x-2">
+            <span className={c.fails_now ? "text-destructive" : "text-emerald-700"}>{c.fails_now ? "✗" : "✓"}</span>
+            <span>
+              <span className="font-medium text-foreground">{c.name}</span>
+              <span className="ml-2 rounded bg-background px-1 font-sans text-[0.7rem] text-muted-foreground">
+                {c.fails_now ? "fails now" : "passes now, must stay"}
+              </span>
+            </span>
+            <span />
+            <span className="font-sans text-muted-foreground">
+              <SpecText s={s} text={c.expect} />
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 /** A spec in the order a reviewer reads it: the cause, the change with the
- * code as it is now, the proof, what to check, then the steps. */
-export function SpecReview({ s }: { s: SpecLike }) {
-  const n = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
+ * code as it is now, the proof, what to check, then the steps. `facts`:
+ * its summary line (`specFacts`); off where the page header carries it. */
+export function SpecReview({ s, facts = true }: { s: SpecLike; facts?: boolean }) {
   const texts = [s.problem, ...s.plan, ...s.assumptions];
   const toCheck = s.assumptions.length + s.open_questions.length;
+  const cases = s.proof?.cases ?? [];
+  // the code around a sketch is folded: the colours only matter without one
+  const marked = s.files.some((f) => f.edits.length === 0 && !s.unknown_paths.includes(f.path));
   return (
     <div className="space-y-6">
-      <p className="text-sm text-muted-foreground">
-        {s.route} · size {s.size ?? "?"} · {n(s.files.length, "file changes", "files change")} · tests in{" "}
-        {n(s.tests.length, "file", "files")}
-        {s.proof && <> · proven by a {PROOF[s.proof.kind].short}</>} · {n(toCheck, "thing", "things")} to check
-      </p>
+      {facts && <p className="text-sm text-muted-foreground">{[s.route, ...specFacts(s)].join(" · ")}</p>}
 
       <Section title="The cause">
-        <p className="text-sm leading-relaxed">
-          <SpecText s={s} text={s.problem} />
-        </p>
+        <Cause s={s} />
       </Section>
 
       <Section title="The change">
-        <p className="text-xs text-muted-foreground">
-          <span className="rounded bg-amber-200/70 px-1">yellow</span>: the lines the change touches ·{" "}
-          <span className="rounded bg-sky-100 px-1">blue</span>: lines the spec only mentions
-        </p>
+        {marked && (
+          <p className="text-xs text-muted-foreground">
+            <span className="rounded bg-amber-200/70 px-1">yellow</span>: the lines the change touches ·{" "}
+            <span className="rounded bg-sky-100 px-1">blue</span>: lines the spec only mentions
+          </p>
+        )}
         <div className="space-y-4">
           {s.files.map((f) => {
             const spans = spansIn(s, f, texts);
@@ -285,23 +365,54 @@ export function SpecReview({ s }: { s: SpecLike }) {
             : "The proof: a test written before any code, which must fail first"
         }
       >
-        {s.proof && (
-          <div className={cn("rounded-md border-l-4 py-1 pl-3 text-sm", PROOF[s.proof.kind].tone)}>
-            <span className="font-medium">{PROOF[s.proof.kind].label}</span>{" "}
-            <SpecText s={s} text={s.proof.how} />
-          </div>
+        {cases.length > 0 ? (
+          <>
+            <PlannedTest s={s} />
+            {s.proof!.kind === "proxy" && (
+              <div className={cn("rounded-md border-l-4 py-1 pl-3 text-sm", PROOF.proxy.tone)}>
+                <span className="font-medium">{PROOF.proxy.label}</span> <SpecText s={s} text={s.proof!.how} />
+              </div>
+            )}
+          </>
+        ) : (
+          s.proof && (
+            <div className={cn("rounded-md border-l-4 py-1 pl-3 text-sm", PROOF[s.proof.kind].tone)}>
+              <span className="font-medium">{PROOF[s.proof.kind].label}</span>{" "}
+              <SpecText s={s} text={s.proof.how} />
+            </div>
+          )
         )}
         {s.route === "feature" && <List items={s.criteria} ordered />}
-        <ul className="space-y-1.5 text-sm">
-          {s.tests.map((t) => (
-            <li key={t.path}>
-              <FileLink s={s} path={t.path} />{" "}
-              <span className="text-muted-foreground">
-                <SpecText s={s} text={t.why} />
-              </span>
-            </li>
-          ))}
-        </ul>
+        {cases.length > 0 ? (
+          <details>
+            <summary className="cursor-pointer text-xs text-muted-foreground select-none">
+              the test writer's notes: how it fails now, where it goes
+            </summary>
+            <div className="mt-2 space-y-1.5 text-sm text-muted-foreground">
+              {s.proof && (
+                <p>
+                  <SpecText s={s} text={s.proof.how} />
+                </p>
+              )}
+              {s.tests.map((t) => (
+                <p key={t.path}>
+                  <code className="text-xs">{t.path}</code>: <SpecText s={s} text={t.why} />
+                </p>
+              ))}
+            </div>
+          </details>
+        ) : (
+          <ul className="space-y-1.5 text-sm">
+            {s.tests.map((t) => (
+              <li key={t.path}>
+                <FileLink s={s} path={t.path} />{" "}
+                <span className="text-muted-foreground">
+                  <SpecText s={s} text={t.why} />
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
       </Section>
 
       <Section title="Check these: where the agent guessed, what it couldn't answer">
