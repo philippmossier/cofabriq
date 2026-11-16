@@ -97,6 +97,24 @@ export function RunSteps({ run, live = false }: { run: string; live?: boolean })
   );
 }
 
+/** The steps so far in one line, the tree one click away: at a gate they
+ * are context, not what is judged. */
+export function StepsFold({ run }: { run: string }) {
+  const q = useTrace(run, { query: { select: (r) => (r.status === 200 ? r.data.totals : null) } });
+  const t = q.data;
+  const sum = t
+    ? `: ${t.agents} agent ${t.agents === 1 ? "session" : "sessions"} · ${duration(t.seconds)} · ${usd(t.cost_usd)}`
+    : "";
+  return (
+    <details className="group">
+      <summary className="cursor-pointer text-sm text-muted-foreground select-none">Steps so far{sum}</summary>
+      <div className="mt-3">
+        <RunSteps run={run} />
+      </div>
+    </details>
+  );
+}
+
 type RowProps = {
   run: string;
   step: RunStep;

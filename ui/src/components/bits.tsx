@@ -4,28 +4,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-/** A titled block of the spec or trace. `check`: at a gate, what to look
- * for in it, said where it is read rather than in a list up front.
- * `aside`: a small link or note on the title's line. */
-export function Section({
-  title,
-  check,
-  aside,
-  children,
-}: {
-  title: string;
-  check?: string;
-  aside?: ReactNode;
-  children: ReactNode;
-}) {
+/** A titled block of the spec or trace. `aside`: a small link or note on
+ * the title's line. */
+export function Section({ title, aside, children }: { title: string; aside?: ReactNode; children: ReactNode }) {
   return (
     <section className="space-y-2">
-      <div>
-        <div className="flex items-baseline gap-3">
-          <h3 className="text-sm font-medium text-muted-foreground">{title}</h3>
-          {aside}
-        </div>
-        {check && <p className="text-xs text-primary">Check: {check}</p>}
+      <div className="flex items-baseline gap-3">
+        <h3 className="font-heading text-[0.95rem] font-semibold">{title}</h3>
+        {aside}
       </div>
       {children}
     </section>

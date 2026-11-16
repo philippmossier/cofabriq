@@ -70,7 +70,8 @@ test(`#${ISSUE} (${ROUTE}): Start, the gates, the result`, async ({ page }) => {
   const started = Date.now();
   const token = readFileSync(TOKEN_FILE, "utf-8").trim();
   await page.goto(`/#token=${token}`);
-  await expect(page.getByText("you can start and approve")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Issues" })).toBeVisible();
+  await expect(page.getByText("read-only", { exact: true })).toHaveCount(0); // the token was taken
 
   // Issues: Start, or Start again when the issue's flow has ended; a flow still at a
   // gate (an earlier journey stopped there) is opened and goes on from that gate

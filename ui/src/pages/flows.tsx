@@ -22,7 +22,7 @@ import { FlowProgress, FlowState } from "@/components/flow-progress";
 import { GateBar, type Sent } from "@/components/gate";
 import { GitHubLink, IssueText } from "@/components/issue-text";
 import { specFacts } from "@/lib/spec";
-import { RunSteps } from "@/components/run-steps";
+import { RunSteps, StepsFold } from "@/components/run-steps";
 import { SpecReview } from "@/components/spec-review";
 import { useWriteToken } from "@/lib/token";
 
@@ -137,11 +137,16 @@ export function FlowPage() {
   const spec = f.problem ? <SpecReview s={f} facts={false} /> : null;
   const github = <GitHubLink url={issueUrl(f.repo, f.number)} />;
   const issue = <IssueText body={f.body} />;
-  const steps = f.trace && (
-    <Section title="Steps: what ran, what it cost, why">
-      <RunSteps run={f.trace} live={f.running} />
-    </Section>
-  );
+  // at a gate the steps so far are context, not what is judged: folded
+  const steps =
+    f.trace &&
+    (f.waiting ? (
+      <StepsFold run={f.trace} />
+    ) : (
+      <Section title="Steps: what ran, what it cost, why">
+        <RunSteps run={f.trace} live={f.running} />
+      </Section>
+    ));
 
   return (
     // room for the fixed answer bar, so it never covers the page's end
@@ -161,13 +166,11 @@ export function FlowPage() {
           >
             <ExternalLink className="size-4" />
           </a>
+          <span className="text-sm font-normal text-muted-foreground">{f.repo}</span>
         </h1>
         <p className="flex flex-wrap items-center gap-x-1.5 text-sm text-muted-foreground">
           <Badge variant="secondary">{f.route}</Badge>
-          {(f.problem ? specFacts(f) : []).map((fact) => (
-            <span key={fact}>{fact} ·</span>
-          ))}
-          <span>{f.repo}</span>
+          <span>{(f.problem ? specFacts(f) : []).join(" · ")}</span>
         </p>
         <FlowProgress f={f} />
         {f.error && <p className="text-sm text-destructive">{f.error}</p>}
@@ -207,26 +210,24 @@ export function FlowPage() {
           <Section title="The issue, as reported" aside={github}>
             {issue}
           </Section>
-          {f.problem && <SpecReview s={f} gate facts={false} />}
+          {spec}
         </>
       )}
 
       {f.waiting === "test" && (
         <>
-          <Section
-            title="How it fails on the unchanged code"
-            check="is this the reported problem? A test can fail for a reason the issue never asked about; here a wrong reason is still cheap to catch."
-          >
+          <Section title="How it fails on the unchanged code">
+            <p className="text-sm text-muted-foreground">
+              Is this the reported problem? A test can fail for a reason the issue never asked about; here a
+              wrong reason is still cheap to catch.
+            </p>
             <Pre text={failureLines(f.red).join("\n") || "(no failing line found: see the full output)"} />
             <details>
               <summary className="text-xs text-muted-foreground">the full output</summary>
               <Pre text={f.red} />
             </details>
           </Section>
-          <Section
-            title="The test (frozen once approved)"
-            check="does it test what the issue describes, not an implementation detail? The build must make exactly this pass."
-          >
+          <Section title="The test (frozen once approved)">
             <DiffView diff={f.diff} />
           </Section>
           {spec && <Fold title="The plan you approved: cause, change, proof">{spec}</Fold>}

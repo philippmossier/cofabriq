@@ -167,9 +167,14 @@ function CurrentCode({ s, path, span, open: initial }: { s: SpecLike; path: stri
   );
   const c = q.data;
   const where = !span ? "" : span.from === span.to ? `, line ${span.from}` : `, lines ${span.from}-${span.to}`;
+  // why these lines are shown: the change touches them, or the spec only cites them
+  const why = !span ? "" : [...span.marks.values()].includes("change") ? " (the change)" : " (cited in the spec)";
   return (
     <details open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
-      <summary className="text-xs text-muted-foreground">current code{where}</summary>
+      <summary className="cursor-pointer text-xs text-muted-foreground">
+        current code{where}
+        {why}
+      </summary>
       {open && q.isPending && <p className="text-xs text-muted-foreground">Loading…</p>}
       {open && !q.isPending && !c && <p className="text-xs text-muted-foreground">Not in the local clone.</p>}
       {c && (
@@ -286,10 +291,9 @@ function PlannedTest({ s }: { s: SpecLike }) {
 }
 
 /** A spec in the order a reviewer reads it: the cause, the change with the
- * code as it is now, the proof, what to check, then the steps. `gate`: it
- * is being judged, so each part says what to check in it. `facts`: its
- * summary line (`specFacts`); off where the page header carries it. */
-export function SpecReview({ s, gate = false, facts = true }: { s: SpecLike; gate?: boolean; facts?: boolean }) {
+ * code as it is now, the proof, what to check, then the steps. `facts`:
+ * its summary line (`specFacts`); off where the page header carries it. */
+export function SpecReview({ s, facts = true }: { s: SpecLike; facts?: boolean }) {
   const texts = [s.problem, ...s.plan, ...s.assumptions];
   const toCheck = s.assumptions.length + s.open_questions.length;
   const cases = s.proof?.cases ?? [];
@@ -299,11 +303,11 @@ export function SpecReview({ s, gate = false, facts = true }: { s: SpecLike; gat
     <div className="space-y-6">
       {facts && <p className="text-sm text-muted-foreground">{[s.route, ...specFacts(s)].join(" · ")}</p>}
 
-      <Section title="The cause" check={gate ? "does it point at the code the issue is about?" : undefined}>
+      <Section title="The cause">
         <Cause s={s} />
       </Section>
 
-      <Section title="The change" check={gate ? "is it no bigger than the cause needs?" : undefined}>
+      <Section title="The change">
         {marked && (
           <p className="text-xs text-muted-foreground">
             <span className="rounded bg-amber-200/70 px-1">yellow</span>: the lines the change touches ·{" "}
@@ -359,13 +363,6 @@ export function SpecReview({ s, gate = false, facts = true }: { s: SpecLike; gat
           s.route === "feature"
             ? "The proof: acceptance criteria, each one test, frozen before the build"
             : "The proof: a test written before any code, which must fail first"
-        }
-        check={
-          !gate
-            ? undefined
-            : s.route === "feature"
-              ? "does each criterion say what the request asks, checkable by one test?"
-              : "would the red case fail for the reported reason, not a nearby one?"
         }
       >
         {cases.length > 0 ? (

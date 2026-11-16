@@ -11,8 +11,8 @@ export function Layout() {
   const tab = "rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground";
   const active = { className: "bg-muted text-foreground" };
   return (
-    <div className="mx-auto max-w-6xl px-6 py-6">
-      <header className="mb-6 flex items-center gap-6">
+    <div className="mx-auto max-w-6xl px-6 py-5">
+      <header className="mb-3 flex items-center gap-6">
         <span className="font-heading text-lg font-semibold">cofabriq</span>
         <nav className="flex gap-1">
           <Link to="/issues" className={tab} activeProps={active}>
@@ -36,16 +36,15 @@ export function Layout() {
             Evals
           </Link>
         </nav>
-        <span
-          className="ml-auto text-xs text-muted-foreground"
-          title={
-            token
-              ? "This tab holds the server's write token: it can start flows and answer gates."
-              : "Open the URL that `cofabriq serve --write` printed to start flows and answer gates."
-          }
-        >
-          {token ? "you can start and approve" : "read-only"}
-        </span>
+        {/* only the state that explains disabled buttons is worth the room */}
+        {!token && (
+          <span
+            className="ml-auto text-xs text-muted-foreground"
+            title="Open the URL that `cofabriq serve --write` printed to start flows and answer gates."
+          >
+            read-only
+          </span>
+        )}
       </header>
       <Outlet />
     </div>

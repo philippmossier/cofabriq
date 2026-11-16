@@ -160,8 +160,9 @@ test("a plan gate: where the flow is, what to check, the issue, the answer at ha
   // the question is the answer bar's label; the spec's summary is in the header
   const bar = page.getByRole("region", { name: "your answer" });
   await expect(bar.getByTestId("flow-state")).toHaveText(/^Approve the plan\?/);
-  await expect(page.getByText("size S ·", { exact: true })).toBeVisible();
-  await expect(page.getByText("proven by a unit test ·", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("size S · 1 file to change · tests in 1 file · proven by a unit test · 3 things to check"),
+  ).toBeVisible();
   await expect(progress(page).locator('[aria-current="step"]')).toHaveText(/Plan/);
   const issue = section(page, "The issue, as reported");
   await expect(issue.getByRole("link", { name: "GitHub" })).toHaveAttribute("href", /\/issues\/51$/);
@@ -170,9 +171,7 @@ test("a plan gate: where the flow is, what to check, the issue, the answer at ha
   expect((await issue.getByTestId("issue-text").boundingBox())!.height).toBeGreaterThan(2 * clamped);
   await expect(issue.getByTestId("issue-text")).toContainText("More detail. More detail.");
   await expect(issue.getByRole("button", { name: "show less" })).toBeVisible();
-  // what to check sits with the part it is about
   const cause = section(page, "The cause");
-  await expect(cause.getByText("Check: does it point at the code the issue is about?")).toBeVisible();
   // the cause leads in two sentences, the evidence is one click away
   await expect(cause.getByText(/^The chat title is made by/)).toBeVisible();
   await expect(cause.getByText(/how the agent found it \(\d+ sentences\)/)).toBeVisible();
@@ -184,6 +183,9 @@ test("a plan gate: where the flow is, what to check, the issue, the answer at ha
   await expect(red).toContainText("fails now");
   await expect(proof.getByText("passes now, must stay")).toHaveCount(2);
   await expect(proof.getByText(/Add boundary cases/)).toBeHidden(); // the writer's notes, folded
+  // the steps so far are context at a gate: one line, the tree folded
+  await expect(page.getByText(/^Steps so far: \d+ agent sessions · .* · \$\d/)).toBeVisible();
+  await expect(page.getByText("Refine: read the code, write a spec")).toBeHidden();
   // waiting for you: in the nav and the tab's title
   await expect(page.getByRole("link", { name: /Flows\s*1/ })).toBeVisible();
   await expect(page).toHaveTitle("(1) waiting · cofabriq");
@@ -193,6 +195,24 @@ test("a plan gate: where the flow is, what to check, the issue, the answer at ha
   await expect(bar).toBeInViewport();
   await expect(bar.getByRole("button", { name: "Approve", exact: true })).toBeDisabled();
   await expect(bar.getByText("Read-only here")).toBeVisible();
+});
+
+test("a sketch marks only the lines it changes", async ({ page }) => {
+  // a one-line insert into a block, as refine sketched it for #71 (old and new both whole)
+  const plan = JSON.parse(readFileSync(path.join(import.meta.dirname, "fixtures", "flows", "plan-gate.json"), "utf-8"));
+  const edit = {
+    old: "    } finally {\n      writingChat.current = null;\n      inFlight.current = null;",
+    new: "    } finally {\n      setGenerating(false);\n      writingChat.current = null;\n      inFlight.current = null;",
+    line: 285,
+  };
+  await replayFlow(page, "plan-gate.json", { files: [{ ...plan.files[0], edits: [edit] }] });
+  await page.goto(FLOW);
+
+  const sketch = section(page, "The change").locator("pre").first();
+  await expect(sketch.locator(".bg-emerald-50")).toHaveCount(1);
+  await expect(sketch.locator(".bg-emerald-50")).toContainText("setGenerating(false);");
+  await expect(sketch.locator(".bg-red-50")).toHaveCount(0);
+  await expect(sketch).toContainText("writingChat.current = null;"); // as context
 });
 
 test("a test gate: how it fails first, the plan folded, Write it again needs a reason", async ({ page }) => {
