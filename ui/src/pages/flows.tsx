@@ -20,7 +20,8 @@ import {
 import { DiffView } from "@/components/code";
 import { FlowProgress, FlowState } from "@/components/flow-progress";
 import { GateBar, type Sent } from "@/components/gate";
-import { IssueText } from "@/components/issue-text";
+import { GitHubLink, IssueText } from "@/components/issue-text";
+import { specFacts } from "@/lib/spec";
 import { RunSteps } from "@/components/run-steps";
 import { SpecReview } from "@/components/spec-review";
 import { useWriteToken } from "@/lib/token";
@@ -103,9 +104,8 @@ function headline(f: FlowView, sent: Sent): string {
       return "Setting up and writing a failing test… (a minute or two; you check the test next)";
     return "Building the fix against your test, then a review… (a few minutes; nothing waits for you)";
   }
-  if (f.waiting === "plan") return "Approve the plan? No code is written before you do.";
-  if (f.waiting === "test")
-    return "Approve the test? Check that it fails for the reported reason: from here it is frozen.";
+  if (f.waiting === "plan") return "Approve the plan? No code before you do.";
+  if (f.waiting === "test") return "Approve the test? From here it is frozen.";
   if (f.outcome.startsWith("cut off")) return `Stopped mid-run (${f.outcome}): Start again below.`;
   // "rejected: plan rejected: why", "failed: not ready: why": the note says it
   if (/^(rejected|failed): /.test(f.outcome)) {
@@ -133,8 +133,10 @@ export function FlowPage() {
   const f = q.data;
   if (!f) return <Missing what="flow" />;
   const ended = !f.waiting && !f.running;
-  const spec = f.problem ? <SpecReview s={f} /> : null;
-  const issue = <IssueText body={f.body} url={issueUrl(f.repo, f.number)} />;
+  // the header carries the spec's summary line
+  const spec = f.problem ? <SpecReview s={f} facts={false} /> : null;
+  const github = <GitHubLink url={issueUrl(f.repo, f.number)} />;
+  const issue = <IssueText body={f.body} />;
   const steps = f.trace && (
     <Section title="Steps: what ran, what it cost, why">
       <RunSteps run={f.trace} live={f.running} />
@@ -160,50 +162,52 @@ export function FlowPage() {
             <ExternalLink className="size-4" />
           </a>
         </h1>
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <p className="flex flex-wrap items-center gap-x-1.5 text-sm text-muted-foreground">
           <Badge variant="secondary">{f.route}</Badge>
-          {f.size && <Badge variant="outline">size {f.size}</Badge>}
+          {(f.problem ? specFacts(f) : []).map((fact) => (
+            <span key={fact}>{fact} ·</span>
+          ))}
           <span>{f.repo}</span>
-        </div>
+        </p>
         <FlowProgress f={f} />
+        {f.error && <p className="text-sm text-destructive">{f.error}</p>}
       </div>
 
-      <Card className={f.waiting ? "border-primary" : ""}>
-        <CardContent className="space-y-3">
-          <h2 data-testid="flow-state" className="font-heading text-base font-medium">
-            {headline(f, sent)}
-          </h2>
-          {f.error && <p className="text-sm text-destructive">{f.error}</p>}
-          {f.waiting && (
-            <p className="text-sm text-muted-foreground">
-              Each part below says what to check; answer in the bar at the bottom.
-            </p>
-          )}
-          {ended && f.record && <FlowResult file={f.record} number={f.number} />}
-          {ended && (
-            <div className="space-y-1 border-t pt-3">
-              <p className="text-sm text-muted-foreground">
-                {endedWell(f.outcome)
-                  ? "Run it again: a new flow replaces this one (nothing was merged, so the issue is still open). The old run stays under Runs."
-                  : "Wrong type, or a plan you rejected? Start again: a new flow replaces this one, and refine reads why this one ended. The old run stays under Runs."}
-              </p>
-              <StartFlow
-                owner={owner}
-                name={name}
-                number={f.number}
-                canStart={token !== null}
-                route={againRoute(f)}
-                again
-              />
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {/* at a gate the question is in the answer bar */}
+      {!f.waiting && (
+        <Card>
+          <CardContent className="space-y-3">
+            <h2 data-testid="flow-state" className="font-heading text-base font-medium">
+              {headline(f, sent)}
+            </h2>
+            {ended && f.record && <FlowResult file={f.record} number={f.number} />}
+            {ended && (
+              <div className="space-y-1 border-t pt-3">
+                <p className="text-sm text-muted-foreground">
+                  {endedWell(f.outcome)
+                    ? "Run it again: a new flow replaces this one (nothing was merged, so the issue is still open). The old run stays under Runs."
+                    : "Wrong type, or a plan you rejected? Start again: a new flow replaces this one, and refine reads why this one ended. The old run stays under Runs."}
+                </p>
+                <StartFlow
+                  owner={owner}
+                  name={name}
+                  number={f.number}
+                  canStart={token !== null}
+                  route={againRoute(f)}
+                  again
+                />
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {f.waiting === "plan" && (
         <>
-          <Section title="The issue, as reported">{issue}</Section>
-          {f.problem && <SpecReview s={f} gate />}
+          <Section title="The issue, as reported" aside={github}>
+            {issue}
+          </Section>
+          {f.problem && <SpecReview s={f} gate facts={false} />}
         </>
       )}
 
@@ -226,15 +230,27 @@ export function FlowPage() {
             <DiffView diff={f.diff} />
           </Section>
           {spec && <Fold title="The plan you approved: cause, change, proof">{spec}</Fold>}
-          <Fold title="The issue, as reported">{issue}</Fold>
+          <Fold title="The issue, as reported">
+            {issue}
+            <div className="mt-1">{github}</div>
+          </Fold>
         </>
       )}
 
       {steps}
       {!f.waiting && spec && <Fold title="The spec: cause, change, proof">{spec}</Fold>}
-      {!f.waiting && <Fold title="The issue, as reported">{issue}</Fold>}
+      {!f.waiting && (
+        <Fold title="The issue, as reported">
+          {issue}
+          <div className="mt-1">{github}</div>
+        </Fold>
+      )}
 
-      {f.waiting && <GateBar key={f.waiting} f={f} onSent={setSent} />}
+      {f.waiting && (
+        <GateBar key={f.waiting} f={f} onSent={setSent}>
+          <span data-testid="flow-state">{headline(f, sent)}</span>
+        </GateBar>
+      )}
     </div>
   );
 }

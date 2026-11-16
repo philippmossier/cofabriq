@@ -1,6 +1,7 @@
 import { type ReactNode, useState } from "react";
 import { type FileNote, type ProofNote, useCode } from "@/api/generated";
 import { cn } from "@/lib/utils";
+import { PROOF_SHORT, specFacts } from "@/lib/spec";
 import { List, Section } from "@/components/bits";
 import { CodeLines, ProposedEdit } from "@/components/code";
 import { Badge } from "@/components/ui/badge";
@@ -23,15 +24,14 @@ export type SpecLike = {
 };
 
 /** How the fix is proven, as the spec says: a proxy is a stand-in to judge. */
-const PROOF: Record<ProofNote["kind"], { short: string; label: string; tone: string }> = {
-  unit: { short: "unit test", label: "A unit test:", tone: "border-emerald-500" },
-  browser: { short: "browser test", label: "A browser test:", tone: "border-emerald-500" },
+const PROOF: Record<ProofNote["kind"], { label: string; tone: string }> = {
+  unit: { label: "A unit test:", tone: "border-emerald-500" },
+  browser: { label: "A browser test:", tone: "border-emerald-500" },
   proxy: {
-    short: "stand-in measure",
     label: "A stand-in measure (judge whether it measures the reported problem):",
     tone: "border-amber-500 bg-amber-50",
   },
-  none: { short: "nothing: no test can", label: "No test can prove it here:", tone: "border-destructive bg-red-50" },
+  none: { label: "No test can prove it here:", tone: "border-destructive bg-red-50" },
 };
 
 // `src/lib/chat/store.ts:52`, `store.ts:48`, `a.tsx:97-117`
@@ -262,7 +262,7 @@ function PlannedTest({ s }: { s: SpecLike }) {
         {s.tests.map((t) => (
           <FileLink key={t.path} s={s} path={t.path} />
         ))}
-        {s.proof && <span className="font-sans text-muted-foreground">{PROOF[s.proof.kind].short}</span>}
+        {s.proof && <span className="font-sans text-muted-foreground">{PROOF_SHORT[s.proof.kind]}</span>}
       </div>
       <ul className="space-y-1.5">
         {cases.map((c, i) => (
@@ -287,9 +287,9 @@ function PlannedTest({ s }: { s: SpecLike }) {
 
 /** A spec in the order a reviewer reads it: the cause, the change with the
  * code as it is now, the proof, what to check, then the steps. `gate`: it
- * is being judged, so each part says what to check in it. */
-export function SpecReview({ s, gate = false }: { s: SpecLike; gate?: boolean }) {
-  const n = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
+ * is being judged, so each part says what to check in it. `facts`: its
+ * summary line (`specFacts`); off where the page header carries it. */
+export function SpecReview({ s, gate = false, facts = true }: { s: SpecLike; gate?: boolean; facts?: boolean }) {
   const texts = [s.problem, ...s.plan, ...s.assumptions];
   const toCheck = s.assumptions.length + s.open_questions.length;
   const cases = s.proof?.cases ?? [];
@@ -297,11 +297,7 @@ export function SpecReview({ s, gate = false }: { s: SpecLike; gate?: boolean })
   const marked = s.files.some((f) => f.edits.length === 0 && !s.unknown_paths.includes(f.path));
   return (
     <div className="space-y-6">
-      <p className="text-sm text-muted-foreground">
-        {s.route} · size {s.size ?? "?"} · {n(s.files.length, "file changes", "files change")} · tests in{" "}
-        {n(s.tests.length, "file", "files")}
-        {s.proof && <> · proven by a {PROOF[s.proof.kind].short}</>} · {n(toCheck, "thing", "things")} to check
-      </p>
+      {facts && <p className="text-sm text-muted-foreground">{[s.route, ...specFacts(s)].join(" · ")}</p>}
 
       <Section title="The cause" check={gate ? "does it point at the code the issue is about?" : undefined}>
         <Cause s={s} />

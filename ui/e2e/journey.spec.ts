@@ -60,7 +60,7 @@ async function settled(page: Page, minutes: number): Promise<string> {
  * click the card still shows the question, which `settled` would take for the answer. */
 async function approve(page: Page, gate: "plan" | "test", minutes: number): Promise<string> {
   const bar = page.getByRole("region", { name: "your answer" });
-  await bar.getByRole("button", { name: gate === "plan" ? "Approve the plan" : "Approve and freeze the test" }).click();
+  await bar.getByRole("button", { name: gate === "plan" ? "Approve" : "Approve and freeze", exact: true }).click();
   await expect(title(page)).not.toHaveText(new RegExp(`^Approve the ${gate}\\?`), { timeout: 60_000 });
   return settled(page, minutes);
 }

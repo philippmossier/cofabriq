@@ -237,7 +237,7 @@ function Preview({ owner, name, i }: { owner: string; name: string; i: IssueRow 
   if (!q.data) return <p className="text-sm text-destructive">Not in the store any more.</p>;
   return (
     <div className="space-y-1 py-1">
-      <IssueText body={q.data.body} url={i.url} />
+      <IssueText body={q.data.body} />
       <p className="text-xs text-muted-foreground">
         As last fetched ({i.comments} comment{i.comments === 1 ? "" : "s"} on GitHub); Start reads it fresh.
       </p>

@@ -10,7 +10,15 @@ export type Sent = { approve: boolean; again: boolean } | null;
 
 /** The answer to a gate, in a bar fixed to the bottom of the window: the
  * page above it is long, and the decision comes after reading it. */
-export function GateBar({ f, onSent }: { f: FlowView; onSent: (s: Sent) => void }) {
+export function GateBar({
+  f,
+  onSent,
+  children,
+}: {
+  f: FlowView;
+  onSent: (s: Sent) => void;
+  children: React.ReactNode; // the question, as the bar's label
+}) {
   const token = useWriteToken();
   const client = useQueryClient();
   const answer = useFlowAnswer({ fetch: writeAuth() });
@@ -52,12 +60,10 @@ export function GateBar({ f, onSent }: { f: FlowView; onSent: (s: Sent) => void 
     >
       <div className="mx-auto max-w-6xl space-y-1.5 px-6 py-3">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="mr-2 text-sm font-medium">
-            {gate === "plan" ? "The plan:" : "The test:"}
-          </span>
+          <span className="mr-2 text-sm font-medium">{children}</span>
           <Button disabled={busy} onClick={() => send(true)}>
             {sending === "approve" && <LoaderCircle className="animate-spin" />}
-            {gate === "plan" ? "Approve the plan" : "Approve and freeze the test"}
+            {gate === "plan" ? "Approve" : "Approve and freeze"}
           </Button>
           {gate === "test" && f.retests_left > 0 && (
             <Button

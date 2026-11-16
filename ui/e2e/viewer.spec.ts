@@ -138,8 +138,11 @@ test("in the agent's text a `span` is code and a fence stays as written", async 
 // from the journey of 2026-11-15 (e2e/fixtures/flows), its steps and run from the fixtures.
 const FLOW = "/flows/philippmossier/local-ai-chat-playground/51";
 
-async function replayFlow(page: Page, fixture: string) {
-  const flow = JSON.parse(readFileSync(path.join(import.meta.dirname, "fixtures", "flows", fixture), "utf-8"));
+async function replayFlow(page: Page, fixture: string, change: Record<string, unknown> = {}) {
+  const flow = {
+    ...JSON.parse(readFileSync(path.join(import.meta.dirname, "fixtures", "flows", fixture), "utf-8")),
+    ...change,
+  };
   await page.route("**/api/flows/philippmossier/local-ai-chat-playground/51", (route) =>
     route.fulfill({ json: flow }),
   );
@@ -149,12 +152,24 @@ async function replayFlow(page: Page, fixture: string) {
 const progress = (page: Page) => page.getByRole("list", { name: "progress" });
 
 test("a plan gate: where the flow is, what to check, the issue, the answer at hand", async ({ page }) => {
-  await replayFlow(page, "plan-gate.json");
+  // a longer report than the recorded one: three lines, then "show more"
+  const body = `I asked "What is the difference between RAM and VRAM?" and the title is cut off.\n\n${"More detail. ".repeat(60)}`;
+  await replayFlow(page, "plan-gate.json", { body });
   await page.goto(FLOW);
 
-  await expect(page.getByTestId("flow-state")).toHaveText(/^Approve the plan\?/);
+  // the question is the answer bar's label; the spec's summary is in the header
+  const bar = page.getByRole("region", { name: "your answer" });
+  await expect(bar.getByTestId("flow-state")).toHaveText(/^Approve the plan\?/);
+  await expect(page.getByText("size S ·", { exact: true })).toBeVisible();
+  await expect(page.getByText("proven by a unit test ·", { exact: true })).toBeVisible();
   await expect(progress(page).locator('[aria-current="step"]')).toHaveText(/Plan/);
-  await expect(section(page, "The issue, as reported")).toContainText("RAM and VRAM");
+  const issue = section(page, "The issue, as reported");
+  await expect(issue.getByRole("link", { name: "GitHub" })).toHaveAttribute("href", /\/issues\/51$/);
+  const clamped = (await issue.getByTestId("issue-text").boundingBox())!.height;
+  await issue.getByRole("button", { name: "show more" }).click();
+  expect((await issue.getByTestId("issue-text").boundingBox())!.height).toBeGreaterThan(2 * clamped);
+  await expect(issue.getByTestId("issue-text")).toContainText("More detail. More detail.");
+  await expect(issue.getByRole("button", { name: "show less" })).toBeVisible();
   // what to check sits with the part it is about
   const cause = section(page, "The cause");
   await expect(cause.getByText("Check: does it point at the code the issue is about?")).toBeVisible();
@@ -175,9 +190,8 @@ test("a plan gate: where the flow is, what to check, the issue, the answer at ha
 
   // the answer stays on screen at the end of a long page; read-only without the link
   await page.mouse.wheel(0, 20_000);
-  const bar = page.getByRole("region", { name: "your answer" });
   await expect(bar).toBeInViewport();
-  await expect(bar.getByRole("button", { name: "Approve the plan" })).toBeDisabled();
+  await expect(bar.getByRole("button", { name: "Approve", exact: true })).toBeDisabled();
   await expect(bar.getByText("Read-only here")).toBeVisible();
 });
 
@@ -202,7 +216,7 @@ test("a test gate: how it fails first, the plan folded, Write it again needs a r
 
   const bar = page.getByRole("region", { name: "your answer" });
   const again = bar.getByRole("button", { name: "Write it again (2 left)" });
-  await expect(bar.getByRole("button", { name: "Approve and freeze the test" })).toBeEnabled();
+  await expect(bar.getByRole("button", { name: "Approve and freeze" })).toBeEnabled();
   await expect(again).toBeDisabled();
   await bar.getByRole("textbox", { name: "reason" }).fill("test the 43-character case too");
   await again.click();
