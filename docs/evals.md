@@ -111,6 +111,27 @@ both neighbours of a pure insertion.
 The evals don't go through the gates (they call the loop's stages
 directly), so the loop and gate numbers above stay comparable with 0.2.
 
+### 0.8.1: the planned test as cases
+
+Refine now writes a bug's test as cases (name, expected result, fails now or
+must stay), and the agent's schema requires the proof. `eval refine` on 6 of
+the planted bugs (2 S, 3 M, 1 L), against the 0.8 run of the same 6:
+
+| | 0.8 | 0.8.1 |
+| --- | --- | --- |
+| the fix's file first (hit@1) | 1.00 | 1.00 |
+| precision | 1.00 | 0.92 (one extra file on the L bug) |
+| specs with a case that fails now | - | 6/6 (24 cases in all) |
+| cost per bug | $0.130 | $0.163 |
+
+One run each, so the cost difference is partly noise. The test writer gets
+the cases with the spec; `eval loop` wasn't rerun for it.
+
+| Check | Result |
+| --- | --- |
+| the viewer in a browser (`make e2e`) | 14 cases, the plan gate, test gate, a working and a finished flow replayed from a journey |
+| one live issue through the real UI (`make journey`) | #51 (test sent back once) and #83 (feature) on the reworked page; #66 found a spec with no proof at all, which led to the required schema |
+
 ## 0.6: a harder set that wasn't harder
 
 Every stage was saturated, so 5 harder bugs were planted (`playground/

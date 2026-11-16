@@ -250,6 +250,21 @@ fix's own lines in 18; it picks a unit test for 10 and a browser test for
 Why a rejected test goes back to the test writer and not to refine:
 [ADR-010](docs/adr/010-langgraph-for-the-outer-loop-gates-as-nodes.md).
 
+**0.8.1: a plan gate you read top to bottom once.** Playground
+[#71](https://github.com/philippmossier/local-ai-chat-playground/issues/71):
+after an error the chat stays locked. A stepper says where the run is, the
+issue sits above the spec, the cause leads in two sentences (the evidence
+folded), the sketch shows only the line it adds, and Approve stays in a bar
+at the bottom of the window. A bug's test is now planned as cases, each
+marked "fails now" or "must stay", and the test writer gets them, so the
+test it writes is the one you approved.
+
+<img src="docs/demo/plan-gate-71.png" width="760" alt="The plan gate for #71: a stepper with Plan waiting for you, the issue as reported, the cause in two sentences (setGenerating(true) at line 237 is only reset on success), the change as one added line setGenerating(false) in the finally block, the proof as a browser test, and Approve or Reject in a bar at the bottom">
+
+On the 6 planted bugs it was measured on, every spec had a case that fails
+now (24 cases in all), and the fix's file was still listed first on all 6
+([numbers](docs/evals.md#081-the-planned-test-as-cases)).
+
 ## Features (0.3)
 
 The same loop takes a small feature request. One of the demo app's
@@ -450,7 +465,8 @@ the repository, the parts and the user journeys:
       an LLM rerank of the nearest 50
 - [x] **0.8** runs started and followed in the browser, step by step with
       time and cost; a test gate on every run, a test sent back is written
-      again; how each fix will be proven
+      again; how each fix will be proven; 0.8.1: the plan gate reworked, the
+      planned test as cases
 - [ ] **Next:** a second reviewer model, "who knows this area" for risky
       changes, publishing runs from the browser
 - [ ] **Later:** a real repository with tests, self-host packaging
