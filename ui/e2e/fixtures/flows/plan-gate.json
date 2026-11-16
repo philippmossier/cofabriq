@@ -54,7 +54,29 @@
   ],
   "proof": {
     "kind": "unit",
-    "how": "In the vitest test, `titleFrom(\"x\".repeat(41) + \"?\")` must equal the input unchanged. On the current code it returns 41 x's followed by \"…\", so the test fails because a title that fits is truncated."
+    "how": "In the vitest test, `titleFrom(\"x\".repeat(41) + \"?\")` must equal the input unchanged. On the current code it returns 41 x's followed by \"…\", so the test fails because a title that fits is truncated.",
+    "cases": [
+      {
+        "name": "titleFrom > keeps a title of exactly 42 characters whole",
+        "expect": "titleFrom(\"x\".repeat(41) + \"?\") returns that same 42-character string with no \"…\"",
+        "fails_now": true
+      },
+      {
+        "name": "titleFrom > keeps a 41 character title whole",
+        "expect": "titleFrom(\"x\".repeat(41)) returns \"x\".repeat(41)",
+        "fails_now": false
+      },
+      {
+        "name": "titleFrom > truncates a 43 character title to 42 with an ellipsis",
+        "expect": "titleFrom(\"x\".repeat(43)) returns \"x\".repeat(41) + \"…\" (length 42)",
+        "fails_now": false
+      },
+      {
+        "name": "titleFrom > counts length after flattening whitespace",
+        "expect": "titleFrom(\"  \" + \"x\".repeat(42) + \"\\n\") returns \"x\".repeat(42) with no \"…\"",
+        "fails_now": true
+      }
+    ]
   },
   "unknown_paths": [],
   "trace": "877bcb0d38c3b9cc8b054c95c1ba2611",

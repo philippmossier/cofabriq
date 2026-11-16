@@ -20,7 +20,7 @@ from cofabriq.issues.verdict import Answer, Candidate
 from cofabriq.llm import Usage
 from cofabriq.loop.engine import AgentRun
 from cofabriq.loop.graph import Deps
-from cofabriq.loop.refine import Spec
+from cofabriq.loop.refine import Spec, agent_schema
 from cofabriq.loop.review import Reviewed
 from cofabriq.loop.run import Implemented, LoopResult, Reproduced, run_loop
 from cofabriq.loop.sandbox import Ran, run_command
@@ -233,7 +233,7 @@ class Reader:
         self.refiner, self.reviewer = FakeAgent(s), Reviewer(reviewed())
 
     def __call__(self, prompt: str, schema: dict[str, object], cwd: Path) -> AgentRun:
-        if schema == Spec.model_json_schema():
+        if schema == agent_schema():
             return self.refiner(prompt, schema, cwd)
         return self.reviewer(prompt, schema, cwd)
 

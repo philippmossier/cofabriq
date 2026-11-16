@@ -281,6 +281,13 @@ def render_spec(spec: Spec, tests: bool = False) -> str:
     lines = [f"problem: {spec.problem}", "files:", *[_change(f) for f in spec.files]]
     if tests and spec.tests:
         lines += ["tests:", *[_change(f) for f in spec.tests]]
+    if tests and spec.proof is not None and spec.proof.cases:
+        # the cases the dev approved with the plan: the test is written from them
+        lines += ["test cases (approved with the plan):"]
+        lines += [
+            f"- {c.name}: {c.expect} ({'fails now' if c.fails_now else 'passes now'})"
+            for c in spec.proof.cases
+        ]
     if spec.criteria:
         lines += ["acceptance criteria:", *[f"- {c}" for c in spec.criteria]]
     lines += [

@@ -154,9 +154,21 @@ test("a plan gate: where the flow is, what to check, the issue, the answer at ha
 
   await expect(page.getByTestId("flow-state")).toHaveText(/^Approve the plan\?/);
   await expect(progress(page).locator('[aria-current="step"]')).toHaveText(/Plan/);
-  await expect(page.getByText("The proof would fail for the reported reason")).toBeVisible();
   await expect(section(page, "The issue, as reported")).toContainText("RAM and VRAM");
-  await expect(section(page, "The cause")).toBeVisible();
+  // what to check sits with the part it is about
+  const cause = section(page, "The cause");
+  await expect(cause.getByText("Check: does it point at the code the issue is about?")).toBeVisible();
+  // the cause leads in two sentences, the evidence is one click away
+  await expect(cause.getByText(/^The chat title is made by/)).toBeVisible();
+  await expect(cause.getByText(/how the agent found it \(\d+ sentences\)/)).toBeVisible();
+  await expect(cause.getByText(/checks only 100-character input/)).toBeHidden();
+  // the planned test reads as one: the cases that fail now, the ones that must stay
+  const proof = section(page, "The proof: a test written before any code, which must fail first");
+  const red = proof.getByRole("listitem").filter({ hasText: "keeps a title of exactly 42 characters whole" });
+  await expect(red).toContainText("✗");
+  await expect(red).toContainText("fails now");
+  await expect(proof.getByText("passes now, must stay")).toHaveCount(2);
+  await expect(proof.getByText(/Add boundary cases/)).toBeHidden(); // the writer's notes, folded
   // waiting for you: in the nav and the tab's title
   await expect(page.getByRole("link", { name: /Flows\s*1/ })).toBeVisible();
   await expect(page).toHaveTitle("(1) waiting · cofabriq");

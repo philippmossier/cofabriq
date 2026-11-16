@@ -15,7 +15,7 @@ by one test: the contract the acceptance test is written from, 0.3).
 import re
 import subprocess
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -54,6 +54,10 @@ find the cause and where the fix goes. Change nothing.
   none (no test can show it here: say why, and it goes back to the
   developer). how: one or two sentences. Test the mechanism, not a
   feeling; hold time and the network still instead of waiting on them.
+  cases: the test's cases, at most 5 (none for kind none): name, as the
+  test runner will print it; expect, the input or situation and the exact
+  result; fails_now, true for a case that fails on the code as it is now
+  (at least one: the bug), false for behaviour that must stay as it is.
 - plan: short ordered steps.
 - assumptions: what you assumed that the issue does not say.
 - open_questions: what only the reporter or a maintainer can answer.
@@ -141,6 +145,7 @@ class FileChange(BaseModel):
 
 
 EDITS = 3  # sketches per file
+CASES = 5  # planned cases of a bug's test
 EDIT_LINES = 30  # lines in one sketch's old or new
 
 
@@ -192,6 +197,20 @@ def file_text(clone: Path, commit: str, path: str) -> str | None:
 type ProofKind = Literal["unit", "browser", "proxy", "none"]
 
 
+class Case(BaseModel):
+    """One case of the test a bug is proven with, planned before it is
+    written: the dev reads the plan's test as a test, not as prose."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(description="As the test runner will print it.")
+    expect: str = Field(description="The input or situation and the exact result.")
+    fails_now: bool = Field(
+        description="Fails on the code as it is now (the bug); false: behaviour "
+        "that must stay as it is."
+    )
+
+
 class Proof(BaseModel):
     """How a failing test can show the bug (a feature: that it is missing),
     stated before anything is paid for it. `none` goes back to the dev."""
@@ -206,6 +225,11 @@ class Proof(BaseModel):
     how: str = Field(
         description="One or two sentences: the test; for a proxy, what it measures "
         "and why it stands in; for none, why not."
+    )
+    cases: list[Case] = Field(
+        default_factory=list[Case],
+        description="The test's cases, at most 5; none for kind none. Specs before "
+        "them and features (their criteria are the cases) have none.",
     )
 
 
@@ -226,6 +250,18 @@ class Spec(BaseModel):
     assumptions: list[str]
     open_questions: list[str]
     size: Size
+
+
+def agent_schema() -> dict[str, Any]:
+    """The schema the agent answers in: `Spec`'s, with the proof and its
+    cases required. They are optional in `Spec` only so that specs stored
+    before them still load; an agent left the proof out when it could."""
+    schema = Spec.model_json_schema()
+    schema["required"] = [*schema["required"], "proof"]
+    schema["properties"]["proof"] = {"$ref": "#/$defs/Proof"}  # not null either
+    proof = schema["$defs"]["Proof"]
+    proof["required"] = [*proof["required"], "cases"]
+    return schema
 
 
 class Refined(BaseModel):
@@ -302,15 +338,20 @@ def refine(
 ) -> Refined:
     """One read-only agent run on the clone's checked-out commit. A feature
     spec must come with criteria (`NoCriteria` otherwise); a bug spec's are
-    dropped (the reproducer writes the bug's test from the problem)."""
+    dropped (the reproducer writes the bug's test from the problem and the
+    planned cases), and so are a feature spec's cases (its criteria are)."""
     commit = head(clone)
     asked = prompt(issue, route, earlier, testing)
-    run = agent(asked, Spec.model_json_schema(), clone)
+    run = agent(asked, agent_schema(), clone)
     spec = Spec.model_validate(run.output)
     if route == "feature" and not [c for c in spec.criteria if c.strip()]:
         raise NoCriteria(f"#{issue.number}: the feature spec has no criteria")
     if route == "bug":
         spec = spec.model_copy(update={"criteria": []})
+    if spec.proof is not None:  # a feature's cases are its criteria
+        cases = spec.proof.cases[:CASES] if route == "bug" else []
+        proof = spec.proof.model_copy(update={"cases": cases})
+        spec = spec.model_copy(update={"proof": proof})
 
     def checked(f: FileChange) -> FileChange:
         """The path normalized, `at` and the sketches kept only where the file

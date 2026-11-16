@@ -758,6 +758,30 @@
         ],
         "title": "Answered"
       },
+      "CaseNote": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "expect": {
+            "type": "string",
+            "title": "Expect"
+          },
+          "fails_now": {
+            "type": "boolean",
+            "title": "Fails Now",
+            "description": "Fails on the code as it is now: the bug."
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "expect",
+          "fails_now"
+        ],
+        "title": "CaseNote"
+      },
       "Check": {
         "properties": {
           "name": {
@@ -1388,12 +1412,21 @@
           "how": {
             "type": "string",
             "title": "How"
+          },
+          "cases": {
+            "items": {
+              "$ref": "#/components/schemas/CaseNote"
+            },
+            "type": "array",
+            "title": "Cases",
+            "description": "The planned cases; empty for a feature and older specs."
           }
         },
         "type": "object",
         "required": [
           "kind",
-          "how"
+          "how",
+          "cases"
         ],
         "title": "ProofNote",
         "description": "How the spec says a failing test will show it."

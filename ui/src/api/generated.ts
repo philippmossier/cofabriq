@@ -34,6 +34,13 @@ export interface Answered {
   started: boolean;
 }
 
+export interface CaseNote {
+  name: string;
+  expect: string;
+  /** Fails on the code as it is now: the bug. */
+  fails_now: boolean;
+}
+
 export interface Check {
   name: string;
   ok: boolean;
@@ -174,6 +181,8 @@ export const ProofNoteKind = {
 export interface ProofNote {
   kind: ProofNoteKind;
   how: string;
+  /** The planned cases; empty for a feature and older specs. */
+  cases: CaseNote[];
 }
 
 export interface FlowView {

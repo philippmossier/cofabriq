@@ -543,6 +543,11 @@ def eval_refine(
     # provable bug back to the dev
     kinds = Counter(r.spec.proof.kind if r.spec.proof else "-" for r in done.values())
     typer.echo("  proof   " + "  ".join(f"{k} {n}" for k, n in sorted(kinds.items())))
+    # a planned test reads as a test only with cases, one of them red now
+    cases = [r.spec.proof.cases if r.spec.proof else [] for r in done.values()]
+    red = sum(any(c.fails_now for c in cs) for cs in cases)
+    total = sum(len(cs) for cs in cases)
+    typer.echo(f"  cases   {red}/{len(cases)} with one failing now, {total} in all")
     adapter = TypeAdapter(dict[str, refine_mod.Refined])
     out = write_stamped(settings.refine_dir, "eval", adapter, done)
     typer.echo(f"  -> {out}")

@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/table";
 import { DiffView } from "@/components/code";
 import { FlowProgress, FlowState } from "@/components/flow-progress";
-import { GateBar, GateChecklist, type Sent } from "@/components/gate";
+import { GateBar, type Sent } from "@/components/gate";
 import { IssueText } from "@/components/issue-text";
 import { RunSteps } from "@/components/run-steps";
 import { SpecReview } from "@/components/spec-review";
@@ -175,12 +175,9 @@ export function FlowPage() {
           </h2>
           {f.error && <p className="text-sm text-destructive">{f.error}</p>}
           {f.waiting && (
-            <>
-              <p className="text-sm text-muted-foreground">
-                Read on, then answer in the bar at the bottom. What to check:
-              </p>
-              <GateChecklist gate={f.waiting} />
-            </>
+            <p className="text-sm text-muted-foreground">
+              Each part below says what to check; answer in the bar at the bottom.
+            </p>
           )}
           {ended && f.record && <FlowResult file={f.record} number={f.number} />}
           {ended && (
@@ -206,24 +203,26 @@ export function FlowPage() {
       {f.waiting === "plan" && (
         <>
           <Section title="The issue, as reported">{issue}</Section>
-          {spec}
+          {f.problem && <SpecReview s={f} gate />}
         </>
       )}
 
       {f.waiting === "test" && (
         <>
-          <Section title="How it fails on the unchanged code">
-            <p className="text-sm text-muted-foreground">
-              A test can fail for a reason other than the reported one (a check the issue never asked for).
-              The build makes it pass, so this is where a wrong reason is still cheap to catch.
-            </p>
+          <Section
+            title="How it fails on the unchanged code"
+            check="is this the reported problem? A test can fail for a reason the issue never asked about; here a wrong reason is still cheap to catch."
+          >
             <Pre text={failureLines(f.red).join("\n") || "(no failing line found: see the full output)"} />
             <details>
               <summary className="text-xs text-muted-foreground">the full output</summary>
               <Pre text={f.red} />
             </details>
           </Section>
-          <Section title="The test (frozen once approved)">
+          <Section
+            title="The test (frozen once approved)"
+            check="does it test what the issue describes, not an implementation detail? The build must make exactly this pass."
+          >
             <DiffView diff={f.diff} />
           </Section>
           {spec && <Fold title="The plan you approved: cause, change, proof">{spec}</Fold>}

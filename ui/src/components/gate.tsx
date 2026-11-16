@@ -6,34 +6,6 @@ import { Button } from "@/components/ui/button";
 import { refreshFlow } from "@/lib/flows";
 import { dropToken, useWriteToken, writeAuth } from "@/lib/token";
 
-/** What to look for before answering: the gate's job in a few lines. */
-const CHECK: Record<"plan" | "test", string[]> = {
-  plan: [
-    "The cause names the code the issue is about, with the lines (yellow).",
-    "The change is no bigger than the cause needs.",
-    "The proof would fail for the reported reason, not a nearby one.",
-    "The guesses under “Check these” hold.",
-  ],
-  test: [
-    "It fails on the unchanged code, and the failure lines show the reported problem.",
-    "It checks what the issue describes, not an implementation detail.",
-    "Once approved it is frozen: the build must make exactly this test pass.",
-  ],
-};
-
-export function GateChecklist({ gate }: { gate: "plan" | "test" }) {
-  return (
-    <ul className="space-y-1 text-sm">
-      {CHECK[gate].map((c) => (
-        <li key={c} className="flex gap-2">
-          <span className="text-muted-foreground">□</span>
-          {c}
-        </li>
-      ))}
-    </ul>
-  );
-}
-
 export type Sent = { approve: boolean; again: boolean } | null;
 
 /** The answer to a gate, in a bar fixed to the bottom of the window: the

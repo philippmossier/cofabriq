@@ -23,7 +23,7 @@ from cofabriq.loop.graph import (
     read_status,
     thread_config,
 )
-from cofabriq.loop.refine import Spec
+from cofabriq.loop.refine import agent_schema
 from cofabriq.loop.run import CheckResult, LoopResult
 from tests.builders import REPRO, issue, spec
 from tests.fakes import (
@@ -121,7 +121,7 @@ def test_a_halt_during_review_is_recorded_without_a_gate(tmp_path: Path) -> None
         def __call__(
             self, prompt: str, schema: dict[str, object], cwd: Path
         ) -> AgentRun:
-            if schema == Spec.model_json_schema():
+            if schema == agent_schema():
                 return super().__call__(prompt, schema, cwd)
             raise Halted("run budget spent")
 

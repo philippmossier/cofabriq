@@ -90,16 +90,28 @@ class FileNote(BaseModel):
     edits: list[EditNote] = Field(description="Sketches checked against the file.")
 
 
+class CaseNote(BaseModel):
+    name: str
+    expect: str
+    fails_now: bool = Field(description="Fails on the code as it is now: the bug.")
+
+
 class ProofNote(BaseModel):
     """How the spec says a failing test will show it."""
 
     kind: Literal["unit", "browser", "proxy", "none"]
     how: str
+    cases: list[CaseNote] = Field(
+        description="The planned cases; empty for a feature and older specs."
+    )
 
 
 def _proof(spec: Spec | None) -> ProofNote | None:
     p = spec.proof if spec is not None else None
-    return ProofNote(kind=p.kind, how=p.how) if p is not None else None
+    if p is None:
+        return None
+    cases = [CaseNote(**c.model_dump()) for c in p.cases]
+    return ProofNote(kind=p.kind, how=p.how, cases=cases)
 
 
 def _note(f: FileChange) -> FileNote:
