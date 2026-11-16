@@ -2,7 +2,7 @@ import { Link } from "@tanstack/react-router";
 import type { RunTrace } from "@/api/generated";
 import { Loading } from "@/components/bits";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useRun } from "@/api/generated";
+import { useRun, useTrace } from "@/api/generated";
 import { parseDiff } from "@/lib/diff";
 import { usd } from "@/lib/format";
 
@@ -72,7 +72,7 @@ export function ResultCard({ t }: { t: RunTrace }) {
         )}
         {review && <Row label="Review">{review.summary}</Row>}
         <Row label="Cost">
-          {usd(t.cost_usd)} list price, setup to review (refine is counted in the steps below)
+          <Cost t={t} />
         </Row>
         <Row label="PR">
           {t.pr_url ? (
@@ -82,12 +82,40 @@ export function ResultCard({ t }: { t: RunTrace }) {
           ) : bad || !t.pr_body ? (
             "none"
           ) : (
-            "not opened (dry run): the draft PR body is at the bottom of this page"
+            <>
+              not opened (dry run):{" "}
+              <Link
+                to="/runs/$file/$key"
+                params={{ file: t.file, key: t.key }}
+                hash="draft-pr"
+                className="underline"
+              >
+                the draft PR body
+              </Link>
+            </>
           )}
         </Row>
       </CardContent>
     </Card>
   );
+}
+
+/** One number for the whole run, the spec and every test sent back
+ * included (its steps have each part); the record alone counts setup to
+ * review, so it is the fallback for a run without steps. */
+function Cost({ t }: { t: RunTrace }) {
+  const q = useTrace(t.trace, {
+    query: { enabled: !!t.trace, select: (r) => (r.status === 200 ? r.data.totals : null) },
+  });
+  if (q.data) {
+    return (
+      <>
+        {usd(q.data.cost_usd)} list price for the whole run: {q.data.agents} agent sessions, {q.data.turns} turns
+        (per step in the steps)
+      </>
+    );
+  }
+  return <>{usd(t.cost_usd)} list price, setup to review</>;
 }
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {

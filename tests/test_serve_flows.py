@@ -1,10 +1,12 @@
 from pathlib import Path
+from typing import Literal
 
 from fastapi.testclient import TestClient
 
-from cofabriq.loop.graph import FlowRunner, FlowState, FlowStatus, GateAnswer
-from cofabriq.serve import build
-from tests.builders import REPO, issue
+from cofabriq.loop.graph import FlowRunner, FlowState, FlowStatus, GateAnswer, Stage
+from cofabriq.loop.run import Progress
+from cofabriq.serve import _phase, build  # pyright: ignore[reportPrivateUsage]
+from tests.builders import REPO, gated, issue, loop_result, refined
 
 THREAD = f"{REPO}#3"
 UI = "http://127.0.0.1:8765"
@@ -24,7 +26,7 @@ class FakeRunner(FlowRunner):
     def status(self, thread: str) -> FlowStatus | None:
         if thread != THREAD:
             return None
-        state = FlowState(issue=issue(3, title="Broken"), route="bug")
+        state = FlowState(issue=issue(3, title="Broken", body="It breaks"), route="bug")
         return FlowStatus(
             thread=thread, state=state, waiting="plan" if self.waiting else None
         )
@@ -53,10 +55,50 @@ def test_flows_are_listed_and_shown(tmp_path: Path) -> None:
     c = client(tmp_path, FakeRunner())
     (f,) = c.get("/api/flows").json()
     assert (f["number"], f["waiting"], f["outcome"]) == (3, "plan", "waiting")
+    assert f["phase"] == "plan"  # where the stepper puts it
     view = c.get(f"/api/flows/{REPO}/3").json()
     assert view["title"] == "Broken" and view["criteria"] == []
+    assert view["body"] == "It breaks"  # the issue next to the spec
     assert c.get(f"/api/flows/{REPO}/9").status_code == 404
     assert c.get("/api/flows/..%2F..%2Fetc/x/3").status_code == 404
+
+
+def at(
+    stage: Stage,
+    waiting: Literal["plan", "test"] | None = None,
+    running: bool = False,
+    **state: object,
+) -> str:
+    """The phase of a flow whose checkpoint finished `stage`."""
+    st = FlowState(issue=issue(3), route="bug", stage=stage, refined=refined("bug"))
+    status = FlowStatus(
+        thread=THREAD,
+        state=st.model_copy(update=state),
+        waiting=waiting,
+        running=running,
+    )
+    return _phase(status)
+
+
+def test_the_phase_is_where_it_runs_waits_or_ended() -> None:
+    progress = Progress(repo=REPO, number=3, commit="c")
+    green, red = loop_result("green", 1, []), loop_result("escalated", 3, [])
+    blocked = gated("x").model_copy(update={"status": "blocked"})
+
+    assert at("refined", refined=None, running=True) == "spec"
+    assert at("failed", refined=None) == "spec"  # refine failed
+    assert at("failed") == "spec"  # not ready after refine
+    assert at("refined", waiting="plan") == "plan"
+    assert at("rejected") == "plan"
+    assert at("approved", running=True) == "test"
+    assert at("failed", progress=progress) == "test"  # no repro, setup failed
+    assert at("tested", waiting="test", progress=progress) == "test_gate"
+    assert at("rejected", progress=progress) == "test_gate"
+    assert at("tested", running=True, progress=progress) == "build"
+    assert at("built", result=red) == "build"
+    assert at("built", running=True, result=green) == "review"
+    assert at("reviewed", result=green, gated=blocked) == "review"
+    assert at("reviewed", result=green, gated=gated("x")) == "done"
 
 
 def test_an_answer_needs_the_token_and_a_waiting_gate(tmp_path: Path) -> None:

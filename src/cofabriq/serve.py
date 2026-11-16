@@ -11,9 +11,9 @@ the built UI.
 The API returns its own response models, not the stored ones: a stored
 shape can change without changing the UI's contract (ADR-009). Everything
 is read per request from the files, nothing is cached. It binds to
-127.0.0.1 only. Every route reads, except one: with `--write`, the browser
-gate answers a paused flow's gate (`_flow_routes`), behind the token and
-the checks in `serve_guard`. File names in URLs must be files in the
+127.0.0.1 only. Every route reads, except two: with `--write`, the browser
+starts a flow and answers a paused flow's gate (`_flow_routes`), behind the
+token and the checks in `serve_guard`. File names in URLs must be files in the
 folder (no paths, no `..`).
 """
 
@@ -35,8 +35,8 @@ from cofabriq import git as git_mod
 from cofabriq import runsteps, tracing
 from cofabriq.eval.loop import Judged
 from cofabriq.files import STAMP
-from cofabriq.issues.fetch import load_index, load_issues
-from cofabriq.issues.model import check_repo
+from cofabriq.issues.fetch import load_index, load_issue, load_issues
+from cofabriq.issues.model import Issue, check_repo
 from cofabriq.loop.gate import Gated
 from cofabriq.loop.graph import FlowRunner, FlowStatus, GateAnswer, Refused
 from cofabriq.loop.intake import not_ready
@@ -54,6 +54,8 @@ _MAX_LINES = 80  # one snippet, however wide the range the spec names
 _STAMP = re.compile(r"(\d{8}T\d{6})")
 
 type RunKind = Literal["eval", "features", "wrong", "gate", "run"]
+# a flow's parts as the browser shows them, in order (`_phase`)
+type Phase = Literal["spec", "plan", "test", "test_gate", "build", "review", "done"]
 
 
 # ---- the contract (what the UI sees) -----------------------------------------
@@ -184,6 +186,7 @@ class RunSummary(BaseModel):
     kind: RunKind
     repo: str
     number: int
+    title: str  # the issue's, from the store; "" for an eval or one not stored
     status: str  # the loop's status, or the gate's when it ran
     judge: bool | None  # hidden repro / reference tests green
     valid: bool | None  # the agent's test right on the reference
@@ -217,12 +220,18 @@ class FlowSummary(BaseModel):
     route: Literal["bug", "feature"]
     waiting: Literal["plan", "test"] | None
     running: bool
+    phase: Phase = Field(
+        description="The part of the run it is in, waits at, or ended in."
+    )
     # e.g. "approved", "escalated", "rejected: plan rejected", "cut off: ..."
     outcome: str
     error: str
 
 
 class FlowView(FlowSummary):
+    body: str = Field(
+        description="The issue as it was read at the start: untrusted, show as text."
+    )
     size: str | None
     problem: str
     criteria: list[str]
@@ -281,6 +290,12 @@ class IssueRow(BaseModel):
     flow: FlowSummary | None = Field(
         description="Its flow, where it waits or how it ended; null: none yet."
     )
+
+
+class IssueView(IssueRow):
+    """One stored issue with its text, to read before starting a flow."""
+
+    body: str = Field(description="Untrusted: show it as text.")
 
 
 class Start(BaseModel):
@@ -459,7 +474,7 @@ def _gate(file: str, case: dict[str, object]) -> _Stored | None:
     return _Stored(file=file, key=key, kind="gate", judged=judged, gated=gated)
 
 
-def _summary(s: _Stored) -> RunSummary:
+def _summary(s: _Stored, title: str) -> RunSummary:
     r: LoopResult = s.judged.result
     status = s.gated.status if s.gated is not None else r.status
     cost = r.cost_usd + (s.gated.cost_usd if s.gated is not None else 0.0)
@@ -469,6 +484,7 @@ def _summary(s: _Stored) -> RunSummary:
         kind=s.kind,
         repo=r.repo,
         number=r.number,
+        title=title,
         status=status,
         judge=None if s.judged.judge is None else s.judged.judge.ok,
         valid=None if s.judged.valid is None else s.judged.valid.ok,
@@ -478,7 +494,7 @@ def _summary(s: _Stored) -> RunSummary:
     )
 
 
-def _trace(s: _Stored) -> RunTrace:
+def _trace(s: _Stored, title: str) -> RunTrace:
     r = s.judged.result
     rounds: list[ReviewRound] = []
     if s.gated is not None:
@@ -507,7 +523,7 @@ def _trace(s: _Stored) -> RunTrace:
             )
     final = s.gated.result if s.gated is not None else r
     return RunTrace(
-        **_summary(s).model_dump(),
+        **_summary(s, title).model_dump(),
         commit=r.commit,
         red=_check(r.red),
         steps=[
@@ -623,9 +639,17 @@ def build(
             seconds=found.run.latency_ms / 1000,
         )
 
+    def title(s: _Stored) -> str:
+        """A run on an issue: the issue's title, if the store has it."""
+        r = s.judged.result
+        found = load_issue(issues_dir, r.repo, r.number) if s.kind == "run" else None
+        return found.title if found is not None else ""
+
     @app.get("/api/runs", response_model=list[RunSummary])
     def runs() -> list[RunSummary]:
-        return [_summary(s) for path in _files(runs_dir) for s in _runs_in(path)]
+        return [
+            _summary(s, title(s)) for path in _files(runs_dir) for s in _runs_in(path)
+        ]
 
     @app.get("/api/runs/{file}/evidence/{name}", include_in_schema=False)
     def evidence(file: str, name: str) -> FileResponse:
@@ -642,7 +666,7 @@ def build(
     def run(file: str, key: str) -> RunTrace:
         for s in _runs_in(_file(runs_dir, file)):
             if s.key == key:
-                return _trace(s)
+                return _trace(s, title(s))
         raise HTTPException(status_code=404, detail="no such run")
 
     @app.get("/api/traces/{run}", response_model=StepTree)
@@ -704,6 +728,12 @@ def build(
     def runnable(repo: str) -> bool:
         return load_rules(targets_dir, repo) is not None
 
+    def runnable_repo(owner: str, name: str) -> str:
+        repo = f"{owner}/{name}"
+        if not _REPO.match(repo) or not runnable(repo):
+            raise HTTPException(status_code=404, detail="no such repo")
+        return repo
+
     @app.get("/api/repos", response_model=list[Repo])
     def repos() -> list[Repo]:
         """The repos a flow can run on: an issue store (`fetch-issues`) and
@@ -719,9 +749,7 @@ def build(
     def issues(owner: str, name: str) -> list[IssueRow]:
         """A repo's stored issues, newest first. Read from data/issues, not
         from GitHub: Start refreshes the one it starts."""
-        repo = f"{owner}/{name}"
-        if not _REPO.match(repo) or not runnable(repo):
-            raise HTTPException(status_code=404, detail="no such repo")
+        repo = runnable_repo(owner, name)
         by_number: dict[int, FlowSummary] = {}
         for t in flows.threads() if flows is not None else []:
             if t.startswith(f"{repo}#") and flows is not None:
@@ -731,19 +759,19 @@ def build(
         found = sorted(
             load_issues(issues_dir, repo), key=lambda i: i.number, reverse=True
         )
-        return [
-            IssueRow(
-                number=i.number,
-                title=i.title,
-                state=i.state,
-                labels=i.labels,
-                comments=i.comment_count,
-                updated_at=i.updated_at,
-                url=f"https://github.com/{repo}/issues/{i.number}",
-                flow=by_number.get(i.number),
-            )
-            for i in found
-        ]
+        return [_issue_row(i, by_number.get(i.number)) for i in found]
+
+    @app.get("/api/issues/{owner}/{name}/{number}", response_model=IssueView)
+    def issue(owner: str, name: str, number: int) -> IssueView:
+        """One stored issue with its text, as last fetched."""
+        repo = runnable_repo(owner, name)
+        found = load_issue(issues_dir, repo, number)
+        if found is None:
+            raise HTTPException(status_code=404, detail="no such issue")
+        thread = f"{check_repo(repo)}#{number}"
+        status = flows.status(thread) if flows is not None else None
+        flow = _flow_summary(status) if status is not None else None
+        return IssueView(**_issue_row(found, flow).model_dump(), body=found.body)
 
     if flows is not None:
         _flow_routes(app, flows)
@@ -781,8 +809,49 @@ def _flow_summary(f: FlowStatus) -> FlowSummary:
         route=st.route,
         waiting=f.waiting,
         running=f.running,
+        phase=_phase(f),
         outcome="waiting" if f.waiting and not f.running else outcome,
         error=f.error,
+    )
+
+
+def _phase(f: FlowStatus) -> Phase:
+    """Where a flow is: the gate it waits at, else the part after the last
+    step its checkpoint finished (that part runs now, or the flow ended
+    there). The stage alone can't say it: "rejected" is either gate,
+    "failed" is refine, setup or the test."""
+    st = f.state
+    if f.waiting is not None:
+        return "plan" if f.waiting == "plan" else "test_gate"
+    if st.refined is None or (st.stage == "failed" and st.progress is None):
+        return "spec"
+    match st.stage:
+        case "refined":  # refine done, the plan gate not reached: cut off
+            return "spec"
+        case "rejected":
+            return "plan" if st.progress is None else "test_gate"
+        case "approved" | "set_up" | "retest" | "failed":
+            return "test"
+        case "tested":  # the test gate approved it
+            return "build"
+        case "built":
+            green = st.result is not None and st.result.status == "green"
+            return "review" if green else "build"
+        case "reviewed":  # no gate: the review was halted
+            blocked = st.gated is None or st.gated.status == "blocked"
+            return "review" if blocked else "done"
+
+
+def _issue_row(i: Issue, flow: FlowSummary | None) -> IssueRow:
+    return IssueRow(
+        number=i.number,
+        title=i.title,
+        state=i.state,
+        labels=i.labels,
+        comments=i.comment_count,
+        updated_at=i.updated_at,
+        url=f"https://github.com/{i.repo}/issues/{i.number}",
+        flow=flow,
     )
 
 
@@ -810,6 +879,7 @@ def _flow_routes(app: FastAPI, flows: FlowRunner) -> None:
         spec = f.state.refined.spec if f.state.refined else None
         return FlowView(
             **_flow_summary(f).model_dump(),
+            body=f.state.issue.body,
             size=spec.size if spec else None,
             problem=spec.problem if spec else "",
             criteria=spec.criteria if spec else [],

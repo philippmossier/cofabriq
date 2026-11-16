@@ -30,7 +30,12 @@ async function save(page: Page, name: string) {
   shot += 1;
   const stem = path.join(OUT, `${String(shot).padStart(2, "0")}-${name}`);
   // open every fold, so the text holds what a reader could open
-  await page.evaluate(() => document.querySelectorAll("details").forEach((d) => (d.open = true)));
+  await page.evaluate(() => {
+    document.querySelectorAll("details").forEach((d) => (d.open = true));
+    // the answer bar is fixed to the window: a full-page shot would print it mid-page
+    const bar = document.querySelector<HTMLElement>('[aria-label="your answer"]');
+    if (bar) bar.style.position = "static";
+  });
   await page.screenshot({ path: `${stem}.png`, fullPage: true });
   writeFileSync(`${stem}.txt`, await page.locator("body").innerText());
 }
@@ -41,9 +46,9 @@ async function api(page: Page, url: string, file: string): Promise<Record<string
   return body;
 }
 
-const title = (page: Page) => page.locator('[data-slot="card-title"]').first();
+const title = (page: Page) => page.getByTestId("flow-state");
 
-/** The flow card's title once nothing runs: a gate's question or "Done: ...". */
+/** The flow's headline once nothing runs: a gate's question or "Done: ...". */
 async function settled(page: Page, minutes: number): Promise<string> {
   await expect(title(page)).toHaveText(/^(Approve the (plan|test)\?|Done: |Stopped mid-run)/, {
     timeout: minutes * 60_000,
@@ -54,8 +59,8 @@ async function settled(page: Page, minutes: number): Promise<string> {
 /** Approve the gate on screen, then wait until the page has left it: right after the
  * click the card still shows the question, which `settled` would take for the answer. */
 async function approve(page: Page, gate: "plan" | "test", minutes: number): Promise<string> {
-  // exact: a step row reads "Plan gate: your approval: you approved"
-  await page.getByRole("button", { name: "Approve", exact: true }).click();
+  const bar = page.getByRole("region", { name: "your answer" });
+  await bar.getByRole("button", { name: gate === "plan" ? "Approve the plan" : "Approve and freeze the test" }).click();
   await expect(title(page)).not.toHaveText(new RegExp(`^Approve the ${gate}\\?`), { timeout: 60_000 });
   return settled(page, minutes);
 }
@@ -65,7 +70,7 @@ test(`#${ISSUE} (${ROUTE}): Start, the gates, the result`, async ({ page }) => {
   const started = Date.now();
   const token = readFileSync(TOKEN_FILE, "utf-8").trim();
   await page.goto(`/#token=${token}`);
-  await expect(page.getByText("gate: you can approve")).toBeVisible();
+  await expect(page.getByText("you can start and approve")).toBeVisible();
 
   // Issues: Start, or Start again when the issue's flow has ended; a flow still at a
   // gate (an earlier journey stopped there) is opened and goes on from that gate
@@ -84,9 +89,10 @@ test(`#${ISSUE} (${ROUTE}): Start, the gates, the result`, async ({ page }) => {
   let state = await settled(page, 5);
   if (state.startsWith("Approve the plan")) {
     await save(page, "plan-gate");
-    for (const part of ["The cause", "The change", "Check these"]) {
+    for (const part of ["The issue, as reported", "The cause", "The change", "Check these"]) {
       await expect(page.getByRole("heading", { name: new RegExp(`^${part}`) })).toBeVisible();
     }
+    await expect(page.getByRole("list", { name: "progress" }).locator('[aria-current="step"]')).toHaveText(/Plan/);
     await expect(page.getByText("the lines the change touches")).toBeVisible();
     await api(page, `/api/flows/${OWNER}/${NAME}/${ISSUE}`, "flow-at-plan-gate.json");
     state = await approve(page, "plan", 12);

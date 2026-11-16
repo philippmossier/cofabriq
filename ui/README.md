@@ -17,8 +17,11 @@ cd ui && pnpm dev               # Vite on :5173, /api proxied to :8765
 
 With `uv run cofabriq serve --write` the browser starts and gates flows:
 open the URL it prints (the token is in its `#fragment`, moved to
-sessionStorage and out of the address bar), start a flow from Issues, then
-approve or reject its plan or test on its Flow page.
+sessionStorage and out of the address bar), open an issue under Issues to
+read it, start a flow, then approve or reject its plan or test on its Flow
+page: a stepper says where the flow is (and, while it works, the step
+running now), the answer sits in a bar fixed to the bottom of the window,
+and the Flows tab and the tab title count the flows waiting for you.
 
 The API client (`src/api/generated.ts`, TanStack Query hooks) is generated
 by orval from `openapi.json`, which `cofabriq openapi` writes from the

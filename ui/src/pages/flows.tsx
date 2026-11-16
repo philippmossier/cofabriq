@@ -1,16 +1,14 @@
-import { useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
-import { LoaderCircle } from "lucide-react";
+import { ExternalLink } from "lucide-react";
 import { useState } from "react";
-import { useFlow, useFlowAnswer, useFlowList } from "@/api/generated";
+import { type FlowView, Phase, useFlow, useFlowList } from "@/api/generated";
 import { FlowResult } from "@/components/result-card";
 import { StartFlow } from "@/components/start-flow";
 import { failureLines } from "@/lib/failure";
-import { againRoute, refreshFlow } from "@/lib/flows";
-import { Loading, Missing, Pre, Section, Status } from "@/components/bits";
+import { againRoute, endedWell, issueUrl } from "@/lib/flows";
+import { Fold, Loading, Missing, Pre, Section } from "@/components/bits";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -20,9 +18,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { DiffView } from "@/components/code";
+import { FlowProgress, FlowState } from "@/components/flow-progress";
+import { GateBar, GateChecklist, type Sent } from "@/components/gate";
+import { IssueText } from "@/components/issue-text";
 import { RunSteps } from "@/components/run-steps";
 import { SpecReview } from "@/components/spec-review";
-import { dropToken, useWriteToken, writeAuth } from "@/lib/token";
+import { useWriteToken } from "@/lib/token";
 
 const POLL_MS = 3000;
 
@@ -34,19 +35,21 @@ export function FlowsPage() {
     },
   });
   if (q.isPending) return <Loading what="flows" />;
-  const rows = q.data ?? [];
+  // yours first: a flow at a gate waits for nobody else
+  const rows = [...(q.data ?? [])].sort((a, b) => Number(!!b.waiting) - Number(!!a.waiting));
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-4">
         <h1 className="font-heading text-xl font-semibold">Flows</h1>
         <span className="text-sm text-muted-foreground">
-          runs waiting for you: start one from <Link to="/issues" className="underline">Issues</Link>
-          {" "}(or <code>cofabriq flow start &lt;n&gt;</code>)
+          one per issue, the ones waiting for you first; start one from{" "}
+          <Link to="/issues" className="underline">Issues</Link> (or <code>cofabriq flow start &lt;n&gt;</code>)
         </span>
       </div>
       {rows.length === 0 && (
         <p className="text-sm text-muted-foreground">
-          No flows (or the server runs without <code>--write</code>).
+          No flows yet (or the server runs without <code>--write</code>): start one from{" "}
+          <Link to="/issues" className="underline">Issues</Link>.
         </p>
       )}
       {rows.length > 0 && (
@@ -76,13 +79,7 @@ export function FlowsPage() {
                     <Badge variant="secondary">{f.route}</Badge>
                   </TableCell>
                   <TableCell>
-                    {f.running ? (
-                      <Badge variant="secondary">working…</Badge>
-                    ) : f.waiting ? (
-                      <Badge>waits at the {f.waiting} gate</Badge>
-                    ) : (
-                      <Status value={f.outcome.split(":")[0]!} />
-                    )}
+                    <FlowState flow={f} />
                   </TableCell>
                 </TableRow>
               );
@@ -92,6 +89,30 @@ export function FlowsPage() {
       )}
     </div>
   );
+}
+
+/** The headline: what the flow does now, the question at a gate, or how it
+ * ended. `sent` is this page's last answer, which the server doesn't echo. */
+function headline(f: FlowView, sent: Sent): string {
+  if (f.running) {
+    if (!f.problem) return "Reading the code to write a spec… (about 20 s; the plan comes to you next)";
+    if (sent && !sent.approve && !sent.again) return "Rejected: closing the flow…";
+    if (sent && !sent.approve && sent.again)
+      return "Writing another test with your reason… (the test comes back to you)";
+    if (f.phase === Phase.test)
+      return "Setting up and writing a failing test… (a minute or two; you check the test next)";
+    return "Building the fix against your test, then a review… (a few minutes; nothing waits for you)";
+  }
+  if (f.waiting === "plan") return "Approve the plan? No code is written before you do.";
+  if (f.waiting === "test")
+    return "Approve the test? Check that it fails for the reported reason: from here it is frozen.";
+  if (f.outcome.startsWith("cut off")) return `Stopped mid-run (${f.outcome}): Start again below.`;
+  // "rejected: plan rejected: why", "failed: not ready: why": the note says it
+  if (/^(rejected|failed): /.test(f.outcome)) {
+    const note = f.outcome.replace(/^(rejected|failed): /, "");
+    return f.outcome.startsWith("failed") ? `Done: sent back before any code, ${note}` : `Done: ${note}`;
+  }
+  return `Done: ${f.outcome}`;
 }
 
 export function FlowPage() {
@@ -107,89 +128,66 @@ export function FlowPage() {
     },
   });
   const token = useWriteToken();
-  const client = useQueryClient();
-  const answer = useFlowAnswer({ fetch: writeAuth() });
-  const [reason, setReason] = useState("");
+  const [sent, setSent] = useState<Sent>(null);
   if (q.isPending) return <Loading what="the flow" />;
   const f = q.data;
   if (!f) return <Missing what="flow" />;
-  const canAnswer = f.waiting !== null && !f.running && token !== null;
-  // again: at the test gate, a rejection that asks the test writer for another test
-  const send = (approve: boolean, again = false) =>
-    answer.mutate(
-      { owner, name, number: Number(number), data: { approve, reason: approve ? "" : reason, again } },
-      {
-        onSuccess: async (r) => {
-          if ((r.status as number) === 401) {
-            dropToken(); // the server restarted: a dead token
-            return;
-          }
-          setReason(""); // answered: the next gate (or a new flow) starts empty
-          // it says "running" at once: don't wait for the next poll
-          await refreshFlow(client, owner, name, Number(number));
-        },
-      },
-    );
+  const ended = !f.waiting && !f.running;
   const spec = f.problem ? <SpecReview s={f} /> : null;
-  // which button was pressed: it gets the spinner
-  const sent = answer.variables?.data;
-  const sending = !answer.isPending ? null : sent?.approve ? "approve" : sent?.again ? "again" : "reject";
-  // the last answer from this page was a no: the work left is closing it
-  const rejected = sent?.approve === false && !sent.again;
-  const retesting = sent?.approve === false && !!sent.again;
-  // the guard's 401 / 403 aren't in the schema: a plain number
-  const refused: number | null =
-    answer.data && answer.data.status !== 200 ? answer.data.status : null;
+  const issue = <IssueText body={f.body} url={issueUrl(f.repo, f.number)} />;
+  const steps = f.trace && (
+    <Section title="Steps: what ran, what it cost, why">
+      <RunSteps run={f.trace} live={f.running} />
+    </Section>
+  );
 
   return (
-    <div className="space-y-6">
-      <div className="space-y-1">
+    // room for the fixed answer bar, so it never covers the page's end
+    <div className={f.waiting ? "space-y-6 pb-32" : "space-y-6"}>
+      <div className="space-y-2">
         <Link to="/flows" className="text-sm text-muted-foreground hover:underline">
           ← Flows
         </Link>
-        <h1 className="font-heading text-xl font-semibold">
+        <h1 className="flex items-center gap-2 font-heading text-xl font-semibold">
           #{f.number} {f.title}
+          <a
+            href={issueUrl(f.repo, f.number)}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="the issue on GitHub"
+            className="text-muted-foreground hover:text-foreground"
+          >
+            <ExternalLink className="size-4" />
+          </a>
         </h1>
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Badge variant="secondary">{f.route}</Badge>
           {f.size && <Badge variant="outline">size {f.size}</Badge>}
           <span>{f.repo}</span>
         </div>
+        <FlowProgress f={f} />
       </div>
 
       <Card className={f.waiting ? "border-primary" : ""}>
-        <CardHeader>
-          <CardTitle>
-            {f.running && !f.problem
-              ? "Reading the code to write a spec… (about 20 s; the plan gate comes next)"
-              : f.running && rejected
-                ? "Rejected: closing the flow…"
-                : f.running && retesting
-                ? "Writing another test with your reason… (the test gate comes back)"
-                : f.running
-                  ? "Working on your answer… (setup, test, build and review take a few minutes)"
-              : f.waiting === "plan"
-                ? "Approve the plan? No code is written before you do."
-                : f.waiting === "test"
-                  ? "Approve the test? Check that it fails for the reported reason: from here it is frozen."
-                  : f.outcome.startsWith("cut off")
-                    ? `Stopped mid-run (${f.outcome}): Start again below.`
-                    : `Done: ${f.outcome}`}
-          </CardTitle>
-        </CardHeader>
         <CardContent className="space-y-3">
+          <h2 data-testid="flow-state" className="font-heading text-base font-medium">
+            {headline(f, sent)}
+          </h2>
           {f.error && <p className="text-sm text-destructive">{f.error}</p>}
-          {f.waiting && !token && refused !== 401 && (
-            <p className="text-sm text-muted-foreground">
-              Read-only here: open the URL that <code>cofabriq serve --write</code> printed.
-            </p>
+          {f.waiting && (
+            <>
+              <p className="text-sm text-muted-foreground">
+                Read on, then answer in the bar at the bottom. What to check:
+              </p>
+              <GateChecklist gate={f.waiting} />
+            </>
           )}
-          {!f.waiting && !f.running && f.record && <FlowResult file={f.record} number={f.number} />}
-          {!f.waiting && !f.running && (
+          {ended && f.record && <FlowResult file={f.record} number={f.number} />}
+          {ended && (
             <div className="space-y-1 border-t pt-3">
               <p className="text-sm text-muted-foreground">
-                {f.outcome === "approved"
-                  ? "Run it again: a new flow replaces this one (nothing was merged, so the bug is still there). The old run stays under Runs."
+                {endedWell(f.outcome)
+                  ? "Run it again: a new flow replaces this one (nothing was merged, so the issue is still open). The old run stays under Runs."
                   : "Wrong type, or a plan you rejected? Start again: a new flow replaces this one, and refine reads why this one ended. The old run stays under Runs."}
               </p>
               <StartFlow
@@ -202,60 +200,15 @@ export function FlowPage() {
               />
             </div>
           )}
-          {f.waiting && (
-            <div className="flex flex-wrap gap-2">
-              <Button disabled={!canAnswer || answer.isPending} onClick={() => send(true)}>
-                {sending === "approve" && <LoaderCircle className="animate-spin" />}
-                Approve
-              </Button>
-              {f.waiting === "test" && f.retests_left > 0 && (
-                <Button
-                  variant="outline"
-                  disabled={!canAnswer || answer.isPending || !reason.trim()}
-                  title={reason.trim() ? "" : "Say what is wrong with it: the test writer reads it"}
-                  onClick={() => send(false, true)}
-                >
-                  {sending === "again" && <LoaderCircle className="animate-spin" />}
-                  Write it again ({f.retests_left} left)
-                </Button>
-              )}
-              <Button
-                variant="outline"
-                disabled={!canAnswer || answer.isPending}
-                onClick={() => send(false)}
-              >
-                {sending === "reject" && <LoaderCircle className="animate-spin" />}
-                {f.waiting === "test" ? "Stop the run" : "Reject"}
-              </Button>
-              <input
-                className="min-w-48 flex-1 rounded-md border px-3 text-sm"
-                placeholder={
-                  f.waiting === "test"
-                    ? "What is wrong with the test (the test writer reads it; kept as a lesson)"
-                    : "Why, when rejecting (becomes a lesson)"
-                }
-                maxLength={500}
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                disabled={!canAnswer}
-              />
-            </div>
-          )}
-          {refused === 401 && (
-            <p className="text-sm text-destructive">
-              Refused: the server restarted with a new token. Open the new link it printed.
-            </p>
-          )}
-          {refused === 403 && (
-            <p className="text-sm text-destructive">
-              Refused: open the UI at the address the server printed (127.0.0.1, not localhost).
-            </p>
-          )}
-          {refused !== null && refused !== 401 && refused !== 403 && (
-            <p className="text-sm text-destructive">Refused ({refused}).</p>
-          )}
         </CardContent>
       </Card>
+
+      {f.waiting === "plan" && (
+        <>
+          <Section title="The issue, as reported">{issue}</Section>
+          {spec}
+        </>
+      )}
 
       {f.waiting === "test" && (
         <>
@@ -273,17 +226,16 @@ export function FlowPage() {
           <Section title="The test (frozen once approved)">
             <DiffView diff={f.diff} />
           </Section>
+          {spec && <Fold title="The plan you approved: cause, change, proof">{spec}</Fold>}
+          <Fold title="The issue, as reported">{issue}</Fold>
         </>
       )}
 
-      {/* at a gate the spec is what you review: above the steps; after it, below */}
-      {f.waiting && spec}
-      {f.trace && (
-        <Section title="Steps: what ran, what it cost, why">
-          <RunSteps run={f.trace} live={f.running} />
-        </Section>
-      )}
-      {!f.waiting && spec}
+      {steps}
+      {!f.waiting && spec && <Fold title="The spec: cause, change, proof">{spec}</Fold>}
+      {!f.waiting && <Fold title="The issue, as reported">{issue}</Fold>}
+
+      {f.waiting && <GateBar key={f.waiting} f={f} onSent={setSent} />}
     </div>
   );
 }

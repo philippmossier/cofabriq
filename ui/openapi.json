@@ -436,6 +436,64 @@
         }
       }
     },
+    "/api/issues/{owner}/{name}/{number}": {
+      "get": {
+        "summary": "Issue",
+        "description": "One stored issue with its text, as last fetched.",
+        "operationId": "issue",
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Owner"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssueView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/flows": {
       "get": {
         "summary": "Flow List",
@@ -937,6 +995,10 @@
             "type": "boolean",
             "title": "Running"
           },
+          "phase": {
+            "$ref": "#/components/schemas/Phase",
+            "description": "The part of the run it is in, waits at, or ended in."
+          },
           "outcome": {
             "type": "string",
             "title": "Outcome"
@@ -955,6 +1017,7 @@
           "route",
           "waiting",
           "running",
+          "phase",
           "outcome",
           "error"
         ],
@@ -1006,6 +1069,10 @@
             "type": "boolean",
             "title": "Running"
           },
+          "phase": {
+            "$ref": "#/components/schemas/Phase",
+            "description": "The part of the run it is in, waits at, or ended in."
+          },
           "outcome": {
             "type": "string",
             "title": "Outcome"
@@ -1013,6 +1080,11 @@
           "error": {
             "type": "string",
             "title": "Error"
+          },
+          "body": {
+            "type": "string",
+            "title": "Body",
+            "description": "The issue as it was read at the start: untrusted, show as text."
           },
           "size": {
             "anyOf": [
@@ -1122,8 +1194,10 @@
           "route",
           "waiting",
           "running",
+          "phase",
           "outcome",
           "error",
+          "body",
           "size",
           "problem",
           "criteria",
@@ -1218,7 +1292,87 @@
         "title": "IssueRow",
         "description": "One stored issue, as the Issues page lists it."
       },
+      "IssueView": {
+        "properties": {
+          "number": {
+            "type": "integer",
+            "title": "Number"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "state": {
+            "type": "string",
+            "title": "State",
+            "description": "`open` or `closed`, as last fetched."
+          },
+          "labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Labels"
+          },
+          "comments": {
+            "type": "integer",
+            "title": "Comments"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url",
+            "description": "The issue on GitHub."
+          },
+          "flow": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FlowSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Its flow, where it waits or how it ended; null: none yet."
+          },
+          "body": {
+            "type": "string",
+            "title": "Body",
+            "description": "Untrusted: show it as text."
+          }
+        },
+        "type": "object",
+        "required": [
+          "number",
+          "title",
+          "state",
+          "labels",
+          "comments",
+          "updated_at",
+          "url",
+          "flow",
+          "body"
+        ],
+        "title": "IssueView",
+        "description": "One stored issue with its text, to read before starting a flow."
+      },
       "JsonValue": {},
+      "Phase": {
+        "type": "string",
+        "enum": [
+          "spec",
+          "plan",
+          "test",
+          "test_gate",
+          "build",
+          "review",
+          "done"
+        ]
+      },
       "ProofNote": {
         "properties": {
           "kind": {
@@ -1517,6 +1671,10 @@
             "type": "integer",
             "title": "Number"
           },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
           "status": {
             "type": "string",
             "title": "Status"
@@ -1571,6 +1729,7 @@
           "kind",
           "repo",
           "number",
+          "title",
           "status",
           "judge",
           "valid",
@@ -1600,6 +1759,10 @@
           "number": {
             "type": "integer",
             "title": "Number"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
           },
           "status": {
             "type": "string",
@@ -1745,6 +1908,7 @@
           "kind",
           "repo",
           "number",
+          "title",
           "status",
           "judge",
           "valid",

@@ -1,6 +1,7 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import type { Check } from "@/api/generated";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 /** A titled block of the spec or trace; renders "(none)" for empty lists. */
@@ -10,6 +11,33 @@ export function Section({ title, children }: { title: string; children: ReactNod
       <h3 className="text-sm font-medium text-muted-foreground">{title}</h3>
       {children}
     </section>
+  );
+}
+
+/** Copies `text` to the clipboard (127.0.0.1 is a secure context). */
+export function CopyButton({ text, label = "Copy" }: { text: string; label?: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = () =>
+    void navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  return (
+    <Button size="sm" variant="outline" onClick={copy}>
+      {copied ? "Copied" : label}
+    </Button>
+  );
+}
+
+/** A section folded away: there to check, not to read first. */
+export function Fold({ title, children, open = false }: { title: string; children: ReactNode; open?: boolean }) {
+  return (
+    <details open={open} className="group rounded-md border px-3 py-2">
+      <summary className="cursor-pointer text-sm font-medium text-muted-foreground select-none group-open:mb-3">
+        {title}
+      </summary>
+      {children}
+    </details>
   );
 }
 

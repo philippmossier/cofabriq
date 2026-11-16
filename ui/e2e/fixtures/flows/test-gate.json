@@ -1,0 +1,64 @@
+{
+  "thread": "philippmossier/local-ai-chat-playground#51",
+  "repo": "philippmossier/local-ai-chat-playground",
+  "number": 51,
+  "title": "Chat title is cut off with \"…\" even though it fits",
+  "route": "bug",
+  "waiting": "test",
+  "running": false,
+  "outcome": "waiting",
+  "error": "",
+  "size": "S",
+  "problem": "The chat title is made by `titleFrom` in `src/lib/chat/store.ts:50-53`. It keeps a title as is only when `flat.length < TITLE_LENGTH` (42). This is an off-by-one error: a question that is exactly 42 characters after whitespace is flattened fits the limit, but it still goes to the truncating branch. That branch keeps 41 characters and adds \"…\". So the \"…\" replaces only the last character (often the closing \"?\"), and the title looks cut off when it isn't. Titles longer than 42 characters are cut as intended, which is why longer questions look fine. The sidebar's CSS `truncate` (`src/components/chat-sidebar.tsx:88`) only adds an ellipsis on visual overflow and is not the cause. The existing test (`src/lib/chat/chat.test.ts:100-106`) checks only 100-character input, so it never hits the boundary.",
+  "criteria": [],
+  "files": [
+    {
+      "path": "src/lib/chat/store.ts",
+      "why": "Off-by-one: text exactly TITLE_LENGTH long is truncated. Keep it whole and truncate only when it is longer.",
+      "at": [
+        "52"
+      ],
+      "edits": [
+        {
+          "old": "  return flat.length < TITLE_LENGTH ? flat : `${flat.slice(0, TITLE_LENGTH - 1)}…`;",
+          "new": "  return flat.length <= TITLE_LENGTH ? flat : `${flat.slice(0, TITLE_LENGTH - 1)}…`;",
+          "line": 52
+        }
+      ]
+    }
+  ],
+  "plan": [
+    "Add boundary tests for titleFrom at 42 characters (unchanged) and 43 characters (truncated to 42, ending in \"…\") in src/lib/chat/chat.test.ts, and confirm the 42-character case fails now.",
+    "Change `<` to `<=` in titleFrom (src/lib/chat/store.ts:52).",
+    "Run pnpm check-types && pnpm lint && pnpm test."
+  ],
+  "assumptions": [
+    "The reporter's question came to exactly 42 characters after whitespace was flattened. In that case the \"…\" replaced only the last character, usually the \"?\", so the title looked complete.",
+    "42 characters is meant as the largest title kept whole, and the limit itself is not being changed.",
+    "Titles already saved in localStorage are not recomputed. Only new chats get the corrected title."
+  ],
+  "open_questions": [],
+  "diff": "diff --git a/src/lib/chat/chat.test.ts b/src/lib/chat/chat.test.ts\nindex 41cf7e9c..521a26a4 100644\n--- a/src/lib/chat/chat.test.ts\n+++ b/src/lib/chat/chat.test.ts\n@@ -104,6 +104,25 @@ describe(\"titleFrom\", () => {\n     expect(titleFrom(long)).toHaveLength(42);\n     expect(titleFrom(long).endsWith(\"…\")).toBe(true);\n   });\n+\n+  it(\"keeps a text of 41 characters whole\", () => {\n+    const under = `${\"x\".repeat(40)}?`;\n+    expect(titleFrom(under)).toBe(under);\n+  });\n+\n+  it(\"keeps a text of exactly 42 characters whole\", () => {\n+    const exact = `${\"x\".repeat(41)}?`;\n+    expect(titleFrom(exact)).toBe(exact);\n+    expect(titleFrom(`  ${\"x\".repeat(20)}\\n\\n ${\"y\".repeat(20)}?  `)).toBe(\n+      `${\"x\".repeat(20)} ${\"y\".repeat(20)}?`,\n+    );\n+  });\n+\n+  it(\"truncates a text of 43 characters to 42 ending in an ellipsis\", () => {\n+    const over = `${\"x\".repeat(42)}?`;\n+    expect(titleFrom(over)).toHaveLength(42);\n+    expect(titleFrom(over)).toBe(`${\"x\".repeat(41)}…`);\n+  });\n });\n \n describe(\"persistence\", () => {\n",
+  "red": "RUN  v5.0.3 /app\n\n ❯ src/lib/chat/chat.test.ts (23 tests | 1 failed) 10ms\n   ✓ chatReducer (7)\n     ✓ creates a chat and makes it active 1ms\n     ✓ adds the user message and an empty assistant placeholder, and titles the chat once 0ms\n     ✓ streams tokens into the assistant message and records stats 0ms\n     ✓ deleting the active chat selects another one 0ms\n     ✓ keeps updatedAt current so the history orders by last use 0ms\n     ✓ clear wipes everything 0ms\n     ✓ selecting an unknown chat is ignored 0ms\n   ❯ titleFrom (4)\n     ✓ flattens whitespace and truncates with an ellipsis 1ms\n     ✓ keeps a text of 41 characters whole 0ms\n     × keeps a text of exactly 42 characters whole 4ms\n     ✓ truncates a text of 43 characters to 42 ending in an ellipsis 0ms\n   ✓ persistence (8)\n     ✓ round-trips 0ms\n     ✓ falls back to an empty state for null 1ms\n     ✓ falls back to an empty state for \"\" 0ms\n     ✓ falls back to an empty state for \"not json\" 0ms\n     ✓ falls back to an empty state for \"[]\" 0ms\n     ✓ falls back to an empty state for \"{\\\"chats\\\":\\\"nope\\\"}\" 0ms\n     ✓ falls back to an empty state for \"{\\\"chats\\\":[{\\\"id\\\":1}]}\" 0ms\n     ✓ drops malformed chats but keeps valid ones 0ms\n   ✓ chats saved before updatedAt existed (1)\n     ✓ fall back to createdAt instead of being dropped 0ms\n   ✓ toModelMessages (1)\n     ✓ leaves out empty placeholders and failed replies 0ms\n   ✓ sync from another tab (2)\n     ✓ takes the other tab's chats instead of overwriting them later 0ms\n     ✓ keeps the chat this tab is still writing into 0ms\n\n Test Files  1 failed (1)\n      Tests  1 failed | 22 passed (23)\n   Start at  20:03:03\n   Duration  169ms (transform 51%, import 19%, tests 17%, worker 13%)\n\n\n⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯\n\n FAIL  src/lib/chat/chat.test.ts > titleFrom > keeps a text of exactly 42 characters whole\nAssertionError: expected 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…' to be 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…' // Object.is equality\n\nExpected: \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx?\"\nReceived: \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\"\n\n ❯ src/lib/chat/chat.test.ts:115:30\n    113|   it(\"keeps a text of exactly 42 characters whole\", () => {\n    114|     const exact = `${\"x\".repeat(41)}?`;\n    115|     expect(titleFrom(exact)).toBe(exact);\n       |                              ^\n    116|     expect(titleFrom(`  ${\"x\".repeat(20)}\\n\\n ${\"y\".repeat(20)}?  `)).…\n    117|       `${\"x\".repeat(20)} ${\"y\".repeat(20)}?`,\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯",
+  "retests_left": 2,
+  "commit": "50c141408e067f3a878ad49b131a40f583600034",
+  "tests": [
+    {
+      "path": "src/lib/chat/chat.test.ts",
+      "why": "Add boundary cases to the titleFrom describe: a 42-character text comes back unchanged with no ellipsis, and a 43-character text is 42 long and ends with \"…\".",
+      "at": [
+        "106"
+      ],
+      "edits": []
+    }
+  ],
+  "proof": {
+    "kind": "unit",
+    "how": "In the vitest test, `titleFrom(\"x\".repeat(41) + \"?\")` must equal the input unchanged. On the current code it returns 41 x's followed by \"…\", so the test fails because a title that fits is truncated."
+  },
+  "unknown_paths": [],
+  "trace": "877bcb0d38c3b9cc8b054c95c1ba2611",
+  "record": "",
+  "phase": "test_gate",
+  "body": "I asked \"What is the difference between RAM and VRAM?\" plus a few words and the sidebar shows the title with a \"…\" at the end, but nothing is actually missing. Longer questions look fine. Minor, just looks sloppy."
+}
