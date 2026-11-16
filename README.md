@@ -13,6 +13,32 @@ merged for you. Tried on a demo app with bugs planted on purpose.
 
 [Quickstart](#quickstart)
 
+## Demo
+
+Playground [#51](https://github.com/philippmossier/local-ai-chat-playground/issues/51):
+a chat title is cut off with "…" although it fits. Started from the Issues
+page, done in 1 min 51 s for $0.52 (API list price), one test sent back on
+the way.
+
+**The plan gate.** The cause in two sentences, the change as a diff checked
+against the file, and how the fix will be proven. No code is written before
+you approve.
+
+<img src="docs/demo/plan-gate-51.png" width="760" alt="The plan gate for #51: the issue as reported, the cause (titleFrom in store.ts:52 keeps the text only when it is shorter than 42 characters), the change as one line from < to <=, the proof as a unit test, and Approve or Reject in a bar at the bottom">
+
+**The test gate.** How the new test fails on the unchanged code, then the
+test. The first one was sent back with "also cover a title that is 43
+characters long"; this is the second. Once approved it is frozen: the
+agent that fixes the code can't change it.
+
+<img src="docs/demo/test-gate-51.png" width="760" alt="The test gate for #51: the failure on the unchanged code (a 42-character title comes back ending in an ellipsis), the test with the 42 and 43 character cases, and Approve and freeze, Write it again (2 left) or Stop the run at the bottom">
+
+**The result, step by step.** What changed, the proof, the review and the
+cost, then every step with its time, turns and cost: each agent session,
+each sandbox command, each gate and how long it waited for you.
+
+<img src="docs/demo/run-51.png" width="760" alt="The finished flow for #51: done and approved, two files changed, the reviewer's approval, $0.515 for 5 agent sessions; below it the step tree: refine, plan gate, setup, a failing test, the test gate rejected once, a second failing test, approved, build with types, lint and tests, review">
+
 ## How it works: one real bug
 
 What happens to one real bug report. A user filed
@@ -21,7 +47,7 @@ What happens to one real bug report. A user filed
 > I wrote something at 11:50 PM and checked again at 12:10 AM. The message
 > says "Today 11:50 PM". It was yesterday.
 
-The dev runs `cofabriq run 54`:
+The dev presses Start on it (or runs `cofabriq run 54`, as here):
 
 1. **An agent reads the code and explains the bug.** The app counts 24-hour
    periods since the message, not calendar days: 20 minutes after midnight
@@ -136,271 +162,42 @@ it on the way. Details and caveats: [docs/evals.md](docs/evals.md).
 
 ## Quickstart
 
-Requires [uv](https://docs.astral.sh/uv/), Podman (or Docker) with compose,
-an OpenAI key and a fine-grained GitHub token with "Public repositories
-(read-only)" and no other permission. Without `run --apply`, cofabriq
-never writes to GitHub.
+On the demo app, a small local-first chat app with seeded issues. Read-only:
+nothing is written to GitHub, the draft PR body stays on your disk.
+
+Needs [uv](https://docs.astral.sh/uv/), [pnpm](https://pnpm.io/), Podman
+with compose, the [`claude`](https://docs.anthropic.com/en/docs/claude-code)
+CLI on the PATH, an Anthropic API key and a fine-grained GitHub token with
+"Public repositories (read-only)" and no other permission. For your own
+runs the agent can use your Claude plan instead of the key:
+`AGENT_AUTH=subscription` and a token from `claude setup-token` (see
+`.env.example`); costs shown are then API list prices, not billed.
 
 ```bash
-make setup               # install deps, create .env (set OPENAI_API_KEY, GITHUB_TOKEN)
-make up                  # Postgres + pgvector (5433), Neo4j (7474, 7687), test Neo4j (7688)
-uv run cofabriq health   # OK per service
+make setup     # Python and UI deps, .env from .env.example: set GITHUB_TOKEN, ANTHROPIC_API_KEY
+make up        # Postgres (a run waits there at its gates), Neo4j, Jaeger
+uv run cofabriq fetch-issues --repo philippmossier/local-ai-chat-playground
+make ui && uv run cofabriq serve --write     # open the URL it prints once
 ```
 
-Triage an issue on the playground (a small local-first chat app with
-seeded issues):
+Under Issues, pick a bug (#51 is the one above) and press Start:
 
-```bash
-REPO=philippmossier/local-ai-chat-playground
-git clone https://github.com/$REPO ../local-ai-chat-playground
-uv run cofabriq fetch-issues --repo $REPO    # all issues -> data/issues/ (read-only, incremental)
-uv run cofabriq embed-issues --repo $REPO    # title + body into pgvector: the duplicate candidates
-uv run cofabriq fetch ../local-ai-chat-playground && uv run cofabriq embed   # docs, for "related docs"
-uv run cofabriq triage 11 --repo $REPO       # add --json for the raw card
-```
+1. The issue is read fresh from GitHub, refused if it has an open blocker,
+   then an agent reads the code and writes the spec. The step view shows
+   it live.
+2. Approve the plan, or reject it with a reason.
+3. The agent writes a failing test and the page shows how it fails:
+   approve it, have it written again with your reason, or stop the run.
+4. Build, checks, review and the draft PR body run on their own. The
+   result stays under Runs.
 
-Run the loop on a playground issue (needs an Anthropic key, the
-[`claude`](https://docs.anthropic.com/en/docs/claude-code) CLI on the PATH
-and Podman; about $0.35 per issue):
+About 2 minutes and $0.35 to $0.55 per bug (API list price). A run stops
+at its budget (`RUN_BUDGET_USD`, $3 by default), and `uv run cofabriq stop`
+halts every agent before its next step.
 
-```bash
-uv run cofabriq refine 54 --repo $REPO     # the spec only: read-only agent, prints it
-uv run cofabriq run 54 --repo $REPO        # refine, plan gate, repro, fix, review gate, PR body (dry run)
-uv run cofabriq run <n> --type feature     # a feature request: criteria, test gate, then the build
-```
-
-Look at the specs and runs in the browser, or approve runs there:
-
-```bash
-cd ui && pnpm install && cd ..
-make ui && uv run cofabriq serve           # http://127.0.0.1:8765, read-only
-uv run cofabriq serve --write              # open the printed URL: start and approve runs
-```
-
-Walk through the browser flow on one issue:
-
-1. `make ui` (once), then `uv run cofabriq serve --write` and open the
-   printed URL.
-2. Under Issues, pick an issue, bug or feature, and press Start: the issue is
-   read fresh from GitHub, refused if it has an open blocker, then an agent
-   reads the code and writes a spec while the step view shows it live
-   (`cofabriq flow start <n>` does the same in the terminal).
-3. Approve the plan (or reject it with a reason). The agent then writes a
-   failing test and the page shows how it fails: approve it, stop the run, or
-   have it written again with your reason.
-4. The build, the review and the draft PR text run on their own, a few minutes.
-5. Read the result under Runs: the plan, the test, the diff, the review and
-   the draft PR body. It stays on your disk. Opening the PR on GitHub is still
-   `run --apply` in the terminal.
-
-From a rough note to a ticket: `ln -s "$PWD/skills/ticket" ~/.claude/skills/ticket`,
-then `/ticket <note>` in your own Claude Code session ([intake](docs/intake.md)).
-
-`--apply` opens the draft PR on GitHub (needs `GITHUB_WRITE_TOKEN`,
-playground only). For your own runs, the agent can use your Claude plan
-instead of the key: `AGENT_AUTH=subscription` and a token from
-`claude setup-token` (see `.env.example`); costs shown are then API list
-prices, not billed.
-
-Development: `make check` runs ruff, pyright (strict) and pytest, and the
-UI's checks when `ui/` changed. `make e2e` runs the viewer in a browser on
-recorded runs (seconds, free, in CI); `make journey` takes one live issue
-through the real UI and saves every page to review.
-
-## A test you can judge, started from the browser (0.8)
-
-A green test only means something if it first failed for the reported
-reason. Playground [#8](https://github.com/philippmossier/local-ai-chat-playground/issues/8)
-says code in dark mode is "dark grey on almost black". The agent's browser
-test checked four things, the page's `color-scheme` first, and said so:
-
-> It should fail now because nothing sets `color-scheme` [...]. The colour
-> and contrast checks also catch the reported dark grey if Chrome's computed
-> colour shows it. I haven't been able to run it.
-
-It failed on `color-scheme`, the fix made it green, and the reviewer
-approved with a note: "'failed before' does not prove the grey text was
-reproduced". On a bug, nobody saw the test before the build. Now every run
-stops there:
-
-1. **Start it in the browser.** Under Issues, pick
-   [#51](https://github.com/philippmossier/local-ai-chat-playground/issues/51)
-   (a chat title cut off with "…" although it fits) and press Start. The
-   step view shows each step live: what ran, how long, what it cost, and on
-   request the data it got and gave, the code behind it and why it exists.
-2. **The plan gate** shows the lines the change will touch (checked against
-   the file), a sketch of the edit (kept only if its old lines are really
-   there), and how the fix will be proven: a unit test, a browser test, a
-   stand-in measure, or no test at all, which goes back to the dev before
-   any test is paid for.
-3. **The test gate** shows how the new test fails on the unchanged code:
-   only the failure lines, the full output folded. Approve, stop, or **write
-   it again** with a reason. #51's first test was sent back with "also test
-   a title one character shorter than the limit"; the second one added that
-   case, and was approved.
-4. Build, checks, review and the draft PR body, as before. #51 took 1 min
-   53 s and $0.38 (API list price), the rewrite included.
-
-<img src="docs/demo/test-gate-rewritten.png" width="760" alt="The test gate for #51 after a rewrite: Approve, Write it again (2 left), Stop the run; how the test fails on the unchanged code (a 42-character title comes back ending in an ellipsis); the rewritten test with the 41, 42 and 43 character cases">
-
-On the 22 planted bugs, refine now plans a test for every one (19 before),
-lists only files the fix touches (precision 0.91 to 1.00), and names the
-fix's own lines in 18; it picks a unit test for 10 and a browser test for
-12, and turns none away ([numbers](docs/evals.md#08-specs-and-tests-you-can-judge)).
-Why a rejected test goes back to the test writer and not to refine:
-[ADR-010](docs/adr/010-langgraph-for-the-outer-loop-gates-as-nodes.md).
-
-**0.8.1: a plan gate you read top to bottom once.** Playground
-[#71](https://github.com/philippmossier/local-ai-chat-playground/issues/71):
-after an error the chat stays locked. A stepper says where the run is, the
-issue sits above the spec, the cause leads in two sentences (the evidence
-folded), the sketch shows only the line it adds, and Approve stays in a bar
-at the bottom of the window. A bug's test is now planned as cases, each
-marked "fails now" or "must stay", and the test writer gets them, so the
-test it writes is the one you approved.
-
-<img src="docs/demo/plan-gate-71.png" width="760" alt="The plan gate for #71: a stepper with Plan waiting for you, the issue as reported, the cause in two sentences (setGenerating(true) at line 237 is only reset on success), the change as one added line setGenerating(false) in the finally block, the proof as a browser test, and Approve or Reject in a bar at the bottom">
-
-On the 6 planted bugs it was measured on, every spec had a case that fails
-now (24 cases in all), and the fix's file was still listed first on all 6
-([numbers](docs/evals.md#081-the-planned-test-as-cases)).
-
-## Features (0.3)
-
-The same loop takes a small feature request. One of the demo app's
-features was taken out on purpose, and its ticket asks for it back:
-
-> My browser languages are English (US) first and German second. The app
-> shows English because only the first language counts. I can read both,
-> but I'd prefer German.
-
-1. **An agent reads the code and writes acceptance criteria**, each one a
-   behaviour a test can check: `detectLang(["en-US", "de"])` returns
-   `"de"`; `detectLang(["en", "DE-at"])` returns `"de"` (any case); German
-   first, English, other languages and the empty list stay as they are.
-   Seven in all.
-2. **The dev approves the plan and the criteria.** A spec that names no
-   testable criterion, a file that doesn't exist or a size too big for one
-   PR goes back to the dev with the reason; open questions are answered
-   at this gate.
-3. **An agent writes the acceptance test from the criteria:** three new
-   rows in the existing `detectLang` table. It fails on the current code,
-   so it tests something. **From here it is frozen:** the agent that
-   builds the feature can't change it.
-4. **An agent builds the feature** (one line: `languages.some(...)`
-   instead of `languages[0]`) until the test and the project's checks are
-   green.
-5. **The review gate and the draft PR** as for bugs (in `cofabriq run`;
-   the feature evals stop at the build, so the gate isn't measured on
-   features yet).
-
-About 2 minutes and $0.25 (API list price) for this feature. The feature's own original
-tests, hidden from the agents, pass on the result.
-
-<img src="docs/demo/viewer-run.png" width="760" alt="The cofabriq viewer on this run: the acceptance test written first and red on the unchanged code, then the one-line change with repro, types, lint and tests green, and the diff">
-
-**The viewer** (`cofabriq serve`, read-only, local): every spec with its
-criteria and readiness, every run from the failing test to the review
-gate's proofs and the PR body. Self-hosted by design: it runs where the
-code is, with your keys ([ADR-009](docs/adr/009-self-hosted-not-saas-ui-in-the-repo.md)).
-
-## From a fuzzy note, approved in the browser (0.5)
-
-A rough note, the kind the `/ticket` skill takes:
-
-> just sent msg shows "Today 8:13 PM", would be nicer to say "just now"
-> for the first minute (german: gerade eben). other devices clock can be
-> a bit ahead
-
-Following the skill's rules (the note kept verbatim, nothing invented) it
-became
-[#83](https://github.com/philippmossier/local-ai-chat-playground/issues/83),
-and then:
-
-1. `cofabriq intake 83`: ready (no blocker, no open cofabriq PR).
-2. `cofabriq flow start 83 --type feature`: refine writes 8 acceptance
-   criteria (under 60 s "Just now", 59,999 ms still, 60 s not, a clock
-   slightly ahead, German), and the run **stops at the plan gate**. The
-   process exits; the run waits in Postgres.
-3. In the browser (`cofabriq serve --write`): **Approve the plan.** The
-   agent writes the acceptance test, it fails on the current code, and the
-   run stops again at the **test gate**.
-4. **Approve the test.** From here it's frozen. The build is a two-line
-   early return, the checks and the review gate pass, and the draft PR
-   body lands in the viewer. $0.14 for test and build (API list price).
-
-<img src="docs/demo/gate-test.png" width="760" alt="The browser gate at the test step for #83: Approve or Reject, the frozen test below it (expects Just now at 5 s, at the same instant and at 59,999 ms), and the spec's problem statement">
-
-Each pause is a step boundary of a LangGraph graph checkpointed in
-Postgres, so a run can wait for hours, in another process
-([ADR-010](docs/adr/010-langgraph-for-the-outer-loop-gates-as-nodes.md)).
-Approving needs the token `serve --write` prints once; any other page in
-the browser is refused.
-
-## UI bugs (0.4)
-
-Some bugs only show in a browser. A user filed this one:
-
-> The placeholder says Shift+Enter for a new line, but Shift+Enter sends
-> the message immediately. I wanted to paste a list with line breaks.
-
-The agent writes its failing test as a browser test this time, run by
-Playwright in the same isolated container, against the app on a fake
-model:
-
-```ts
-test("Shift+Enter breaks the line instead of sending", async ({ page }) => {
-  // ...
-  await box.fill("first line");
-  await box.press("Shift+Enter");
-  await box.pressSequentially("second line");
-  await expect(box).toHaveValue("first line\nsecond line");
-  await expect(page.getByText(/Fake answer to:/)).toHaveCount(0);
-  // ...
-});
-```
-
-It fails on the current code, the fix is one condition (`!e.shiftKey`),
-and the bug's own hidden test passes on it. About 2 minutes and $0.17
-(API list price). A target names its test kinds (unit tests for logic,
-browser tests for the UI) and the agent picks the one that can show the
-bug.
-
-## Learning from what went wrong (0.6)
-
-**Rules from failures, not up front.** `cofabriq lessons` collects what the
-factory already knows went wrong: findings the review gate proved with a
-failing test, and plans or tests the dev rejected, with the reason they
-gave. `--propose` turns them into at most 5 rules for the target's own
-CLAUDE.md, each citing the signals it comes from (a rule citing nothing
-real is dropped in code). On the demo app, 36 signals became 5 rules (all 36
-come from the 8 fixes that were written wrong on purpose, since the loop makes
-no natural mistakes on these sets); the first one:
-
-> When a task comes with a spec, make exactly the change it describes [...].
-> Do not add your own heuristics, extra conditions or different units [...].
-> If you think the spec misses a case, leave the code as specified and raise
-> the case as an open question in your summary.
-
-It's a draft for the dev; nothing is written into the target. Whether a
-rule stops the mistake from coming back isn't measured yet.
-
-**The app's contract, checked in code.** The demo app promises that nothing
-typed leaves the device, and its Content-Security-Policy lists the only
-hosts it may talk to. Every change is checked against that list before a
-reviewer is paid for: a new URL to another host, or any change to the
-policy, blocks the run with the line as evidence. On the 50 right changes
-stored so far: 0 false alarms.
-
-**Screenshots of the browser test.** After a UI fix goes green, the agent's
-browser test runs once more with screenshots on; the viewer shows them and
-the PR body says so.
-
-<img src="docs/demo/viewer-evidence.png" width="760" alt="The viewer's screenshots of the browser test after the New chat fix: the sidebar keeps the first question, a new empty chat is open">
-
-Also in 0.6: a harder planted set (symptom-only tickets, causes in data, a
-shared helper, two files), and it wasn't harder for the model: 5 of 5 fixed
-on the first try. It stays as a regression check.
+Another repo needs `targets/<owner>-<name>.toml` with a `[loop]` table: the
+container image and the commands to install, check and test it (the
+playground's file is the example). So far only the demo app has one.
 
 ## Why it is built this way
 
@@ -426,29 +223,50 @@ on the first try. It stays as a regression check.
 - **A number per stage.** Every agent or retrieval change is measured
   ([evals](docs/evals.md)).
 
-## Triage (0.1)
+## More
 
-Before any of that, an issue gets a triage card: type, component, a
-duplicate verdict with a quote as evidence, missing info with a reply
-draft for the reporter. Measured on real issues of
-[microsoft/vscode](https://github.com/microsoft/vscode) and
-[open-webui](https://github.com/open-webui/open-webui).
+- [What each version added](docs/versions.md), one real example each:
+  features against a frozen acceptance test, UI bugs with a browser test,
+  a ticket from a fuzzy note, rules from what went wrong, the app's
+  contract checked in code, and triage (duplicates with a quote as
+  evidence, missing info with a reply draft, measured on
+  [microsoft/vscode](https://github.com/microsoft/vscode) and
+  [open-webui](https://github.com/open-webui/open-webui)).
+- How each part works: [docs/how-it-works.md](docs/how-it-works.md); a map
+  of the repository, the parts and the user journeys:
+  [docs/architecture.md](docs/architecture.md).
 
-Duplicate candidates come from the issue's embedding, made from its title and
-body with the template, the reporter's system blocks, checkboxes and long logs
-cut out first. One more LLM call then picks the verdict's 10 candidates from
-the 50 nearest earlier issues (about $0.0007 and 3 s per card;
-`RERANK_CANDIDATES=false` in `.env` turns it off). The exact duplicate is then
-in the shortlist far more often: top-10 recall 0.40 to 0.635 on vscode and
-0.568 to 0.703 on open-webui. The final verdict does not improve on both yet,
-but the card lists the top 5 candidates and a human decides, so recall comes
-first ([numbers](docs/evals.md#07-cleaner-issue-text-a-reranker)).
+## Headless: the CLI
 
-<img src="docs/demo/triage.gif" width="820" alt="cofabriq triage on two playground issues: a likely duplicate proven by a quote, routed to the dev with a reply draft for the missing version, then an issue with an injected instruction that the card ignores, routed ready">
+Everything the browser does also runs in the terminal, and a few things
+only run there so far:
 
-How each part works: [docs/how-it-works.md](docs/how-it-works.md); a map of
-the repository, the parts and the user journeys:
-[docs/architecture.md](docs/architecture.md).
+```bash
+uv run cofabriq run 54             # one process: refine, gates answered here, fix, review, PR body (dry run)
+uv run cofabriq run <n> --type feature   # a feature request: criteria, a frozen acceptance test, the build
+uv run cofabriq flow start 51      # what Start does: stops at the plan gate, the run waits in Postgres
+uv run cofabriq flow resume 51 --approve # or --reject --reason "...", at either gate
+uv run cofabriq flow show 51 --steps     # where it is, every step with time and cost
+uv run cofabriq refine 54 --repo philippmossier/local-ai-chat-playground   # the spec only
+uv run cofabriq intake 83 84       # which tickets are ready, blocked or waiting
+uv run cofabriq lessons --propose  # rules for the target's CLAUDE.md from what went wrong
+uv run cofabriq stop               # the kill switch; stop --clear lifts it
+```
+
+`--repo owner/name` picks the repo (the playground by default; `refine`
+and `triage` use `TARGET_REPO` from `.env`).
+`run --apply` opens the draft PR on GitHub (needs `GITHUB_WRITE_TOKEN`,
+playground only, checked in code). Triage needs `OPENAI_API_KEY` and the
+issues embedded first: `embed-issues --repo <r>`, then `triage <n> --repo
+<r>`. From a rough note to a ticket: `ln -s "$PWD/skills/ticket"
+~/.claude/skills/ticket`, then `/ticket <note>` in your own Claude Code
+session ([intake](docs/intake.md)). Every command:
+`uv run cofabriq --help`.
+
+Development: `make check` runs ruff, pyright (strict) and pytest, and the
+UI's checks when `ui/` changed. `make e2e` runs the viewer in a browser on
+recorded runs (seconds, free, in CI); `make journey` takes one live issue
+through the real UI and saves every page to review.
 
 ## Roadmap
 
