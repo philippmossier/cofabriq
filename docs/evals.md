@@ -98,14 +98,18 @@ the answer key. `eval feature-set` proves it: 5/5, the own target's checks
 | --- | --- | --- | --- |
 | After a stop, eval review forgets the earlier green runs | S | first | resolved, first try |
 | intake says ready although the ticket is blocked | S | first | resolved, first try |
-| No warning for my gh token, although it can write | S | first | resolved, first try |
+| No warning for my gh token, although it can write | S | first | resolved, second try (a sandbox flake, below) |
 | Rejecting the test shows the plan as rejected | S | first | resolved, first try |
 | cofabriq's draft PR shows up on other people's issues | M | first (sized S) | resolved, first try; own test invalid on main |
 
-`data/refine/features-20261117T161123.json`, `data/runs/features-
-20261117T161400.json` and `-161938.json`: **resolved 5/5 on cofabriq**,
-all first try, all in the reference's file; refine 23 s and $0.25 per bug,
-the loop 71 s and $0.13 per S bug, $0.57 for the M bug (list prices).
+At `5cc783e`, a tip that contains the set, so the hiding was live (the
+worktree had no `evals/planted-cofabriq.toml`), 4 bugs at a time:
+`data/refine/features-20261117T164557.json` and
+`data/runs/features-20261117T164905.json`. **Resolved 5/5 on cofabriq**,
+first try 4/5, all in the reference's file, the agent's test valid on
+main 4/5; refine 24 s and $0.20 per bug, the loop 98 s and $0.22 per bug
+(list prices). An earlier run at `b5f2eb5`, before the set was on main,
+gave the same 5/5.
 
 - Not harder than the playground. Every spec named the cause with its line
   in about 6 turns. The size of the repo didn't matter because its
@@ -114,12 +118,16 @@ the loop 71 s and $0.13 per S bug, $0.57 for the M bug (list prices).
   untested case.
 - The one invalid test is a real find: it asks for more than main does,
   and main has the hole (the set's header says which; causes stay out of
-  every file the agent reads).
-- The first loop run lost 4 of 5 bugs to setup: five parallel installs of
-  uv into the one shared cache, and the installer's `mv` collided. The
-  numbers above are a rerun of those 4 one at a time. Two flows started at
-  once on cofabriq would hit the same race: the target's install should
-  skip uv when it is there.
+  every file the agent reads). Two runs, two different tests, the same
+  demand.
+- The runs found two faults of cofabriq's, not of the agent. Parallel
+  installs of uv into the one shared cache collided (4 of 5 bugs lost to
+  setup in the first run); with installs serialized, an install still
+  replaced uv while another worktree's check ran it (the second try
+  above). Now an install holds a host lock alone and every other command
+  shares it (`loop/sandbox.py`); the shared half came after this run and
+  is unit-tested, not rerun. And a test that read the set kept every
+  check red once the worktree dropped it: no test reads it now.
 - Not measured here: the review gate (`eval gate` takes the planted-repro
   format only).
 

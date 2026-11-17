@@ -23,9 +23,10 @@
 #   pr-backlinks          two places in pr.py: `#` refs and bare URLs are no
 #                         longer broken, so a PR body posts backlinks
 #
-# First run (Nov 17): the agent's pr-backlinks test also asks for `GH-5`
-# to be broken. GitHub autolinks that form to issue 5 and main leaves it:
-# the test is stricter than the reference, and main has the hole.
+# Both runs (Nov 17): the agent's pr-backlinks test also asks for `GH-5`
+# (`GH-7` the second time) to be broken. GitHub autolinks that form to an
+# issue and main leaves it: the test is stricter than the reference, and
+# main has the hole.
 #
 # Tickets describe the symptom only, as a user would: no file, no cause.
 # Fields as in playground/features.toml, plus `route = "bug"`; `files` is
