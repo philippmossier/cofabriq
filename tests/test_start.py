@@ -160,7 +160,9 @@ def api(
 def test_the_issue_list_is_the_store_of_a_runnable_repo(tmp_path: Path) -> None:
     c = api(store(tmp_path, issue(1, "old"), issue(2, "new", labels=["bug"])))
 
-    assert c.get("/api/repos").json() == [{"repo": REPO, "issues": 2, "tickets": 0}]
+    assert c.get("/api/repos").json() == [
+        {"repo": REPO, "issues": 2, "tickets": 0, "on_github": True}
+    ]
     rows = c.get(f"/api/issues/{REPO}").json()
     assert [(r["ticket"], r["title"], r["flow"]) for r in rows] == [
         ("2", "new", None),
@@ -198,7 +200,9 @@ def test_a_repo_with_only_local_tickets_is_listed(tmp_path: Path) -> None:
 
     c = api(tmp_path)
 
-    assert c.get("/api/repos").json() == [{"repo": REPO, "issues": 0, "tickets": 1}]
+    assert c.get("/api/repos").json() == [
+        {"repo": REPO, "issues": 0, "tickets": 1, "on_github": True}
+    ]
     assert [r["ticket"] for r in c.get(f"/api/issues/{REPO}").json()] == ["L1"]
 
 
@@ -277,7 +281,9 @@ def test_an_own_repo_is_listed_only_once_proven(tmp_path: Path) -> None:
         seconds=3,
     )
     onboard.proof_path(targets, REPO).write_text(proof.model_dump_json())
-    assert c.get("/api/repos").json() == [{"repo": REPO, "issues": 1, "tickets": 0}]
+    assert c.get("/api/repos").json() == [
+        {"repo": REPO, "issues": 1, "tickets": 0, "on_github": True}
+    ]
 
 
 def test_one_issue_comes_with_its_text(tmp_path: Path) -> None:

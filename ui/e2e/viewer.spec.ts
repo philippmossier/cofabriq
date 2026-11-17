@@ -49,6 +49,44 @@ test("a local ticket is listed first, marked local, with no GitHub link", async 
   await expect(page.getByText("1 issues")).toBeVisible();
 });
 
+test("Import open issues: says which token, warns when it can write, asks above the cap", async ({ page }) => {
+  const warning = "this token can write to your repositories (scope repo); cofabriq only reads";
+  await page.route("**/api/github", (route) =>
+    route.fulfill({ json: { source: "gh", can_write: true, warning } }),
+  );
+  const sent: unknown[] = [];
+  await page.route("**/api/repos/philippmossier/local-ai-chat-playground/import", (route) => {
+    const data = route.request().postDataJSON() as { confirm: boolean };
+    sent.push(data);
+    return route.fulfill({
+      json: data.confirm
+        ? { total: 120, written: 50, unchanged: 0, asked: false }
+        : { total: 120, written: 0, unchanged: 0, asked: true },
+    });
+  });
+  await page.goto("/#token=e2e");
+  await page.goto("/issues");
+
+  await expect(page.getByText("The newest 50, read with gh's login; cofabriq never writes to GitHub.")).toBeVisible();
+  await expect(page.getByText(`Warning: ${warning}.`)).toBeVisible();
+  await page.getByRole("button", { name: "Import open issues" }).click();
+  await expect(page.getByText("120 open issues on GitHub: import the newest 50?")).toBeVisible();
+  await page.getByRole("button", { name: "Import 50" }).click();
+  await expect(page.getByText("Imported: 50 new or changed, 0 unchanged, of 120 open.")).toBeVisible();
+  expect(sent).toEqual([
+    { limit: 50, confirm: false },
+    { limit: 50, confirm: true },
+  ]);
+});
+
+test("Import open issues is off without a GitHub token", async ({ page }) => {
+  await page.goto("/#token=e2e");
+  await page.goto("/issues");
+
+  await expect(page.getByText(/No GitHub token: set GITHUB_TOKEN/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Import open issues" })).toBeDisabled();
+});
+
 test("Write a ticket: the check lists the gaps, Save anyway saves it", async ({ page }) => {
   const sent: unknown[] = [];
   await page.route("**/api/tickets/philippmossier/local-ai-chat-playground", (route) => {

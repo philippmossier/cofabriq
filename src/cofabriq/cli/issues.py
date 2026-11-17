@@ -10,6 +10,7 @@ from cofabriq.cli.common import (
     app,
     embedder,
     github,
+    github_access,
     neo4j_driver,
     openai_key,
     target_repo,
@@ -22,7 +23,8 @@ from cofabriq.context.store import postgres
 from cofabriq.issues import tickets as tickets_mod
 from cofabriq.issues import triage as triage_mod
 from cofabriq.issues import vectors
-from cofabriq.issues.fetch import fetch_created, fetch_issues, load_issues
+from cofabriq.issues.fetch import fetch_created, fetch_issues, fetch_open, load_issues
+from cofabriq.loop import onboard as onboard_mod
 from cofabriq.map import impact as impact_mod
 from cofabriq.steps import Steps
 
@@ -40,17 +42,42 @@ def _date_range(value: str) -> tuple[date, date]:
 
 
 @app.command("fetch-issues")
-def fetch_issues_cmd(repo: str | None = None, created: str | None = None) -> None:
+def fetch_issues_cmd(
+    repo: str | None = None,
+    created: str | None = None,
+    open: bool = False,
+    limit: int = 50,
+) -> None:
     """Copy a GitHub repo's issues into the issues dir, only what changed.
 
     `--created 2022-01-01..2024-12-31` fetches the issues created in that
     window instead (eval sets on large repos); the update cursor is untouched.
+    `--open`: only the newest `--limit` open issues (at most 100), for a repo
+    you just added; says how many more there are.
     """
     settings = get_settings()
-    source = github(target_repo(repo))
-    if source is None:
-        typer.echo("GITHUB_TOKEN is not set (.env.example)", err=True)
+    target = target_repo(repo)
+    if not onboard_mod.on_github(settings.targets_dir, target):
+        typer.echo(f"{target} is not on github.com: write local tickets", err=True)
         raise typer.Exit(code=1)
+    source = github(target)
+    if source is None:
+        typer.echo("no GitHub token: set GITHUB_TOKEN (.env.example)", err=True)
+        raise typer.Exit(code=1)
+    if warning := github_access().warning:
+        typer.echo(f"warning: {warning}", err=True)
+    if open:
+        try:
+            got = fetch_open(source, settings.issues_dir, limit)
+        except ValueError as exc:  # the limit
+            raise typer.BadParameter(str(exc)) from exc
+        more = got.total - got.written - got.unchanged
+        typer.echo(
+            f"{got.written} written, {got.unchanged} unchanged, newest open first; "
+            f"{got.total} open in all{f', {more} not imported' if more > 0 else ''} "
+            f"-> {settings.issues_dir}"
+        )
+        return
     if created is not None:
         start, end = _date_range(created)
         report = fetch_created(source, settings.issues_dir, start, end)

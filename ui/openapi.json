@@ -383,6 +383,25 @@
         }
       }
     },
+    "/api/github": {
+      "get": {
+        "summary": "Github Token",
+        "description": "The token's source and whether it could write, as checked when\nthe server started.",
+        "operationId": "github_token",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitHubAccess"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/issues/{owner}/{name}": {
       "get": {
         "summary": "Issues",
@@ -775,6 +794,75 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/repos/{owner}/{name}/import": {
+      "post": {
+        "summary": "Import Issues",
+        "description": "The newest open issues from GitHub into the store (read-only\ntowards GitHub). More open than `limit`: nothing is stored and\n`asked` says so, until `confirm`. One GraphQL request.",
+        "operationId": "import_issues",
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Owner"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportAsk"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Imported"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            },
+            "description": "Conflict"
           },
           "422": {
             "description": "Validation Error",
@@ -1350,6 +1438,50 @@
         ],
         "title": "FlowView"
       },
+      "GitHubAccess": {
+        "properties": {
+          "source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "env",
+                  "gh"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source",
+            "description": "`env`: GITHUB_TOKEN; `gh`: `gh auth token`; null: none."
+          },
+          "can_write": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Can Write",
+            "description": "Its scopes can write; null: it lists none (fine-grained)."
+          },
+          "warning": {
+            "type": "string",
+            "title": "Warning"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source",
+          "can_write",
+          "warning"
+        ],
+        "title": "GitHubAccess",
+        "description": "The GitHub token cofabriq reads with, as the dev should know it\n(never the token): where it came from, and whether it could write."
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -1402,6 +1534,56 @@
         ],
         "title": "HandoffView",
         "description": "The change to take: a branch in cofabriq's own copy of the repo and\nthe same commits as a patch. Nothing was written to the dev's folder."
+      },
+      "ImportAsk": {
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "description": "The newest open ones.",
+            "default": 50
+          },
+          "confirm": {
+            "type": "boolean",
+            "title": "Confirm",
+            "description": "Import even though more are open than `limit`.",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "ImportAsk"
+      },
+      "Imported": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "description": "Open on GitHub."
+          },
+          "written": {
+            "type": "integer",
+            "title": "Written"
+          },
+          "unchanged": {
+            "type": "integer",
+            "title": "Unchanged"
+          },
+          "asked": {
+            "type": "boolean",
+            "title": "Asked",
+            "description": "More are open than `limit`: nothing imported, ask the dev."
+          }
+        },
+        "type": "object",
+        "required": [
+          "total",
+          "written",
+          "unchanged",
+          "asked"
+        ],
+        "title": "Imported"
       },
       "IssueRow": {
         "properties": {
@@ -1720,13 +1902,19 @@
             "type": "integer",
             "title": "Tickets",
             "description": "Local tickets (L1, L2, ...)."
+          },
+          "on_github": {
+            "type": "boolean",
+            "title": "On Github",
+            "description": "Its issues are on github.com: they can be imported."
           }
         },
         "type": "object",
         "required": [
           "repo",
           "issues",
-          "tickets"
+          "tickets",
+          "on_github"
         ],
         "title": "Repo",
         "description": "A repo a flow can run on: `[loop]` in its target file, and stored\nissues (`fetch-issues`) or local tickets."

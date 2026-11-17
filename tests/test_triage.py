@@ -213,6 +213,10 @@ class OneSource:
     def created(self, start: object, end: object) -> Iterator[Issue]:
         return self.issues()
 
+    def open_issues(self, limit: int) -> tuple[list[Issue], int]:
+        found = list(self.issues())
+        return found[:limit], len(found)
+
 
 def test_refresh_fetches_and_embeds_a_new_issue_then_gather_works(
     conn: postgres.Conn, tmp_path: Path

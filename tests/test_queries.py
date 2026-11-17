@@ -30,7 +30,15 @@ def errors(query: str) -> list[str]:
 
 
 @pytest.mark.parametrize(
-    "name", ["QUERY", "ISSUE_QUERY", "SEARCH_QUERY", "COUNT_QUERY", "PULLS_QUERY"]
+    "name",
+    [
+        "QUERY",
+        "ISSUE_QUERY",
+        "SEARCH_QUERY",
+        "COUNT_QUERY",
+        "PULLS_QUERY",
+        "OPEN_QUERY",
+    ],
 )
 def test_query_is_valid(name: str) -> None:
     assert errors(getattr(github, name)) == []

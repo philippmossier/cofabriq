@@ -1,0 +1,22 @@
+# The newest open issues in one request, and how many are open in all: the
+# import of a repo the dev just added (`fetch-issues --open`, the UI's
+# "Import issues"), capped, so a repo with thousands asks first.
+query ($owner: String!, $name: String!, $limit: Int!, $comments: Int!) {
+  rateLimit {
+    cost
+    remaining
+    resetAt
+  }
+  repository(owner: $owner, name: $name) {
+    issues(
+      first: $limit
+      states: OPEN
+      orderBy: { field: CREATED_AT, direction: DESC }
+    ) {
+      totalCount
+      nodes {
+        ...IssueFields
+      }
+    }
+  }
+}

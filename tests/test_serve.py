@@ -82,12 +82,12 @@ def test_the_built_ui_answers_every_other_path(tmp_path: Path) -> None:
     assert c.get("/../secret.json").text == "<div id=root></div>"
 
 
-def test_answer_start_and_a_ticket_are_the_only_write_routes(tmp_path: Path) -> None:
+def test_the_write_routes_are_the_gate_a_ticket_and_an_import(tmp_path: Path) -> None:
     app = build(tmp_path, tmp_path, tmp_path, None)
     paths: dict[str, dict[str, object]] = app.openapi()["paths"]
     assert {m for ops in paths.values() for m in ops} == {"get"}
     # with the browser gate: answer a gate, start a flow, write a local
-    # ticket; nothing else writes
+    # ticket, import open issues (only the store is written); nothing else
     flows = FlowRunner("", lambda repo, spent: None)  # pyright: ignore[reportArgumentType]
     gated: dict[str, dict[str, object]] = build(
         tmp_path, tmp_path, tmp_path, None, flows=flows
@@ -97,6 +97,7 @@ def test_answer_start_and_a_ticket_are_the_only_write_routes(tmp_path: Path) -> 
         "/api/flows/{owner}/{name}/{ticket}/answer",
         "/api/flows/{owner}/{name}/{ticket}/start",
         "/api/tickets/{owner}/{name}",
+        "/api/repos/{owner}/{name}/import",
     ]
 
 

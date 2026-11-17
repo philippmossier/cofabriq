@@ -6,6 +6,7 @@ import { Loading } from "@/components/bits";
 import { FlowState } from "@/components/flow-progress";
 import { IssueText } from "@/components/issue-text";
 import { StartFlow } from "@/components/start-flow";
+import { ImportIssues } from "@/components/import-issues";
 import { WriteTicket } from "@/components/write-ticket";
 import { againRoute, ticketLabel } from "@/lib/flows";
 import { Badge } from "@/components/ui/badge";
@@ -37,6 +38,8 @@ export function IssuesPage() {
     );
   }
   const repo = picked ?? list[0]!.repo;
+  const [owner, name] = repo.split("/") as [string, string];
+  const onGitHub = list.find((r) => r.repo === repo)?.on_github ?? false;
   return (
     <div className="space-y-4">
       <WaitingForYou />
@@ -70,7 +73,10 @@ export function IssuesPage() {
           Read-only here: open the URL that <code>cofabriq serve --write</code> printed to start flows.
         </p>
       )}
-      <WriteTicket key={`write-${repo}`} owner={repo.split("/")[0]!} name={repo.split("/")[1]!} canWrite={token !== null} />
+      <div className="space-y-2">
+        {onGitHub && <ImportIssues key={`import-${repo}`} owner={owner} name={name} canWrite={token !== null} />}
+        <WriteTicket key={`write-${repo}`} owner={owner} name={name} canWrite={token !== null} />
+      </div>
       <IssueTable key={repo} repo={repo} canStart={token !== null} />
     </div>
   );

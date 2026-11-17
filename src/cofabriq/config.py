@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     targets_dir: Path = Path("targets")
     target_repo: str | None = None
     github_token: SecretStr | None = None
+    # opt-in: no GITHUB_TOKEN, use `gh auth token` (cofabriq warns: it can write)
+    github_token_from_gh: bool = False
     github_write_token: SecretStr | None = None  # `run --apply` only
     issue_comments: int = 10
     # triage: one more LLM call picks the verdict's 10 candidates from the

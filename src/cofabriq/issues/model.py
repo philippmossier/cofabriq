@@ -125,3 +125,7 @@ class IssueSource(Protocol):
     def created(self, start: date, end: date) -> Iterator[Issue]:
         """Issues created from `start` to `end` (both included), oldest first."""
         ...
+
+    def open_issues(self, limit: int) -> tuple[list[Issue], int]:
+        """The newest `limit` open issues, newest first, and the open count."""
+        ...

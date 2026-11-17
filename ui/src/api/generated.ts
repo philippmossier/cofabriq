@@ -225,6 +225,29 @@ export interface FlowView {
   record: string;
 }
 
+/**
+ * `env`: GITHUB_TOKEN; `gh`: `gh auth token`; null: none.
+ */
+export type GitHubAccessSource = typeof GitHubAccessSource[keyof typeof GitHubAccessSource] | null;
+
+
+export const GitHubAccessSource = {
+  env: 'env',
+  gh: 'gh',
+} as const;
+
+/**
+ * The GitHub token cofabriq reads with, as the dev should know it
+ * (never the token): where it came from, and whether it could write.
+ */
+export interface GitHubAccess {
+  /** `env`: GITHUB_TOKEN; `gh`: `gh auth token`; null: none. */
+  source: GitHubAccessSource;
+  /** Its scopes can write; null: it lists none (fine-grained). */
+  can_write: boolean | null;
+  warning: string;
+}
+
 export type ValidationErrorCtx = { [key: string]: unknown };
 
 export interface ValidationError {
@@ -251,6 +274,26 @@ export interface HandoffView {
   fetch: string;
   patch_url: string;
   error: string;
+}
+
+export interface ImportAsk {
+  /**
+     * The newest open ones.
+     * @minimum 1
+     * @maximum 100
+     */
+  limit?: number;
+  /** Import even though more are open than `limit`. */
+  confirm?: boolean;
+}
+
+export interface Imported {
+  /** Open on GitHub. */
+  total: number;
+  written: number;
+  unchanged: number;
+  /** More are open than `limit`: nothing imported, ask the dev. */
+  asked: boolean;
 }
 
 export type Source = typeof Source[keyof typeof Source];
@@ -350,6 +393,8 @@ export interface Repo {
   issues: number;
   /** Local tickets (L1, L2, ...). */
   tickets: number;
+  /** Its issues are on github.com: they can be imported. */
+  on_github: boolean;
 }
 
 export type StepPhase = typeof StepPhase[keyof typeof StepPhase];
@@ -1814,6 +1859,128 @@ export function useRepos<TData = Awaited<ReturnType<typeof repos>>, TError = unk
 
 
 
+export type githubTokenResponse200 = {
+  data: GitHubAccess
+  status: 200
+}
+
+export type githubTokenResponseSuccess = (githubTokenResponse200) & {
+  headers: Headers;
+};
+;
+
+export type githubTokenResponse = (githubTokenResponseSuccess)
+
+export const getGithubTokenUrl = () => {
+
+
+
+
+  return `/api/github`
+}
+
+/**
+ * The token's source and whether it could write, as checked when
+ * the server started.
+ * @summary Github Token
+ */
+export const githubToken = async ( options?: RequestInit): Promise<githubTokenResponse> => {
+
+  const res = await fetch(getGithubTokenUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: githubTokenResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as githubTokenResponse
+}
+
+
+
+
+
+export const getGithubTokenQueryKey = () => {
+    return [
+    `/api/github`
+    ] as const;
+    }
+
+
+export const getGithubTokenQueryOptions = <TData = Awaited<ReturnType<typeof githubToken>>, TError = unknown>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof githubToken>>, TError, TData>>, fetch?: RequestInit}
+) => {
+
+const {query: queryOptions, fetch: fetchOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGithubTokenQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof githubToken>>> = ({ signal }) => githubToken({ signal, ...fetchOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof githubToken>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GithubTokenQueryResult = NonNullable<Awaited<ReturnType<typeof githubToken>>>
+export type GithubTokenQueryError = unknown
+
+
+export function useGithubToken<TData = Awaited<ReturnType<typeof githubToken>>, TError = unknown>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof githubToken>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof githubToken>>,
+          TError,
+          Awaited<ReturnType<typeof githubToken>>
+        > , 'initialData'
+      >, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGithubToken<TData = Awaited<ReturnType<typeof githubToken>>, TError = unknown>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof githubToken>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof githubToken>>,
+          TError,
+          Awaited<ReturnType<typeof githubToken>>
+        > , 'initialData'
+      >, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGithubToken<TData = Awaited<ReturnType<typeof githubToken>>, TError = unknown>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof githubToken>>, TError, TData>>, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Github Token
+ */
+
+export function useGithubToken<TData = Awaited<ReturnType<typeof githubToken>>, TError = unknown>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof githubToken>>, TError, TData>>, fetch?: RequestInit}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGithubTokenQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export type issuesResponse200 = {
   data: IssueRow[]
   status: 200
@@ -2724,4 +2891,129 @@ export const useTicketNew = <TError = HTTPValidationError,
         TContext
       > => {
       return useMutation(getTicketNewMutationOptions(options), queryClient);
+    }
+
+export type importIssuesResponse200 = {
+  data: Imported
+  status: 200
+}
+
+export type importIssuesResponse409 = {
+  data: Refusal
+  status: 409
+}
+
+export type importIssuesResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type importIssuesResponseSuccess = (importIssuesResponse200) & {
+  headers: Headers;
+};
+export type importIssuesResponseError = (importIssuesResponse409 | importIssuesResponse422) & {
+  headers: Headers;
+};
+
+export type importIssuesResponse = (importIssuesResponseSuccess | importIssuesResponseError)
+
+export const getImportIssuesUrl = (owner: string,
+    name: string,) => {
+
+
+
+
+  return `/api/repos/${owner}/${name}/import`
+}
+
+/**
+ * The newest open issues from GitHub into the store (read-only
+ * towards GitHub). More open than `limit`: nothing is stored and
+ * `asked` says so, until `confirm`. One GraphQL request.
+ * @summary Import Issues
+ */
+export const importIssues = async (owner: string,
+    name: string,
+    importAsk: ImportAsk, options?: RequestInit): Promise<importIssuesResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+const res = await fetch(getImportIssuesUrl(owner,name),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(importAsk)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: importIssuesResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as importIssuesResponse
+}
+
+
+
+
+
+export const getImportIssuesMutationKey = () => ['importIssues'] as const;
+
+export const getImportIssuesMutationOptions = <TError = Refusal | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importIssues>>, TError,ImportIssuesMutationVariables, TContext>, fetch?: RequestInit}
+): UseMutationOptions<Awaited<ReturnType<typeof importIssues>>, TError,ImportIssuesMutationVariables, TContext> => {
+
+const mutationKey = getImportIssuesMutationKey();
+const {mutation: mutationOptions, fetch: fetchOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, fetch: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof importIssues>>, ImportIssuesMutationVariables> = (props) => {
+          const {owner,name,data} = props ?? {};
+
+          return  importIssues(owner,name,data,fetchOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ImportIssuesMutationResult = NonNullable<Awaited<ReturnType<typeof importIssues>>>
+    export type ImportIssuesMutationBody = ImportAsk
+    export type ImportIssuesMutationError = Refusal | HTTPValidationError
+    export type ImportIssuesMutationVariables = {owner: string;name: string;data: ImportAsk}
+
+    /**
+ * @summary Import Issues
+ */
+export const useImportIssues = <TError = Refusal | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importIssues>>, TError,ImportIssuesMutationVariables, TContext>, fetch?: RequestInit}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof importIssues>>,
+        TError,
+        ImportIssuesMutationVariables,
+        TContext
+      > => {
+      return useMutation(getImportIssuesMutationOptions(options), queryClient);
     }

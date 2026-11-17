@@ -12,10 +12,11 @@ the built UI.
 The API returns its own response models, not the stored ones: a stored
 shape can change without changing the UI's contract (ADR-009). Everything
 is read per request from the files, nothing is cached. It binds to
-127.0.0.1 only. Every route reads, except three: with `--write`, the browser
-starts a flow and answers a paused flow's gate (`_flow_routes`) and writes a
-local ticket (`/api/tickets`), behind the token and the checks in
-`serve_guard`. File names in URLs must be files in the folder (no paths, no
+127.0.0.1 only. Every route reads, except four: with `--write`, the browser
+starts a flow and answers a paused flow's gate (`_flow_routes`), writes a
+local ticket (`/api/tickets`) and imports open issues into the store
+(`/api/repos/.../import`, read-only towards GitHub), behind the token and the
+checks in `serve_guard`. File names in URLs must be files in the folder (no paths, no
 `..`); a ticket in a URL is a key (`51`, `L3`), checked by its pattern.
 """
 
@@ -24,11 +25,13 @@ import json
 import re
 import shlex
 import subprocess
+from collections.abc import Callable
 from datetime import UTC, datetime
 from functools import cache
 from pathlib import Path
 from typing import Annotated, Literal
 
+import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi import Path as PathParam
 from fastapi.responses import FileResponse
@@ -40,15 +43,24 @@ from cofabriq import runsteps, tracing
 from cofabriq.eval.loop import Judged
 from cofabriq.files import STAMP
 from cofabriq.issues import tickets as tickets_mod
+from cofabriq.issues import token as token_mod
 from cofabriq.issues import triage as triage_mod
-from cofabriq.issues.fetch import load_index, load_issues
-from cofabriq.issues.model import KEY, Issue, Source, check_repo, ticket_key
+from cofabriq.issues.fetch import load_index, load_issues, store_open
+from cofabriq.issues.github import GitHubError
+from cofabriq.issues.model import (
+    KEY,
+    Issue,
+    IssueSource,
+    Source,
+    check_repo,
+    ticket_key,
+)
 from cofabriq.issues.triage import IssueType, Triager
 from cofabriq.loop.gate import Gated
 from cofabriq.loop.graph import FlowRunner, FlowStatus, GateAnswer, Refused
 from cofabriq.loop.handoff import Handoff
 from cofabriq.loop.intake import not_ready
-from cofabriq.loop.onboard import unproven
+from cofabriq.loop.onboard import on_github, unproven
 from cofabriq.loop.record import RunRecord
 from cofabriq.loop.refine import FileChange, Refined, Route, Spec
 from cofabriq.loop.run import Attempt, CheckResult, LoopResult, load_rules
@@ -326,6 +338,38 @@ class Repo(BaseModel):
     repo: str
     issues: int
     tickets: int = Field(description="Local tickets (L1, L2, ...).")
+    on_github: bool = Field(
+        description="Its issues are on github.com: they can be imported."
+    )
+
+
+class GitHubAccess(BaseModel):
+    """The GitHub token cofabriq reads with, as the dev should know it
+    (never the token): where it came from, and whether it could write."""
+
+    source: Literal["env", "gh"] | None = Field(
+        description="`env`: GITHUB_TOKEN; `gh`: `gh auth token`; null: none."
+    )
+    can_write: bool | None = Field(
+        description="Its scopes can write; null: it lists none (fine-grained)."
+    )
+    warning: str
+
+
+class ImportAsk(BaseModel):
+    limit: int = Field(default=50, ge=1, le=100, description="The newest open ones.")
+    confirm: bool = Field(
+        default=False, description="Import even though more are open than `limit`."
+    )
+
+
+class Imported(BaseModel):
+    total: int = Field(description="Open on GitHub.")
+    written: int
+    unchanged: int
+    asked: bool = Field(
+        description="More are open than `limit`: nothing imported, ask the dev."
+    )
 
 
 class IssueRow(BaseModel):
@@ -652,12 +696,16 @@ def build(
     targets_dir: Path = Path("targets"),
     tickets_dir: Path = Path("data/tickets"),
     triager: Triager | None = None,
+    github: Callable[[str], IssueSource | None] | None = None,
+    access: token_mod.Access | None = None,
 ) -> FastAPI:
     """The app over these folders. `ui_dir`: the built UI (`ui/dist`), served
     at `/` when it exists. `port`: the port it serves on; with it, the
     trust boundary (`serve_guard`: Host on every request, Origin + JSON +
     `write_token` on anything that isn't a read) is installed. `triager`:
-    the readiness read before a ticket is saved; None: no ticket is written."""
+    the readiness read before a ticket is saved; None: no ticket is written.
+    `github`: the read-only source for an import (None: no token); `access`:
+    what the token can do, checked once at start."""
     app = FastAPI(
         title="cofabriq",
         version=importlib.metadata.version("cofabriq"),
@@ -871,8 +919,18 @@ def build(
                 owner, name = repo.split("/")
                 issues = len(load_index(issues_dir / owner / name))
                 tickets = len(tickets_mod.load_tickets(tickets_dir, repo))
-                out.append(Repo(repo=repo, issues=issues, tickets=tickets))
+                github = on_github(targets_dir, repo)
+                out.append(
+                    Repo(repo=repo, issues=issues, tickets=tickets, on_github=github)
+                )
         return out
+
+    @app.get("/api/github", response_model=GitHubAccess)
+    def github_token() -> GitHubAccess:
+        """The token's source and whether it could write, as checked when
+        the server started."""
+        a = access or token_mod.access(None, None)
+        return GitHubAccess(source=a.source, can_write=a.can_write, warning=a.warning)
 
     def flows_by_ticket(repo: str) -> dict[str, FlowSummary]:
         out: dict[str, FlowSummary] = {}
@@ -936,6 +994,33 @@ def build(
                 missing=found.missing,
                 cost_usd=found.cost_usd,
                 saved=saved,
+            )
+
+        @app.post(
+            "/api/repos/{owner}/{name}/import",
+            response_model=Imported,
+            responses={409: {"model": Refusal}},
+        )
+        def import_issues(owner: str, name: str, ask: ImportAsk) -> Imported:
+            """The newest open issues from GitHub into the store (read-only
+            towards GitHub). More open than `limit`: nothing is stored and
+            `asked` says so, until `confirm`. One GraphQL request."""
+            repo = runnable_repo(owner, name)
+            if not on_github(targets_dir, repo):
+                detail = f"{repo} is not on github.com: write local tickets"
+                raise HTTPException(status_code=409, detail=detail)
+            source = github(repo) if github is not None else None
+            if source is None:
+                raise HTTPException(status_code=503, detail="no GitHub token")
+            try:
+                issues, total = source.open_issues(ask.limit)
+            except (GitHubError, httpx.HTTPError) as exc:
+                raise HTTPException(status_code=502, detail=f"GitHub: {exc}") from exc
+            if total > ask.limit and not ask.confirm:
+                return Imported(total=total, written=0, unchanged=0, asked=True)
+            got = store_open(issues_dir, repo, issues, total)
+            return Imported(
+                total=total, written=got.written, unchanged=got.unchanged, asked=False
             )
 
     if port is not None:

@@ -20,6 +20,7 @@ from cofabriq.cli.common import (
     claude_code,
     flow_app,
     github,
+    github_access,
     loop_rules,
     write_token_for,
 )
@@ -291,6 +292,10 @@ def _api(
         triager=triage_mod.OpenAITriager(key.get_secret_value())
         if key is not None and write_token is not None
         else None,
+        # an import's source and the token's scopes (one read of GitHub):
+        # only a write server imports
+        github=github if write_token is not None else None,
+        access=github_access() if write_token is not None else None,
     )
 
 
@@ -327,6 +332,8 @@ def serve(
         prepare=lambda repo, key: _prepare_start(repo, key, steps),
     )
     typer.echo(f"gate: http://127.0.0.1:{port}/#token={token}  (open this one)")
+    if warning := github_access().warning:
+        typer.echo(f"warning: {warning}", err=True)
     app = _api(ui, port, write_token=token, flows=runner)
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
 
