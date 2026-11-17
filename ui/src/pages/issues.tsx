@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useSearch } from "@tanstack/react-router";
 import { ChevronRight, ExternalLink } from "lucide-react";
 import { Fragment, useState } from "react";
 import { type IssueRow, useFlowList, useIssue, useIssues, useRepos } from "@/api/generated";
@@ -25,6 +25,7 @@ import { useWriteToken } from "@/lib/token";
 /** Where a run starts: a repo's stored issues, each with a Start. */
 export function IssuesPage() {
   const repos = useRepos({ query: { select: (r) => (r.status === 200 ? r.data : []) } });
+  const asked = useSearch({ from: "/issues" }).repo;
   const [picked, setPicked] = useState<string | null>(null);
   const token = useWriteToken();
   if (repos.isPending) return <Loading what="repos" />;
@@ -32,12 +33,15 @@ export function IssuesPage() {
   if (list.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        No repo to run flows on: it needs <code>[loop]</code> in its target file, and its issues (
-        <code>cofabriq fetch-issues --repo …</code>) or a local ticket (<code>cofabriq ticket new …</code>).
+        No repo to run flows on yet.{" "}
+        <Link to="/repos" className="font-medium text-foreground underline">
+          Add one of yours
+        </Link>
+        : a git clone on this machine, its commands proposed and checked in a sandbox.
       </p>
     );
   }
-  const repo = picked ?? list[0]!.repo;
+  const repo = picked ?? list.find((r) => r.repo === asked)?.repo ?? list[0]!.repo;
   const [owner, name] = repo.split("/") as [string, string];
   const onGitHub = list.find((r) => r.repo === repo)?.on_github ?? false;
   return (

@@ -1332,12 +1332,18 @@ def eval_review(
 
 @eval_app.command("repo-add")
 def eval_repo_add(
-    only: str | None = None, repos: Path = EVALS_DIR / "repos.toml"
+    only: str | None = None,
+    repos: Path = EVALS_DIR / "repos.toml",
+    repair: int = typer.Option(
+        0, min=0, max=onboard.MAX_REPAIRS, help="Rounds of proposing again."
+    ),
 ) -> None:
     """`repo add` on each repo of the set at GitHub's default branch, then
     `repo check` on its proposal as the agent wrote it: proven or not, and
-    what failed. Paid (one agent run per repo, about $0.40), minutes per
-    repo; needs podman. Proposals and scores in data/onboard/."""
+    what failed. `--repair n`: a failed proposal is proposed again with its
+    check's failure, up to n times, as the page's "Propose again" does.
+    Paid (one agent run per proposal, about $0.10), minutes per repo; needs
+    podman. Proposals and scores in data/onboard/."""
     settings = get_settings()
     targets = pick_only(onboard_eval.load_set(repos), only, lambda r: r, "repo")
     agent = claude_code()
@@ -1345,35 +1351,47 @@ def eval_repo_add(
     for target in targets:
         clone = clone_dir(settings.clones_dir, target)
         commit = refine_mod.sync_clone(clone, f"https://github.com/{target}", "HEAD")
-        try:
-            proposed = onboard.propose(target, clone, Guarded(agent, Guard(1.0)))
-        except AgentError as exc:
-            typer.echo(f"  {target:<42} agent failed: {exc}")
-            continue
-        draft = settings.onboard_dir / f"{repo_slug(target)}-{stamp()}.toml"
-        write_atomic(draft, onboard.render(proposed, None).encode())
-        rules = proposed.proposal.rules()
-        checked = onboard.check(
-            target,
-            rules,
-            config="",
-            clone=clone,
-            commit=commit,
-            worktree=settings.work_dir / f"repo-add-{repo_slug(target)}",
-            sandbox=Podman(image=rules.image, setup=rules.setup),
-        )
-        s = onboard_eval.score(proposed, checked)
-        scored.append(s)
-        mark = "proven" if s.proven else "FAILED " + ", ".join(s.failed)
-        typer.echo(
-            f"  {target:<42} {mark:<30} quotes {s.cited - len(s.unchecked)}/{s.cited}"
-            f"  ${s.cost_usd:.2f}  {s.propose_s:.0f}+{s.check_s:.0f} s"
-        )
+        earlier: onboard.Repair | None = None
+        for _ in range(repair + 1):
+            try:
+                proposed = onboard.propose(
+                    target, clone, Guarded(agent, Guard(1.0)), earlier
+                )
+            except AgentError as exc:
+                typer.echo(f"  {target:<42} agent failed: {exc}")
+                break
+            config = onboard.render(proposed, None)
+            draft = settings.onboard_dir / f"{repo_slug(target)}-{stamp()}.toml"
+            write_atomic(draft, config.encode())
+            rules = proposed.proposal.rules()
+            checked = onboard.check(
+                target,
+                rules,
+                config="",
+                clone=clone,
+                commit=commit,
+                worktree=settings.work_dir / f"repo-add-{repo_slug(target)}",
+                sandbox=Podman(image=rules.image, setup=rules.setup),
+            )
+            s = onboard_eval.score(proposed, checked)
+            scored.append(s)
+            mark = "proven" if s.proven else "FAILED " + ", ".join(s.failed)
+            typer.echo(
+                f"  {target:<42} {s.repairs} {mark:<30}"
+                f" quotes {s.cited - len(s.unchecked)}/{s.cited}"
+                f"  ${s.cost_usd:.2f}  {s.propose_s:.0f}+{s.check_s:.0f} s"
+            )
+            if s.proven:
+                break
+            earlier = onboard.Repair.of(config, checked, proposed.repairs + 1)
     t = onboard_eval.summarize(scored)
+    after = " -> ".join(f"{p}/{t.repos}" for p in t.proven_after)
     typer.echo(
         f"  proven unedited {t.proven}/{t.repos}  quotes found {t.quotes_found:.2f}"
         f"  ${t.cost_usd:.2f}/repo  {t.propose_s:.0f} s to propose"
     )
+    if repair:
+        typer.echo(f"  proven after proposing again: {after}")
     adapter = TypeAdapter(list[onboard_eval.Scored])
     out = write_stamped(settings.onboard_dir, "eval", adapter, scored)
     typer.echo(f"  -> {out}")

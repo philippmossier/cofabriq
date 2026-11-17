@@ -1,0 +1,13 @@
+# `cofabriq eval repo-add --repos evals/repos-heldout.toml --repair 2`: the
+# repair round ("Propose again with this failure") measured on repos that
+# are not in repos.toml, so the prompt isn't tuned on its own test set.
+# Stacks repos.toml has too, and two it lacks (Rust, Ruby); each has tests
+# in CI. Chosen 2026-11-17, before the first run; not changed after it.
+repos = [
+  "tj/commander.js",  # npm, jest, eslint, tsc for its typings
+  "lukeed/kleur",  # npm, uvu
+  "pytest-dev/pluggy",  # Python, tox, pytest
+  "BurntSushi/toml",  # Go, go test
+  "sharkdp/hexyl",  # Rust, cargo test
+  "rack/rack-test",  # Ruby, bundler, minitest
+]

@@ -195,9 +195,49 @@ About 2 minutes and $0.35 to $0.55 per bug (API list price). A run stops
 at its budget (`RUN_BUDGET_USD`, $3 by default), and `uv run cofabriq stop`
 halts every agent before its next step.
 
-Another repo needs `targets/<owner>-<name>.toml` with a `[loop]` table: the
-container image and the commands to install, check and test it (the
-playground's file is the example). So far only the demo app has one.
+## Your own repo
+
+cofabriq never writes to your GitHub, and the loop on your code needs no
+token at all. There are three places, and the page shows them where you
+decide:
+
+```
+~/code/myapp                          your folder: cofabriq only reads it
+<cofabriq>/data/clones/acme-myapp     cofabriq's copy: the agent works here
+GitHub                                never written; read only to import issues
+```
+
+1. `make ui && uv run cofabriq serve --write`, open the URL it prints, then
+   Repos: the path of your clone, Add a repo. cofabriq clones your folder
+   into its own copy, and an agent reads the manifests, Makefile and CI
+   there. It proposes the container image and the commands to install,
+   check and test, each with the file and line it came from (one agent
+   session, about $0.10).
+2. Read and edit the file on the page: nothing has run yet. Check runs it
+   in a sandbox on your branch: the install (the only step with network),
+   every check, and per test suite a canary test that must fail and one
+   that must pass. A suite that can't go red would make every frozen test
+   worthless. A failed check: fix the file, or "Propose again with this
+   failure" (twice at most). On 6 repos the prompt never saw, the first
+   proposal was proven as written on 2, and 5 after proposing again
+   ([evals](docs/evals.md)).
+3. Proven, the repo is under Issues: write a local ticket (it stays on your
+   machine) or import its open issues, then Start.
+4. The result comes back as a branch in cofabriq's copy and as a patch. The
+   card's command fetches it into your folder; you push it yourself.
+
+The CLI does the same: `repo add <path>`, `repo check <owner/name>`,
+`ticket new "<title>"`.
+
+| What | Token | Permissions |
+| --- | --- | --- |
+| your code, a run, its result | none | cofabriq reads your local clone |
+| importing open issues | `GITHUB_TOKEN`, fine-grained | Issues and Metadata, read-only, on that repo |
+| or `gh`'s login | `GITHUB_TOKEN_FROM_GH=true` | opt-in, with a warning when it can write |
+| a draft PR (`--apply`) | `GITHUB_WRITE_TOKEN` | the demo app only, checked in code |
+
+What the sandbox can't do: services (a check that needs a database is left
+out and the notes say so), git, and a non-root user.
 
 ## Why it is built this way
 

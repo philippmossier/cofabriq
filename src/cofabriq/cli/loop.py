@@ -25,6 +25,7 @@ from cofabriq.cli.common import (
     write_token_for,
 )
 from cofabriq.cli.render import show_draft, show_gate, show_loop, show_spec, show_steps
+from cofabriq.cli.repos import setups
 from cofabriq.config import get_settings
 from cofabriq.eval import loop as loop_eval
 from cofabriq.eval.bugs import fix_path, load_bugs, planted_for, repro_path
@@ -296,6 +297,7 @@ def _api(
         # only a write server imports
         github=github if write_token is not None else None,
         access=github_access() if write_token is not None else None,
+        setups=setups(),
     )
 
 
