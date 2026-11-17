@@ -40,6 +40,7 @@ from cofabriq.issues.model import Issue, check_repo
 from cofabriq.loop.gate import Gated
 from cofabriq.loop.graph import FlowRunner, FlowStatus, GateAnswer, Refused
 from cofabriq.loop.intake import not_ready
+from cofabriq.loop.onboard import unproven
 from cofabriq.loop.record import RunRecord
 from cofabriq.loop.refine import FileChange, Refined, Route, Spec
 from cofabriq.loop.run import Attempt, CheckResult, LoopResult, load_rules
@@ -738,7 +739,12 @@ def build(
         )
 
     def runnable(repo: str) -> bool:
-        return load_rules(targets_dir, repo) is not None
+        """`[loop]` in the target file, proven by `repo check` if the
+        dev's own."""
+        return (
+            load_rules(targets_dir, repo) is not None
+            and unproven(targets_dir, repo) is None
+        )
 
     def runnable_repo(owner: str, name: str) -> str:
         repo = f"{owner}/{name}"
@@ -749,7 +755,7 @@ def build(
     @app.get("/api/repos", response_model=list[Repo])
     def repos() -> list[Repo]:
         """The repos a flow can run on: an issue store (`fetch-issues`) and
-        `[loop]` in the target file."""
+        `[loop]` in the target file, proven if the dev's own."""
         out: list[Repo] = []
         for folder in sorted(issues_dir.glob("*/*")):
             repo = f"{folder.parent.name}/{folder.name}"

@@ -18,6 +18,7 @@ from cofabriq.issues import triage as triage_mod
 from cofabriq.issues import verdict as verdict_mod
 from cofabriq.issues.github import GitHubIssueSource
 from cofabriq.issues.model import check_repo
+from cofabriq.loop import onboard as onboard_mod
 from cofabriq.loop import publish as publish_mod
 from cofabriq.loop import run as run_mod
 from cofabriq.loop.engine import ApiKey, Auth, ClaudeCode, Subscription
@@ -34,6 +35,11 @@ flow_app = typer.Typer(
     "`serve --write` answers them too.",
 )
 app.add_typer(flow_app, name="flow")
+repo_app = typer.Typer(
+    no_args_is_help=True,
+    help="Your own repo: `[loop]` proposed from its files, proven in the sandbox.",
+)
+app.add_typer(repo_app, name="repo")
 
 
 @app.callback()
@@ -67,10 +73,16 @@ def github(repo: str) -> GitHubIssueSource | None:
 
 
 def loop_rules(target: str) -> run_mod.LoopRules:
-    """The target file's `[loop]`; exits when it has none."""
-    rules = run_mod.load_rules(get_settings().targets_dir, target)
+    """The target file's `[loop]`; exits when it has none, or when it is
+    the dev's own and not proven by `repo check` as it is now."""
+    targets_dir = get_settings().targets_dir
+    rules = run_mod.load_rules(targets_dir, target)
     if rules is None:
         typer.echo(f"no [loop] in the target file of {target}", err=True)
+        raise typer.Exit(code=1)
+    why = onboard_mod.unproven(targets_dir, target)
+    if why is not None:
+        typer.echo(f"{target}: {why}", err=True)
         raise typer.Exit(code=1)
     return rules
 

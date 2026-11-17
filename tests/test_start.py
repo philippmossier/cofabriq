@@ -10,8 +10,11 @@ from fastapi.testclient import TestClient
 
 from cofabriq.issues.fetch import fetch_issues
 from cofabriq.issues.model import Issue
+from cofabriq.loop import onboard
 from cofabriq.loop.graph import FlowRunner, FlowStatus, GateAnswer, Refused
+from cofabriq.loop.run import CheckResult
 from cofabriq.serve import _flow_summary, build  # pyright: ignore[reportPrivateUsage]
+from cofabriq.targets import own_target
 from tests.builders import REPO, issue
 from tests.fakes import EditingAgent, deps
 from tests.test_issues import ListSource
@@ -156,6 +159,30 @@ def test_the_issue_list_is_the_store_of_a_runnable_repo(tmp_path: Path) -> None:
     assert rows[0]["url"] == f"https://github.com/{REPO}/issues/2"
     # a repo without `[loop]` is no repo to start flows on
     assert c.get("/api/issues/other/repo").status_code == 404
+
+
+def test_an_own_repo_is_listed_only_once_proven(tmp_path: Path) -> None:
+    targets = store(tmp_path, issue(1, "old")) / "targets"
+    (targets / f"{REPO.replace('/', '-')}.toml").unlink()
+    own = own_target(targets, REPO)
+    own.parent.mkdir()
+    own.write_text(LOOP)
+    c = api(tmp_path)
+    assert c.get("/api/repos").json() == []
+    assert c.get(f"/api/issues/{REPO}").status_code == 404
+
+    proof = onboard.Checked(
+        repo=REPO,
+        commit="c",
+        config=onboard.config_hash(own),
+        at="now",
+        install=CheckResult(name="install", ok=True, seconds=1, output=""),
+        checks=[CheckResult(name="test", ok=True, seconds=1, output="")],
+        canaries=[onboard.Canary(suite="sh", red=True, green=True, output="")],
+        seconds=3,
+    )
+    onboard.proof_path(targets, REPO).write_text(proof.model_dump_json())
+    assert c.get("/api/repos").json() == [{"repo": REPO, "issues": 1}]
 
 
 def test_one_issue_comes_with_its_text(tmp_path: Path) -> None:

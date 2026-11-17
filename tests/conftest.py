@@ -1,4 +1,5 @@
 import os
+import socket
 import tempfile
 import uuid
 from collections.abc import Iterator
@@ -104,13 +105,21 @@ def pg_dsn() -> Iterator[str]:
 
 
 # The throwaway instance from compose (`neo4j-test`), never the dev graph.
-TEST_URI = "bolt://localhost:7688"
+TEST_HOST, TEST_PORT = "localhost", 7688
+TEST_URI = f"bolt://{TEST_HOST}:{TEST_PORT}"
 
 
 @pytest.fixture
 def driver() -> Iterator[Driver]:
     settings = get_settings()
     password = settings.neo4j_password.get_secret_value()
+    # the driver retries a server that isn't there for 30 s per test (5
+    # minutes for the suite offline, in a sandbox); a plain connect knows
+    # in milliseconds
+    try:
+        socket.create_connection((TEST_HOST, TEST_PORT), timeout=2).close()
+    except OSError:
+        unreachable("Neo4j test instance")
     try:
         d = graph.connect(TEST_URI, settings.neo4j_user, password)
     except ServiceUnavailable:

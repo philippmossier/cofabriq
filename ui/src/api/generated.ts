@@ -1630,7 +1630,7 @@ export const getReposUrl = () => {
 
 /**
  * The repos a flow can run on: an issue store (`fetch-issues`) and
- * `[loop]` in the target file.
+ * `[loop]` in the target file, proven if the dev's own.
  * @summary Repos
  */
 export const repos = async ( options?: RequestInit): Promise<reposResponse> => {

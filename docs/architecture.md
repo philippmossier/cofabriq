@@ -14,11 +14,11 @@ features removed on purpose.
 | --- | --- |
 | `src/cofabriq/` | the Python package: the CLI and everything it runs (below) |
 | `ui/` | the viewer and browser gate: Vite, React, TanStack Router + Query, shadcn; its API client is generated from `ui/openapi.json`; `e2e/` its browser tests (recorded runs in `e2e/fixtures/data/`, and the live journey) |
-| `targets/` | one TOML file per repository cofabriq works on: its components, how to install and test it, its risk tiers, its invariant (`[sentinel]`) |
+| `targets/` | one TOML file per repository cofabriq works on: its components, how to install and test it, its risk tiers, its invariant (`[sentinel]`); `own/` (not in git) the dev's own repos from `repo add`, each with the proof `repo check` wrote |
 | `playground/` | the demo app's answer keys: `seed.toml` (issues with expected labels), `bugs.toml` + `bugs/` (22 planted bugs, their repros and reference fixes), `features.toml` + `features/` (9 removed features), `hard.toml` + `hard/` (5 harder bugs), `playground.py` (seed or reset the demo repo) |
 | `evals/` | frozen eval sets from real repos (issue numbers only): duplicates, missing info, impact |
 | `tests/` | pytest, one file per module, no network; what several modules share lives apart: `builders.py` (the smallest valid issue, spec, loop result, review), `fakes.py` (agents, the host sandbox, the embedder, recorded GitHub pages), `gitrepo.py` (throwaway git repos) |
-| `docs/` | `adr/` (11 decisions), `evals.md` (every number), `how-it-works.md`, `intake.md`, this file, `steps/` (one page per step of a run, shown in the step view), `demo/` (screenshots) |
+| `docs/` | `adr/` (12 decisions), `evals.md` (every number), `how-it-works.md`, `intake.md`, this file, `steps/` (one page per step of a run, shown in the step view), `demo/` (screenshots) |
 | `skills/ticket/` | the `/ticket` Claude Code skill: a rough note into a ticket |
 | `data/` | not in git: everything cofabriq fetches and produces (below) |
 
@@ -26,7 +26,7 @@ features removed on purpose.
 
 | Module | Role |
 | --- | --- |
-| `cli/` | every command, one module per layer: `context.py` (documents, the decision graph, MCP, the repo map), `issues.py` (`fetch-issues`, `triage`, `impact`), `loop.py` (`refine`, `run`, `flow`, `intake`, `serve`, `lessons`, `stop`), `evals.py` (`eval ...`); `common.py` holds the typer apps and the helpers they share, `render.py` the terminal output |
+| `cli/` | every command, one module per layer: `context.py` (documents, the decision graph, MCP, the repo map), `issues.py` (`fetch-issues`, `triage`, `impact`), `loop.py` (`refine`, `run`, `flow`, `intake`, `serve`, `lessons`, `stop`), `repos.py` (`repo add`, `repo check`), `evals.py` (`eval ...`); `common.py` holds the typer apps and the helpers they share, `render.py` the terminal output |
 | `config.py` | settings from `.env` |
 | `tracing.py` | OpenTelemetry: every graph node, agent session, OpenAI call and sandbox command is a span (metadata only); each run's spans go to `data/traces/`, and to an OTLP backend when one is set |
 | `runsteps.py` | reads a run's spans back as a step tree for the step view: time, cost, turns, payloads, the step docs |
@@ -47,6 +47,7 @@ features removed on purpose.
 
 | Module | Step |
 | --- | --- |
+| `onboard.py` | before any run, once per repo of the dev's own: `[loop]` proposed from its files with checked quotes, then proven in the sandbox (install, checks, a canary per suite) |
 | `intake.py` | is the ticket blocked, is another cofabriq PR still open, is the spec ready |
 | `refine.py` | issue -> spec (problem, files, criteria, plan, open questions, size), read-only agent |
 | `graph.py` | the run as a LangGraph graph with pauses at the plan and test gates: `cofabriq run` drives it in one process, `cofabriq flow` across processes |
