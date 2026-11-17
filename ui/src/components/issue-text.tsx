@@ -36,7 +36,9 @@ export function IssueText({ body, className }: { body: string; className?: strin
 }
 
 /** The issue on GitHub, as a link on a title's line. */
-export function GitHubLink({ url }: { url: string }) {
+/** The issue on GitHub; null: a local ticket, which has no page there. */
+export function GitHubLink({ url }: { url: string | null }) {
+  if (url === null) return <span className="text-xs text-muted-foreground">local ticket, not on GitHub</span>;
   return (
     <a
       href={url}

@@ -26,6 +26,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
+from cofabriq.issues.model import key_label
 from cofabriq.loop.gate import Round
 from cofabriq.loop.refine import Route, Spec
 from cofabriq.loop.review import Finding, Review, split_diff
@@ -344,7 +345,10 @@ def render(
     rounds = rounds or []
     tests, change = split_diff(result.diff, result.repro)
     parts = [
-        f"Fixes #{result.number}.",
+        # a local ticket isn't on GitHub: "Fixes" would close another issue
+        f"Fixes #{result.number}."
+        if result.source == "github"
+        else f"For the local ticket {result.key} (not on GitHub).",
         _summary(result, risk, review, rounds, evidence),
         *_spec(spec),
         *_test(result, tests),
@@ -373,7 +377,7 @@ def draft(
 ) -> Draft:
     risk = risk_of(result.changed, tests, risk_rules, components)
     kind = "Feature" if route == "feature" else "Fix"
-    title = f"{kind} #{result.number}: {unref(issue_title)}"[:200]
+    title = f"{kind} {key_label(result.key)}: {unref(issue_title)}"[:200]
     body = render(
         spec=spec,
         result=result,

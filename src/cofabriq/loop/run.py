@@ -30,6 +30,7 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict
 
+from cofabriq.issues.model import Source, ticket_key
 from cofabriq.loop.engine import Agent, AgentError, AgentRun, Halted
 from cofabriq.loop.refine import FileChange, Route, Spec
 from cofabriq.loop.sandbox import Ran, Sandbox
@@ -179,6 +180,7 @@ class Attempt(BaseModel):
 class LoopResult(BaseModel):
     repo: str
     number: int
+    source: Source = "github"  # results before local tickets are GitHub's
     commit: str
     status: Status
     setup_s: float
@@ -189,6 +191,10 @@ class LoopResult(BaseModel):
     attempts: list[Attempt]  # the implementer's
     changed: list[str]  # paths in the final diff (a planted repro excluded)
     diff: str
+
+    @property
+    def key(self) -> str:
+        return ticket_key(self.source, self.number)
 
     @property
     def cost_usd(self) -> float:
@@ -520,6 +526,7 @@ class Progress(BaseModel):
     repo: str
     number: int
     commit: str
+    source: Source = "github"
     planted: list[str] = []  # a planted repro's path in the worktree
     setup_s: float = 0.0
     repro: list[str] = []
@@ -539,6 +546,7 @@ def start_stage(
     rules: LoopRules,
     sandbox: Sandbox,
     prepare: Callable[[Path], None] | None = None,
+    source: Source = "github",
 ) -> Progress:
     """1. setup: fresh worktree, a planted repro copied in, install (the
     only network). Failed: status setup_failed, the reason in `red`."""
@@ -546,7 +554,12 @@ def start_stage(
         raise ValueError("an agent-written repro needs `tests` globs in [loop]")
     planted = [] if repro_file is None else [rules.planted_path(repro_file.name)]
     p = Progress(
-        repo=repo, number=number, commit=commit, planted=planted, repro=planted
+        repo=repo,
+        number=number,
+        source=source,
+        commit=commit,
+        planted=planted,
+        repro=planted,
     )
     start = time.perf_counter()
     add_worktree(clone, worktree, commit)
@@ -647,6 +660,7 @@ def pack(
     return LoopResult(
         repo=p.repo,
         number=p.number,
+        source=p.source,
         commit=p.commit,
         status=status,
         setup_s=p.setup_s,

@@ -30,6 +30,7 @@ export default defineConfig({
       TRACE_DIR: path.join(data, "traces"),
       REFINE_DIR: path.join(data, "refine"),
       ISSUES_DIR: path.join(data, "issues"),
+      TICKETS_DIR: path.join(data, "tickets"),
       CLONES_DIR: path.join(data, "clones"), // none: a snippet says so
     },
   },

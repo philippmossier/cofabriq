@@ -230,6 +230,11 @@ class ListSource:
     def created(self, start: date, end: date) -> Iterator[Issue]:
         return iter(i for i in self._issues if start <= i.created_at.date() <= end)
 
+    def open_issues(self, limit: int) -> tuple[list[Issue], int]:
+        found = [i for i in self._issues if i.state == "open"]
+        newest = sorted(found, key=lambda i: i.created_at, reverse=True)
+        return newest[:limit], len(found)
+
 
 def recorded_issues() -> list[Issue]:
     handler, _ = replay(

@@ -1,0 +1,79 @@
+From 0ee6d3bd94116c09039cfeb5bb87d6c117ed6e0d Mon Sep 17 00:00:00 2001
+From: cofabriq <cofabriq@localhost>
+Date: Tue, 17 Nov 2026 08:19:26 +0100
+Subject: [PATCH 1/2] =?UTF-8?q?Fix=20#51:=20Chat=20title=20is=20cut=20off?=
+ =?UTF-8?q?=20with=20"=E2=80=A6"=20even=20though=20it=20fits:=20the=20test?=
+ =?UTF-8?q?,=20red=20before=20the=20change?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/lib/chat/chat.test.ts | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+diff --git a/src/lib/chat/chat.test.ts b/src/lib/chat/chat.test.ts
+index 41cf7e9c..9a17a2b7 100644
+--- a/src/lib/chat/chat.test.ts
++++ b/src/lib/chat/chat.test.ts
+@@ -104,6 +104,21 @@ describe("titleFrom", () => {
+     expect(titleFrom(long)).toHaveLength(42);
+     expect(titleFrom(long).endsWith("…")).toBe(true);
+   });
++
++  it("keeps a title of exactly 42 characters whole", () => {
++    const exact = `${"x".repeat(41)}?`;
++    expect(exact).toHaveLength(42);
++    expect(titleFrom(exact)).toBe(exact);
++    expect(titleFrom(`  ${"x".repeat(20)}\n\n${"y".repeat(20)}? `)).toBe(
++      `${"x".repeat(20)} ${"y".repeat(20)}?`,
++    );
++  });
++
++  it("cuts a 43 character title to 42 ending in an ellipsis", () => {
++    const over = "x".repeat(43);
++    expect(titleFrom(over)).toBe(`${"x".repeat(41)}…`);
++    expect(titleFrom(over)).toHaveLength(42);
++  });
+ });
+ 
+ describe("persistence", () => {
+
+From c9c89ba4eb4efab4477db173fa7ac6a5e8a7815a Mon Sep 17 00:00:00 2001
+From: cofabriq <cofabriq@localhost>
+Date: Tue, 17 Nov 2026 08:19:26 +0100
+Subject: [PATCH 2/2] =?UTF-8?q?Fix=20#51:=20Chat=20title=20is=20cut=20off?=
+ =?UTF-8?q?=20with=20"=E2=80=A6"=20even=20though=20it=20fits?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The chat title is built by `titleFrom` in `src/lib/chat/store.ts:48-53`.
+It is off by one. The check is `flat.length < TITLE_LENGTH`
+(TITLE_LENGTH = 42), so a question that is exactly 42 characters after
+whitespace is flattened fails the check. It gets cut to its first 41
+characters plus "…". The result is still 42 characters long, so it would
+have fit as it was. The title ends in "…" with only its last character
+swapped out, which makes it look as if nothing is missing. Longer
+questions are cut as intended. The sidebar's CSS `truncate`
+(`src/components/chat-sidebar.tsx:88`) only adds its own ellipsis when
+the text overflows, so it is not the cause. The existing test
+(`src/lib/chat/chat.test.ts:100-106`) only covers 100 characters and
+very short input, never the 42-character boundary.
+---
+ src/lib/chat/store.ts | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/lib/chat/store.ts b/src/lib/chat/store.ts
+index 8a1f17c4..501daaf4 100644
+--- a/src/lib/chat/store.ts
++++ b/src/lib/chat/store.ts
+@@ -49,7 +49,7 @@ const TITLE_LENGTH = 42;
+ 
+ export function titleFrom(text: string): string {
+   const flat = text.replace(/\s+/g, " ").trim();
+-  return flat.length < TITLE_LENGTH ? flat : `${flat.slice(0, TITLE_LENGTH - 1)}…`;
++  return flat.length <= TITLE_LENGTH ? flat : `${flat.slice(0, TITLE_LENGTH - 1)}…`;
+ }
+ 
+ const mapChat = (state: ChatState, id: string, fn: (c: Chat) => Chat): ChatState => ({

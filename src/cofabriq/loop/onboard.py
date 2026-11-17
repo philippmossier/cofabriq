@@ -30,7 +30,7 @@ from cofabriq.files import stamp
 from cofabriq.git import git, try_git
 from cofabriq.issues.model import check_repo
 from cofabriq.loop.engine import Agent, AgentRun
-from cofabriq.loop.refine import CloneFrom
+from cofabriq.loop.refine import CloneFrom, clone_from
 from cofabriq.loop.run import Check, CheckResult, LoopRules, Suite, install
 from cofabriq.loop.sandbox import Sandbox
 from cofabriq.loop.worktree import add_worktree, remove_worktree, reset_hard
@@ -204,6 +204,23 @@ def identity(path: Path) -> str:
         return check_repo(f"{found[1]}/{found[2]}")
     folder = re.sub(r"[^\w.-]", "-", path.resolve().name)
     return check_repo(f"local/{folder}")
+
+
+# https://github.com/o/n, git@github.com:o/n, ssh://git@github.com/o/n
+_GITHUB = re.compile(r"^(?:(?:https?|ssh|git)://)?(?:[^@/]+@)?github\.com[:/]", re.I)
+
+
+def on_github(targets_dir: Path, repo: str) -> bool:
+    """Whether `repo`'s issues are on GitHub: a repo without `[clone]` (a
+    shipped target, an eval repo) is named by its GitHub name; the dev's own
+    with `[clone]` only if its clone's `origin` is on github.com (a GitLab
+    remote's last two segments make a name, not a GitHub repo)."""
+    source = clone_from(targets_dir, repo)
+    if source is None:
+        return True
+    ok, _ = try_git(source.path, "remote", "get-url", "origin")
+    url = git(source.path, "remote", "get-url", "origin").strip() if ok else ""
+    return bool(_GITHUB.match(url)) and identity(source.path) == check_repo(repo)
 
 
 def base_branch(path: Path) -> str:

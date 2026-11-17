@@ -10,8 +10,10 @@ import { TOKEN_FILE } from "../playwright.journey.config.ts";
 // The agent's verdict varies run to run; what this asserts is that each page shows what it
 // must. summary.json says how it ended.
 
-const REPO = "philippmossier/local-ai-chat-playground";
-const ISSUE = Number(process.env.JOURNEY_ISSUE ?? 51);
+const REPO = process.env.JOURNEY_REPO ?? "philippmossier/local-ai-chat-playground";
+// a GitHub issue's number (51) or a local ticket's key (L1)
+const ISSUE = process.env.JOURNEY_ISSUE ?? "51";
+const LABEL = ISSUE.startsWith("L") ? ISSUE : `#${ISSUE}`;
 const ROUTE = process.env.JOURNEY_ROUTE ?? "bug";
 // JOURNEY_RETEST="reason": the first test goes back to the test writer once, with it
 const RETEST = process.env.JOURNEY_RETEST ?? "";
@@ -65,7 +67,7 @@ async function approve(page: Page, gate: "plan" | "test", minutes: number): Prom
   return settled(page, minutes);
 }
 
-test(`#${ISSUE} (${ROUTE}): Start, the gates, the result`, async ({ page }) => {
+test(`${LABEL} (${ROUTE}): Start, the gates, the result`, async ({ page }) => {
   mkdirSync(OUT, { recursive: true });
   const started = Date.now();
   const token = readFileSync(TOKEN_FILE, "utf-8").trim();
@@ -76,7 +78,9 @@ test(`#${ISSUE} (${ROUTE}): Start, the gates, the result`, async ({ page }) => {
   // Issues: Start, or Start again when the issue's flow has ended; a flow still at a
   // gate (an earlier journey stopped there) is opened and goes on from that gate
   await page.goto("/issues");
-  const row = page.getByRole("row", { name: new RegExp(`#${ISSUE} `) });
+  const repos = page.getByRole("combobox", { name: "repo" });
+  if (await repos.count()) await repos.selectOption(REPO); // more than one repo to run on
+  const row = page.getByRole("row", { name: new RegExp(`${LABEL} `) });
   const start = row.getByRole("button", { name: /^Start( again)?$/ });
   await expect(row.getByRole("link", { name: /Open/ }).or(start).first()).toBeVisible();
   if (await start.count()) {
@@ -94,7 +98,9 @@ test(`#${ISSUE} (${ROUTE}): Start, the gates, the result`, async ({ page }) => {
       await expect(page.getByRole("heading", { name: new RegExp(`^${part}`) })).toBeVisible();
     }
     await expect(page.getByRole("list", { name: "progress" }).locator('[aria-current="step"]')).toHaveText(/Plan/);
-    await expect(page.getByText("the lines the change touches")).toBeVisible();
+    // the colour legend shows only when a file has no sketch; a sketch says what it is
+    const legend = page.getByText("the lines the change touches");
+    await expect(legend.or(page.getByText(/^proposed by the agent, not run/)).first()).toBeVisible();
     await api(page, `/api/flows/${OWNER}/${NAME}/${ISSUE}`, "flow-at-plan-gate.json");
     state = await approve(page, "plan", 12);
   }
@@ -139,6 +145,6 @@ test(`#${ISSUE} (${ROUTE}): Start, the gates, the result`, async ({ page }) => {
       2,
     ),
   );
-  console.log(`journey: #${ISSUE} ${String(flow.outcome)} -> ${OUT}`);
-  if (pr) expect(pr).toContain(`Fixes #${ISSUE}`);
+  console.log(`journey: ${LABEL} ${String(flow.outcome)} -> ${OUT}`);
+  if (pr) expect(pr).toContain(ISSUE.startsWith("L") ? `local ticket ${ISSUE}` : `Fixes #${ISSUE}`);
 });

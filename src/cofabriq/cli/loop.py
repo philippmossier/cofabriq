@@ -20,6 +20,7 @@ from cofabriq.cli.common import (
     claude_code,
     flow_app,
     github,
+    github_access,
     loop_rules,
     write_token_for,
 )
@@ -28,9 +29,17 @@ from cofabriq.config import get_settings
 from cofabriq.eval import loop as loop_eval
 from cofabriq.eval.bugs import fix_path, load_bugs, planted_for, repro_path
 from cofabriq.files import stamp
+from cofabriq.issues import tickets as tickets_mod
 from cofabriq.issues import triage as triage_mod
 from cofabriq.issues.fetch import load_issue
-from cofabriq.issues.model import Issue, IssueRef, check_repo
+from cofabriq.issues.model import (
+    Issue,
+    IssueRef,
+    check_repo,
+    key_label,
+    parse_key,
+    ticket_key,
+)
 from cofabriq.loop import graph as graph_mod
 from cofabriq.loop import intake as intake_mod
 from cofabriq.loop import lessons as lessons_mod
@@ -46,20 +55,36 @@ from cofabriq.loop.engine import (
     Guarded,
     stop_reason,
 )
+from cofabriq.loop.handoff import BRANCH_PREFIX
 from cofabriq.loop.sandbox import Podman
 from cofabriq.serve import build as build_api
 from cofabriq.serve_guard import new_token, write_token_file
 from cofabriq.steps import Steps
 from cofabriq.targets import PLAYGROUND, clone_dir, repo_slug
 
+KEY_HELP = "the issue's number (51) or a local ticket's key (L3)"
+
+
+def _key(key: str) -> str:
+    """A ticket key from the command line, or exit."""
+    try:
+        parse_key(key)
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    return key
+
 
 @app.command()
-def refine(number: int, repo: str = PLAYGROUND, json: bool = False) -> None:
-    """Spec for one issue from a read-only agent reading the code (paid, one
-    agent run). Updates the clone in data/clones/ first and fetches the issue
-    if it is new or changed on GitHub (needs GITHUB_TOKEN)."""
+def refine(
+    key: str = typer.Argument(help=KEY_HELP), repo: str = PLAYGROUND, json: bool = False
+) -> None:
+    """Spec for one issue or local ticket from a read-only agent reading the
+    code (paid, one agent run). Updates the clone in data/clones/ first and
+    fetches the issue if it is new or changed on GitHub (needs GITHUB_TOKEN)."""
     settings = get_settings()
     target = check_repo(repo)
+    key = _key(key)
     agent = claude_code()
     steps = Steps(Console(stderr=True, soft_wrap=True))
     clone = clone_dir(settings.clones_dir, target)
@@ -68,9 +93,9 @@ def refine(number: int, repo: str = PLAYGROUND, json: bool = False) -> None:
             target, clone, targets_dir=settings.targets_dir
         )
         done(f"{clone} at {commit[:7]}")
-    issue = _refresh_issue(target, number, steps)
+    issue = _refresh_issue(target, key, steps)
     if issue is None:
-        typer.echo(f"#{number} is not in {settings.issues_dir}", err=True)
+        typer.echo(f"{key_label(key)} is not stored for {target}", err=True)
         raise typer.Exit(code=1)
     with steps.step("agent", f"reading the code ({agent.model})") as done:
         try:
@@ -95,9 +120,13 @@ def refine(number: int, repo: str = PLAYGROUND, json: bool = False) -> None:
         show_spec(refined)
 
 
-def _refresh_issue(repo: str, number: int, steps: Steps) -> Issue | None:
-    """The stored issue, refreshed from GitHub first if there is a token."""
+def _refresh_issue(repo: str, key: str, steps: Steps) -> Issue | None:
+    """The stored issue, refreshed from GitHub first if there is a token; a
+    local ticket as stored (GitHub isn't asked)."""
     settings = get_settings()
+    kind, number = parse_key(key)
+    if kind == "local":
+        return tickets_mod.load_ticket(settings.tickets_dir, repo, number)
     source = github(repo)
     if source is None:
         steps.note("GitHub", "skipped: no GITHUB_TOKEN, local copy", ok=False)
@@ -185,17 +214,18 @@ def _answer_key(
     return judge
 
 
-def _prepare_start(target: str, number: int, steps: Steps) -> Issue:
+def _prepare_start(target: str, key: str, steps: Steps) -> Issue:
     """What a run checks before anything is paid, the same for `run`, `flow
-    start` and the browser's Start: the issue fresh from GitHub, no open
-    blocker, the clone at the default branch. Refused says why not."""
-    issue = _refresh_issue(target, number, steps)
+    start` and the browser's Start: the issue fresh from GitHub (a local
+    ticket as stored), no open blocker, the clone at the default branch.
+    Refused says why not."""
+    issue = _refresh_issue(target, key, steps)
     if issue is None:
-        raise graph_mod.Refused(f"#{number} is not in the issue store")
+        raise graph_mod.Refused(f"{key_label(key)} is not stored for {target}")
     (ticket,) = intake_mod.slices([issue], _blocker_issues([issue]), [])
     if ticket.state == "blocked":
         raise graph_mod.Refused(
-            f"#{number} {ticket.reason}: start it once that is merged"
+            f"{issue.label} {ticket.reason}: start it once that is merged"
         )
     settings = get_settings()
     clone = clone_dir(settings.clones_dir, target)
@@ -207,10 +237,10 @@ def _prepare_start(target: str, number: int, steps: Steps) -> Issue:
     return issue
 
 
-def _prepared(target: str, number: int, steps: Steps) -> Issue:
+def _prepared(target: str, key: str, steps: Steps) -> Issue:
     """`_prepare_start` in the terminal: a refusal exits."""
     try:
-        return _prepare_start(target, number, steps)
+        return _prepare_start(target, key, steps)
     except graph_mod.Refused as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc
@@ -235,7 +265,7 @@ def _blocker_issues(tickets: list[Issue]) -> dict[IssueRef, Issue]:
 def _open_prs(repo: str) -> list[int] | None:
     """cofabriq's open PRs in `repo`; None without a token (unknown)."""
     source = github(repo)
-    return None if source is None else source.open_pulls(publish_mod.BRANCH_PREFIX)
+    return None if source is None else source.open_pulls(BRANCH_PREFIX)
 
 
 def _api(
@@ -245,6 +275,7 @@ def _api(
     flows: graph_mod.FlowRunner | None = None,
 ) -> FastAPI:
     settings = get_settings()
+    key = settings.openai_api_key
     return build_api(
         settings.refine_dir,
         settings.runs_dir,
@@ -256,6 +287,15 @@ def _api(
         trace_dir=settings.trace_dir,
         issues_dir=settings.issues_dir,
         targets_dir=settings.targets_dir,
+        tickets_dir=settings.tickets_dir,
+        # the ticket check's LLM call; only a write server can ask for it
+        triager=triage_mod.OpenAITriager(key.get_secret_value())
+        if key is not None and write_token is not None
+        else None,
+        # an import's source and the token's scopes (one read of GitHub):
+        # only a write server imports
+        github=github if write_token is not None else None,
+        access=github_access() if write_token is not None else None,
     )
 
 
@@ -289,9 +329,11 @@ def serve(
     runner = graph_mod.FlowRunner(
         get_settings().postgres_dsn,
         lambda repo, spent: _flow_deps(repo, spent)[0],
-        prepare=lambda repo, number: _prepare_start(repo, number, steps),
+        prepare=lambda repo, key: _prepare_start(repo, key, steps),
     )
     typer.echo(f"gate: http://127.0.0.1:{port}/#token={token}  (open this one)")
+    if warning := github_access().warning:
+        typer.echo(f"warning: {warning}", err=True)
     app = _api(ui, port, write_token=token, flows=runner)
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
 
@@ -341,7 +383,7 @@ def _flow_report(graph: "CompiledStateGraph[graph_mod.FlowState]", thread: str) 
             show_spec(state.refined)
         if found.waiting == "test":
             typer.echo(found.diff)
-        typer.echo(f"-> cofabriq flow resume {state.issue.number} --approve | --reject")
+        typer.echo(f"-> cofabriq flow resume {state.issue.key} --approve | --reject")
         return
     note = f" ({state.note})" if state.note else ""
     typer.echo(f"{thread}: done, {state.outcome}{note}")
@@ -349,7 +391,7 @@ def _flow_report(graph: "CompiledStateGraph[graph_mod.FlowState]", thread: str) 
 
 @flow_app.command("start")
 def flow_start(
-    number: int,
+    key: str = typer.Argument(help=KEY_HELP),
     repo: str = PLAYGROUND,
     issue_type: str = typer.Option("bug", "--type"),
     restart: bool = False,
@@ -358,9 +400,9 @@ def flow_start(
     route = _route(issue_type)
     target = check_repo(repo)
     steps = Steps(Console(stderr=True, soft_wrap=True))
-    issue = _prepared(target, number, steps)
+    issue = _prepared(target, _key(key), steps)
     deps, dsn = _flow_deps(target)
-    thread = graph_mod.thread_id(issue)
+    thread = graph_mod.thread_id(issue.repo, issue.key)
     with graph_mod.compiled(deps, dsn) as graph:
         earlier = ""
         if (found := graph_mod.read_status(graph, thread)) is not None:
@@ -376,7 +418,7 @@ def flow_start(
 
 @flow_app.command("resume")
 def flow_resume(
-    number: int,
+    key: str = typer.Argument(help=KEY_HELP),
     repo: str = PLAYGROUND,
     approve: bool = False,
     reject: bool = False,
@@ -388,7 +430,7 @@ def flow_resume(
         typer.echo("--approve or --reject", err=True)
         raise typer.Exit(code=1)
     target = check_repo(repo)
-    thread = f"{target}#{number}"
+    thread = graph_mod.thread_id(target, _key(key))
     config = graph_mod.thread_config(thread)
     deps, dsn = _flow_deps(target)
     with graph_mod.compiled(deps, dsn) as graph:  # read what was spent so far
@@ -405,12 +447,16 @@ def flow_resume(
 
 
 @flow_app.command("show")
-def flow_show(number: int, repo: str = PLAYGROUND, steps: bool = False) -> None:
+def flow_show(
+    key: str = typer.Argument(help=KEY_HELP),
+    repo: str = PLAYGROUND,
+    steps: bool = False,
+) -> None:
     """Where a flow stands, read from its checkpoints. `--steps`: every step
     it ran so far, with time, cost and result (data/traces)."""
     target = check_repo(repo)
     deps, dsn = _flow_deps(target)
-    thread = f"{target}#{number}"
+    thread = graph_mod.thread_id(target, _key(key))
     with graph_mod.compiled(deps, dsn) as graph:
         _flow_report(graph, thread)
         found = graph_mod.read_status(graph, thread)
@@ -473,18 +519,18 @@ def stop(clear: bool = False) -> None:
 
 
 @app.command()
-def intake(numbers: list[int], repo: str = PLAYGROUND) -> None:
-    """Tickets the dev filed from their own planning session, in the order
+def intake(keys: list[str], repo: str = PLAYGROUND) -> None:
+    """Tickets (`51` or a local `L3`) from the dev's planning session, in the order
     given: done, blocked (an open blocker: GitHub's dependencies or a
     `Blocked by #N` line), waiting (a cofabriq PR is still open: one at a
     time) or ready for `run`. Read-only."""
     target = check_repo(repo)
     steps = Steps(Console(stderr=True, soft_wrap=True))
     tickets: list[Issue] = []
-    for n in numbers:
-        issue = _refresh_issue(target, n, steps)
+    for key in keys:
+        issue = _refresh_issue(target, _key(key), steps)
         if issue is None:
-            typer.echo(f"#{n} is not an issue of {target}", err=True)
+            typer.echo(f"{key_label(key)} is not stored for {target}", err=True)
             raise typer.Exit(code=1)
         tickets.append(issue)
     prs = _open_prs(target)
@@ -492,7 +538,7 @@ def intake(numbers: list[int], repo: str = PLAYGROUND) -> None:
         steps.note("PRs", "skipped: no GITHUB_TOKEN, open PRs unknown", ok=False)
     for sl in intake_mod.slices(tickets, _blocker_issues(tickets), prs or []):
         why = f"  {sl.reason}" if sl.reason else ""
-        typer.echo(f"  #{sl.number:<5} {sl.state:<8}{why}  {sl.title}")
+        typer.echo(f"  {key_label(sl.key):<6} {sl.state:<8}{why}  {sl.title}")
 
 
 def _route(issue_type: str) -> refine_mod.Route:
@@ -509,7 +555,7 @@ def _route(issue_type: str) -> refine_mod.Route:
 
 @app.command()
 def run(
-    number: int,
+    key: str = typer.Argument(help=KEY_HELP),
     repo: str = PLAYGROUND,
     spec: Path | None = None,
     yes: bool = False,
@@ -534,18 +580,24 @@ def run(
     route = _route(issue_type)
     settings = get_settings()
     target = check_repo(repo)
+    key = _key(key)
+    if apply and key.startswith("L"):
+        typer.echo(
+            "--apply opens a PR for a GitHub issue, not a local ticket", err=True
+        )
+        raise typer.Exit(code=1)
     write_token = write_token_for(target) if apply else None  # before paying
     # the flow's graph in one process: every agent of this run (refine,
     # test, build, review, proofs) shares one budget, the kill switch's cap
     deps, _ = _flow_deps(target)
     steps = Steps(Console(stderr=True, soft_wrap=True))
-    issue = _prepared(target, number, steps)
+    issue = _prepared(target, key, steps)
     state = graph_mod.FlowState(issue=issue, route=route)
     bug = planted_for(issue.title, load_bugs(bugs, seed), seed)
     if bug is not None and bug.kind == "ui" and deps.rules.suite(bug.repro) is None:
         bug = None  # the target has no suite to run a Playwright repro
     if planted and bug is None:
-        typer.echo(f"#{number} is not a planted bug the loop can run", err=True)
+        typer.echo(f"{issue.label} is not a planted bug the loop can run", err=True)
         raise typer.Exit(code=1)
     if bug is not None:
         role = "handed to the agent" if planted else "judges the result"
@@ -553,18 +605,19 @@ def run(
         if planted:
             state.planted = str(repro_path(bugs, bug))
         else:  # no verdicts by default: no answer key without a planted bug
-            key = _answer_key(repro_path(bugs, bug), fix_path(bugs, bug), keep, deps)
-            deps = replace(deps, judge=key)
+            judge = _answer_key(repro_path(bugs, bug), fix_path(bugs, bug), keep, deps)
+            deps = replace(deps, judge=judge)
     if spec is not None:
         given = refine_mod.Refined.model_validate_json(spec.read_text("utf-8"))
-        if (given.repo, given.number) != (target, number):
-            typer.echo(f"{spec} is for {given.repo}#{given.number}", err=True)
+        given_key = ticket_key(given.source, given.number)
+        if (given.repo, given_key) != (target, key):
+            typer.echo(f"{spec} is for {given.repo}#{given_key}", err=True)
             raise typer.Exit(code=1)
         steps.note("spec", f"from {spec} (at {given.commit[:7]})")
         state.refined, state.route = given, given.route
     deps = replace(deps, keep=keep, prefix="")  # not the flow's worktree
     graph, worktree = graph_mod.in_memory(deps), deps.worktree(issue)
-    thread = graph_mod.thread_id(issue)
+    thread = graph_mod.thread_id(issue.repo, issue.key)
     if spec is not None:
         now = _invoke(graph, state, thread)
     else:

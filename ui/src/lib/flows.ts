@@ -8,7 +8,8 @@ import {
   getIssuesQueryKey,
 } from "@/api/generated";
 
-export const issueUrl = (repo: string, number: number) => `https://github.com/${repo}/issues/${number}`;
+/** How the page names a ticket: `#51` (GitHub's way), a local `L3` as it is. */
+export const ticketLabel = (ticket: string) => (ticket.startsWith("L") ? ticket : `#${ticket}`);
 
 /** A flow's parts in order, as the stepper names them; `you`: a gate. */
 export const PHASES: { phase: Phase; label: string; you?: boolean }[] = [
@@ -52,9 +53,9 @@ export function againRoute(flow: { route: Route; outcome: string }): Route {
 
 /** After a start or an answer: the server already says "running", so ask
  * now instead of waiting up to a poll interval with a stale page. */
-export async function refreshFlow(client: QueryClient, owner: string, name: string, number: number) {
+export async function refreshFlow(client: QueryClient, owner: string, name: string, ticket: string) {
   await Promise.all([
-    client.invalidateQueries({ queryKey: getFlowQueryKey(owner, name, number) }),
+    client.invalidateQueries({ queryKey: getFlowQueryKey(owner, name, ticket) }),
     client.invalidateQueries({ queryKey: getFlowListQueryKey() }),
     client.invalidateQueries({ queryKey: getIssuesQueryKey(owner, name) }),
   ]);

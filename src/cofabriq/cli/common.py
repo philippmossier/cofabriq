@@ -14,6 +14,7 @@ from cofabriq.context.ingest.embed import Embed, openai_embedder
 from cofabriq.context.store import graph as kg
 from cofabriq.context.store import postgres
 from cofabriq.issues import rerank as rerank_mod
+from cofabriq.issues import token as token_mod
 from cofabriq.issues import triage as triage_mod
 from cofabriq.issues import verdict as verdict_mod
 from cofabriq.issues.github import GitHubIssueSource
@@ -40,6 +41,11 @@ repo_app = typer.Typer(
     help="Your own repo: `[loop]` proposed from its files, proven in the sandbox.",
 )
 app.add_typer(repo_app, name="repo")
+ticket_app = typer.Typer(
+    no_args_is_help=True,
+    help="Local tickets (L1, L2, ...): written here, never on GitHub.",
+)
+app.add_typer(ticket_app, name="ticket")
 
 
 @app.callback()
@@ -63,13 +69,28 @@ def target_repo(repo: str | None) -> str:
     return check_repo(target)
 
 
-def github(repo: str) -> GitHubIssueSource | None:
-    """The read-only GitHub source for `repo`; None without GITHUB_TOKEN."""
+@cache
+def github_token() -> tuple[str | None, token_mod.TokenSource | None]:
+    """GITHUB_TOKEN, else `gh auth token` if opted in (asked once)."""
     settings = get_settings()
-    if settings.github_token is None:
+    env = settings.github_token.get_secret_value() if settings.github_token else None
+    return token_mod.resolve(env, settings.github_token_from_gh)
+
+
+@cache
+def github_access() -> token_mod.Access:
+    """The token's source and whether it could write (one read of GitHub
+    for a token that lists its scopes)."""
+    token, source = github_token()
+    return token_mod.access(source, token_mod.scopes(token) if token else None)
+
+
+def github(repo: str) -> GitHubIssueSource | None:
+    """The read-only GitHub source for `repo`; None without a token."""
+    token, _ = github_token()
+    if token is None:
         return None
-    token = settings.github_token.get_secret_value()
-    return GitHubIssueSource(repo, token, comments=settings.issue_comments)
+    return GitHubIssueSource(repo, token, comments=get_settings().issue_comments)
 
 
 def loop_rules(target: str) -> run_mod.LoopRules:

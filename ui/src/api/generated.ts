@@ -139,6 +139,10 @@ export interface FlowSummary {
   thread: string;
   repo: string;
   number: number;
+  /** The ticket: `51` (GitHub's #51) or `L3` (a local one). */
+  ticket: string;
+  /** The issue on GitHub; null: a local ticket. */
+  url: string | null;
   title: string;
   route: FlowSummaryRoute;
   waiting: FlowSummaryWaiting;
@@ -189,6 +193,10 @@ export interface FlowView {
   thread: string;
   repo: string;
   number: number;
+  /** The ticket: `51` (GitHub's #51) or `L3` (a local one). */
+  ticket: string;
+  /** The issue on GitHub; null: a local ticket. */
+  url: string | null;
   title: string;
   route: FlowViewRoute;
   waiting: FlowViewWaiting;
@@ -217,6 +225,29 @@ export interface FlowView {
   record: string;
 }
 
+/**
+ * `env`: GITHUB_TOKEN; `gh`: `gh auth token`; null: none.
+ */
+export type GitHubAccessSource = typeof GitHubAccessSource[keyof typeof GitHubAccessSource] | null;
+
+
+export const GitHubAccessSource = {
+  env: 'env',
+  gh: 'gh',
+} as const;
+
+/**
+ * The GitHub token cofabriq reads with, as the dev should know it
+ * (never the token): where it came from, and whether it could write.
+ */
+export interface GitHubAccess {
+  /** `env`: GITHUB_TOKEN; `gh`: `gh auth token`; null: none. */
+  source: GitHubAccessSource;
+  /** Its scopes can write; null: it lists none (fine-grained). */
+  can_write: boolean | null;
+  warning: string;
+}
+
 export type ValidationErrorCtx = { [key: string]: unknown };
 
 export interface ValidationError {
@@ -232,35 +263,94 @@ export interface HTTPValidationError {
 }
 
 /**
- * One stored issue, as the Issues page lists it.
+ * The change to take: a branch in cofabriq's own copy of the repo and
+ * the same commits as a patch. Nothing was written to the dev's folder.
+ */
+export interface HandoffView {
+  branch: string;
+  commits: number;
+  clone: string;
+  /** Run in your own folder: fetch the branch from cofabriq's copy and switch to it. */
+  fetch: string;
+  patch_url: string;
+  error: string;
+}
+
+export interface ImportAsk {
+  /**
+     * The newest open ones.
+     * @minimum 1
+     * @maximum 100
+     */
+  limit?: number;
+  /** Import even though more are open than `limit`. */
+  confirm?: boolean;
+}
+
+export interface Imported {
+  /** Open on GitHub. */
+  total: number;
+  written: number;
+  unchanged: number;
+  /** More are open than `limit`: nothing imported, ask the dev. */
+  asked: boolean;
+}
+
+export type Source = typeof Source[keyof typeof Source];
+
+
+export const Source = {
+  github: 'github',
+  local: 'local',
+} as const;
+
+/**
+ * One stored issue or local ticket, as the Issues page lists it.
  */
 export interface IssueRow {
   number: number;
+  /** The ticket: `51` (GitHub's #51) or `L3` (a local one). */
+  ticket: string;
+  source: Source;
   title: string;
   /** `open` or `closed`, as last fetched. */
   state: string;
   labels: string[];
   comments: number;
   updated_at: string;
-  /** The issue on GitHub. */
-  url: string;
+  /** The issue on GitHub; null: a local ticket. */
+  url: string | null;
   /** Its flow, where it waits or how it ended; null: none yet. */
   flow: FlowSummary | null;
 }
+
+export type IssueType = typeof IssueType[keyof typeof IssueType];
+
+
+export const IssueType = {
+  bug: 'bug',
+  feature: 'feature',
+  question: 'question',
+  docs: 'docs',
+  chore: 'chore',
+} as const;
 
 /**
  * One stored issue with its text, to read before starting a flow.
  */
 export interface IssueView {
   number: number;
+  /** The ticket: `51` (GitHub's #51) or `L3` (a local one). */
+  ticket: string;
+  source: Source;
   title: string;
   /** `open` or `closed`, as last fetched. */
   state: string;
   labels: string[];
   comments: number;
   updated_at: string;
-  /** The issue on GitHub. */
-  url: string;
+  /** The issue on GitHub; null: a local ticket. */
+  url: string | null;
   /** Its flow, where it waits or how it ended; null: none yet. */
   flow: FlowSummary | null;
   /** Untrusted: show it as text. */
@@ -268,6 +358,18 @@ export interface IssueView {
 }
 
 export interface JsonValue {}
+
+export interface NewTicket {
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  title: string;
+  /** @maxLength 20000 */
+  body?: string;
+  /** Save it even when the check finds gaps. */
+  anyway?: boolean;
+}
 
 export interface ProofView {
   finding: FindingView;
@@ -283,12 +385,16 @@ export interface Refusal {
 }
 
 /**
- * A repo a flow can run on: an issue store and `[loop]` in its target
- * file.
+ * A repo a flow can run on: `[loop]` in its target file, and stored
+ * issues (`fetch-issues`) or local tickets.
  */
 export interface Repo {
   repo: string;
   issues: number;
+  /** Local tickets (L1, L2, ...). */
+  tickets: number;
+  /** Its issues are on github.com: they can be imported. */
+  on_github: boolean;
 }
 
 export type StepPhase = typeof StepPhase[keyof typeof StepPhase];
@@ -397,6 +503,8 @@ export interface RunSummary {
   kind: RunKind;
   repo: string;
   number: number;
+  /** The ticket: `51` (GitHub's #51) or `L3` (a local one). */
+  ticket: string;
   title: string;
   status: string;
   judge: boolean | null;
@@ -412,6 +520,8 @@ export interface RunTrace {
   kind: RunKind;
   repo: string;
   number: number;
+  /** The ticket: `51` (GitHub's #51) or `L3` (a local one). */
+  ticket: string;
   title: string;
   status: string;
   judge: boolean | null;
@@ -431,6 +541,7 @@ export interface RunTrace {
   evidence: string[];
   trace: string;
   pr_url: string | null;
+  handoff: HandoffView | null;
 }
 
 export type SpecSummaryRoute = typeof SpecSummaryRoute[keyof typeof SpecSummaryRoute];
@@ -446,6 +557,8 @@ export interface SpecSummary {
   key: string;
   repo: string;
   number: number;
+  /** The ticket: `51` (GitHub's #51) or `L3` (a local one). */
+  ticket: string;
   route: SpecSummaryRoute;
   size: string;
   files: number;
@@ -468,6 +581,8 @@ export interface SpecView {
   key: string;
   repo: string;
   number: number;
+  /** The ticket: `51` (GitHub's #51) or `L3` (a local one). */
+  ticket: string;
   commit: string;
   route: SpecViewRoute;
   size: string;
@@ -530,6 +645,19 @@ export interface Totals {
 export interface StepTree {
   steps: RunStep[];
   totals: Totals;
+}
+
+/**
+ * What the readiness read found, and the ticket if it was saved.
+ */
+export interface TicketSaved {
+  /** How the check reads it: bug, feature, ... */
+  type: IssueType;
+  /** What it lacks; empty: ready to run. */
+  missing: string[];
+  cost_usd: number;
+  /** The new ticket; null: not saved (gaps, and not `anyway`). */
+  saved: IssueRow | null;
 }
 
 export type Payload200 = {[key: string]: JsonValue};
@@ -1629,8 +1757,9 @@ export const getReposUrl = () => {
 }
 
 /**
- * The repos a flow can run on: an issue store (`fetch-issues`) and
- * `[loop]` in the target file, proven if the dev's own.
+ * The repos a flow can run on: `[loop]` in the target file (proven
+ * if the dev's own), and an issue store (`fetch-issues`) or local
+ * tickets.
  * @summary Repos
  */
 export const repos = async ( options?: RequestInit): Promise<reposResponse> => {
@@ -1730,6 +1859,128 @@ export function useRepos<TData = Awaited<ReturnType<typeof repos>>, TError = unk
 
 
 
+export type githubTokenResponse200 = {
+  data: GitHubAccess
+  status: 200
+}
+
+export type githubTokenResponseSuccess = (githubTokenResponse200) & {
+  headers: Headers;
+};
+;
+
+export type githubTokenResponse = (githubTokenResponseSuccess)
+
+export const getGithubTokenUrl = () => {
+
+
+
+
+  return `/api/github`
+}
+
+/**
+ * The token's source and whether it could write, as checked when
+ * the server started.
+ * @summary Github Token
+ */
+export const githubToken = async ( options?: RequestInit): Promise<githubTokenResponse> => {
+
+  const res = await fetch(getGithubTokenUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: githubTokenResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as githubTokenResponse
+}
+
+
+
+
+
+export const getGithubTokenQueryKey = () => {
+    return [
+    `/api/github`
+    ] as const;
+    }
+
+
+export const getGithubTokenQueryOptions = <TData = Awaited<ReturnType<typeof githubToken>>, TError = unknown>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof githubToken>>, TError, TData>>, fetch?: RequestInit}
+) => {
+
+const {query: queryOptions, fetch: fetchOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGithubTokenQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof githubToken>>> = ({ signal }) => githubToken({ signal, ...fetchOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof githubToken>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GithubTokenQueryResult = NonNullable<Awaited<ReturnType<typeof githubToken>>>
+export type GithubTokenQueryError = unknown
+
+
+export function useGithubToken<TData = Awaited<ReturnType<typeof githubToken>>, TError = unknown>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof githubToken>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof githubToken>>,
+          TError,
+          Awaited<ReturnType<typeof githubToken>>
+        > , 'initialData'
+      >, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGithubToken<TData = Awaited<ReturnType<typeof githubToken>>, TError = unknown>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof githubToken>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof githubToken>>,
+          TError,
+          Awaited<ReturnType<typeof githubToken>>
+        > , 'initialData'
+      >, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGithubToken<TData = Awaited<ReturnType<typeof githubToken>>, TError = unknown>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof githubToken>>, TError, TData>>, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Github Token
+ */
+
+export function useGithubToken<TData = Awaited<ReturnType<typeof githubToken>>, TError = unknown>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof githubToken>>, TError, TData>>, fetch?: RequestInit}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGithubTokenQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export type issuesResponse200 = {
   data: IssueRow[]
   status: 200
@@ -1759,8 +2010,8 @@ export const getIssuesUrl = (owner: string,
 }
 
 /**
- * A repo's stored issues, newest first. Read from data/issues, not
- * from GitHub: Start refreshes the one it starts.
+ * A repo's local tickets, then its stored issues, newest first. Read
+ * from data/, not from GitHub: Start refreshes the one it starts.
  * @summary Issues
  */
 export const issues = async (owner: string,
@@ -1888,23 +2139,23 @@ export type issueResponse = (issueResponseSuccess | issueResponseError)
 
 export const getIssueUrl = (owner: string,
     name: string,
-    number: number,) => {
+    ticket: string,) => {
 
 
 
 
-  return `/api/issues/${owner}/${name}/${number}`
+  return `/api/issues/${owner}/${name}/${ticket}`
 }
 
 /**
- * One stored issue with its text, as last fetched.
+ * One stored issue or local ticket with its text, as last fetched.
  * @summary Issue
  */
 export const issue = async (owner: string,
     name: string,
-    number: number, options?: RequestInit): Promise<issueResponse> => {
+    ticket: string, options?: RequestInit): Promise<issueResponse> => {
 
-  const res = await fetch(getIssueUrl(owner,name,number),
+  const res = await fetch(getIssueUrl(owner,name,ticket),
   {
     ...options,
     method: 'GET'
@@ -1926,31 +2177,31 @@ export const issue = async (owner: string,
 
 export const getIssueQueryKey = (owner: string,
     name: string,
-    number: number,) => {
+    ticket: string,) => {
     return [
-    `/api/issues/${owner}/${name}/${number}`
+    `/api/issues/${owner}/${name}/${ticket}`
     ] as const;
     }
 
 
 export const getIssueQueryOptions = <TData = Awaited<ReturnType<typeof issue>>, TError = HTTPValidationError>(owner: string,
     name: string,
-    number: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof issue>>, TError, TData>>, fetch?: RequestInit}
+    ticket: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof issue>>, TError, TData>>, fetch?: RequestInit}
 ) => {
 
 const {query: queryOptions, fetch: fetchOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getIssueQueryKey(owner,name,number);
+  const queryKey =  queryOptions?.queryKey ?? getIssueQueryKey(owner,name,ticket);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof issue>>> = ({ signal }) => issue(owner,name,number, { signal, ...fetchOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof issue>>> = ({ signal }) => issue(owner,name,ticket, { signal, ...fetchOptions });
 
 
 
 
 
-   return  { queryKey, queryFn, enabled: owner !== null && owner !== undefined && name !== null && name !== undefined && number !== null && number !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof issue>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+   return  { queryKey, queryFn, enabled: owner !== null && owner !== undefined && name !== null && name !== undefined && ticket !== null && ticket !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof issue>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
 
 export type IssueQueryResult = NonNullable<Awaited<ReturnType<typeof issue>>>
@@ -1960,7 +2211,7 @@ export type IssueQueryError = HTTPValidationError
 export function useIssue<TData = Awaited<ReturnType<typeof issue>>, TError = HTTPValidationError>(
  owner: string,
     name: string,
-    number: number, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof issue>>, TError, TData>> & Pick<
+    ticket: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof issue>>, TError, TData>> & Pick<
         DefinedInitialDataOptions<
           Awaited<ReturnType<typeof issue>>,
           TError,
@@ -1972,7 +2223,7 @@ export function useIssue<TData = Awaited<ReturnType<typeof issue>>, TError = HTT
 export function useIssue<TData = Awaited<ReturnType<typeof issue>>, TError = HTTPValidationError>(
  owner: string,
     name: string,
-    number: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof issue>>, TError, TData>> & Pick<
+    ticket: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof issue>>, TError, TData>> & Pick<
         UndefinedInitialDataOptions<
           Awaited<ReturnType<typeof issue>>,
           TError,
@@ -1984,7 +2235,7 @@ export function useIssue<TData = Awaited<ReturnType<typeof issue>>, TError = HTT
 export function useIssue<TData = Awaited<ReturnType<typeof issue>>, TError = HTTPValidationError>(
  owner: string,
     name: string,
-    number: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof issue>>, TError, TData>>, fetch?: RequestInit}
+    ticket: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof issue>>, TError, TData>>, fetch?: RequestInit}
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 /**
@@ -1994,11 +2245,11 @@ export function useIssue<TData = Awaited<ReturnType<typeof issue>>, TError = HTT
 export function useIssue<TData = Awaited<ReturnType<typeof issue>>, TError = HTTPValidationError>(
  owner: string,
     name: string,
-    number: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof issue>>, TError, TData>>, fetch?: RequestInit}
+    ticket: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof issue>>, TError, TData>>, fetch?: RequestInit}
  , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
-  const queryOptions = getIssueQueryOptions(owner,name,number,options)
+  const queryOptions = getIssueQueryOptions(owner,name,ticket,options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 
@@ -2152,12 +2403,12 @@ export type flowResponse = (flowResponseSuccess | flowResponseError)
 
 export const getFlowUrl = (owner: string,
     name: string,
-    number: number,) => {
+    ticket: string,) => {
 
 
 
 
-  return `/api/flows/${owner}/${name}/${number}`
+  return `/api/flows/${owner}/${name}/${ticket}`
 }
 
 /**
@@ -2165,9 +2416,9 @@ export const getFlowUrl = (owner: string,
  */
 export const flow = async (owner: string,
     name: string,
-    number: number, options?: RequestInit): Promise<flowResponse> => {
+    ticket: string, options?: RequestInit): Promise<flowResponse> => {
 
-  const res = await fetch(getFlowUrl(owner,name,number),
+  const res = await fetch(getFlowUrl(owner,name,ticket),
   {
     ...options,
     method: 'GET'
@@ -2189,31 +2440,31 @@ export const flow = async (owner: string,
 
 export const getFlowQueryKey = (owner: string,
     name: string,
-    number: number,) => {
+    ticket: string,) => {
     return [
-    `/api/flows/${owner}/${name}/${number}`
+    `/api/flows/${owner}/${name}/${ticket}`
     ] as const;
     }
 
 
 export const getFlowQueryOptions = <TData = Awaited<ReturnType<typeof flow>>, TError = HTTPValidationError>(owner: string,
     name: string,
-    number: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof flow>>, TError, TData>>, fetch?: RequestInit}
+    ticket: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof flow>>, TError, TData>>, fetch?: RequestInit}
 ) => {
 
 const {query: queryOptions, fetch: fetchOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getFlowQueryKey(owner,name,number);
+  const queryKey =  queryOptions?.queryKey ?? getFlowQueryKey(owner,name,ticket);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof flow>>> = ({ signal }) => flow(owner,name,number, { signal, ...fetchOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof flow>>> = ({ signal }) => flow(owner,name,ticket, { signal, ...fetchOptions });
 
 
 
 
 
-   return  { queryKey, queryFn, enabled: owner !== null && owner !== undefined && name !== null && name !== undefined && number !== null && number !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof flow>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+   return  { queryKey, queryFn, enabled: owner !== null && owner !== undefined && name !== null && name !== undefined && ticket !== null && ticket !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof flow>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
 }
 
 export type FlowQueryResult = NonNullable<Awaited<ReturnType<typeof flow>>>
@@ -2223,7 +2474,7 @@ export type FlowQueryError = HTTPValidationError
 export function useFlow<TData = Awaited<ReturnType<typeof flow>>, TError = HTTPValidationError>(
  owner: string,
     name: string,
-    number: number, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof flow>>, TError, TData>> & Pick<
+    ticket: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof flow>>, TError, TData>> & Pick<
         DefinedInitialDataOptions<
           Awaited<ReturnType<typeof flow>>,
           TError,
@@ -2235,7 +2486,7 @@ export function useFlow<TData = Awaited<ReturnType<typeof flow>>, TError = HTTPV
 export function useFlow<TData = Awaited<ReturnType<typeof flow>>, TError = HTTPValidationError>(
  owner: string,
     name: string,
-    number: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof flow>>, TError, TData>> & Pick<
+    ticket: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof flow>>, TError, TData>> & Pick<
         UndefinedInitialDataOptions<
           Awaited<ReturnType<typeof flow>>,
           TError,
@@ -2247,7 +2498,7 @@ export function useFlow<TData = Awaited<ReturnType<typeof flow>>, TError = HTTPV
 export function useFlow<TData = Awaited<ReturnType<typeof flow>>, TError = HTTPValidationError>(
  owner: string,
     name: string,
-    number: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof flow>>, TError, TData>>, fetch?: RequestInit}
+    ticket: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof flow>>, TError, TData>>, fetch?: RequestInit}
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 /**
@@ -2257,11 +2508,11 @@ export function useFlow<TData = Awaited<ReturnType<typeof flow>>, TError = HTTPV
 export function useFlow<TData = Awaited<ReturnType<typeof flow>>, TError = HTTPValidationError>(
  owner: string,
     name: string,
-    number: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof flow>>, TError, TData>>, fetch?: RequestInit}
+    ticket: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof flow>>, TError, TData>>, fetch?: RequestInit}
  , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
-  const queryOptions = getFlowQueryOptions(owner,name,number,options)
+  const queryOptions = getFlowQueryOptions(owner,name,ticket,options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 
@@ -2295,12 +2546,12 @@ export type flowAnswerResponse = (flowAnswerResponseSuccess | flowAnswerResponse
 
 export const getFlowAnswerUrl = (owner: string,
     name: string,
-    number: number,) => {
+    ticket: string,) => {
 
 
 
 
-  return `/api/flows/${owner}/${name}/${number}/answer`
+  return `/api/flows/${owner}/${name}/${ticket}/answer`
 }
 
 /**
@@ -2308,7 +2559,7 @@ export const getFlowAnswerUrl = (owner: string,
  */
 export const flowAnswer = async (owner: string,
     name: string,
-    number: number,
+    ticket: string,
     answer: Answer, options?: RequestInit): Promise<flowAnswerResponse> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
@@ -2325,7 +2576,7 @@ export const flowAnswer = async (owner: string,
     }
     return headers;
   };
-const res = await fetch(getFlowAnswerUrl(owner,name,number),
+const res = await fetch(getFlowAnswerUrl(owner,name,ticket),
   {
     ...options,
     method: 'POST',
@@ -2362,9 +2613,9 @@ const {mutation: mutationOptions, fetch: fetchOptions} = options ?
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof flowAnswer>>, FlowAnswerMutationVariables> = (props) => {
-          const {owner,name,number,data} = props ?? {};
+          const {owner,name,ticket,data} = props ?? {};
 
-          return  flowAnswer(owner,name,number,data,fetchOptions)
+          return  flowAnswer(owner,name,ticket,data,fetchOptions)
         }
 
 
@@ -2377,7 +2628,7 @@ const {mutation: mutationOptions, fetch: fetchOptions} = options ?
     export type FlowAnswerMutationResult = NonNullable<Awaited<ReturnType<typeof flowAnswer>>>
     export type FlowAnswerMutationBody = Answer
     export type FlowAnswerMutationError = HTTPValidationError
-    export type FlowAnswerMutationVariables = {owner: string;name: string;number: number;data: Answer}
+    export type FlowAnswerMutationVariables = {owner: string;name: string;ticket: string;data: Answer}
 
     /**
  * @summary Flow Answer
@@ -2419,24 +2670,25 @@ export type flowStartResponse = (flowStartResponseSuccess | flowStartResponseErr
 
 export const getFlowStartUrl = (owner: string,
     name: string,
-    number: number,) => {
+    ticket: string,) => {
 
 
 
 
-  return `/api/flows/${owner}/${name}/${number}/start`
+  return `/api/flows/${owner}/${name}/${ticket}/start`
 }
 
 /**
- * Start a flow on a stored issue: the issue refreshed from GitHub,
- * its blockers checked, the clone updated (here, so a refusal comes
- * back at once), then refine in the background up to the plan gate.
- * Paid: an agent run.
+ * Start a flow on a stored issue or local ticket: the issue
+ * refreshed from GitHub (a local ticket as stored), its blockers
+ * checked, the clone updated (here, so a refusal comes back at once),
+ * then refine in the background up to the plan gate. Paid: an agent
+ * run.
  * @summary Flow Start
  */
 export const flowStart = async (owner: string,
     name: string,
-    number: number,
+    ticket: string,
     start: Start, options?: RequestInit): Promise<flowStartResponse> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
@@ -2453,7 +2705,7 @@ export const flowStart = async (owner: string,
     }
     return headers;
   };
-const res = await fetch(getFlowStartUrl(owner,name,number),
+const res = await fetch(getFlowStartUrl(owner,name,ticket),
   {
     ...options,
     method: 'POST',
@@ -2490,9 +2742,9 @@ const {mutation: mutationOptions, fetch: fetchOptions} = options ?
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof flowStart>>, FlowStartMutationVariables> = (props) => {
-          const {owner,name,number,data} = props ?? {};
+          const {owner,name,ticket,data} = props ?? {};
 
-          return  flowStart(owner,name,number,data,fetchOptions)
+          return  flowStart(owner,name,ticket,data,fetchOptions)
         }
 
 
@@ -2505,7 +2757,7 @@ const {mutation: mutationOptions, fetch: fetchOptions} = options ?
     export type FlowStartMutationResult = NonNullable<Awaited<ReturnType<typeof flowStart>>>
     export type FlowStartMutationBody = Start
     export type FlowStartMutationError = Refusal | HTTPValidationError
-    export type FlowStartMutationVariables = {owner: string;name: string;number: number;data: Start}
+    export type FlowStartMutationVariables = {owner: string;name: string;ticket: string;data: Start}
 
     /**
  * @summary Flow Start
@@ -2519,4 +2771,249 @@ export const useFlowStart = <TError = Refusal | HTTPValidationError,
         TContext
       > => {
       return useMutation(getFlowStartMutationOptions(options), queryClient);
+    }
+
+export type ticketNewResponse200 = {
+  data: TicketSaved
+  status: 200
+}
+
+export type ticketNewResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type ticketNewResponseSuccess = (ticketNewResponse200) & {
+  headers: Headers;
+};
+export type ticketNewResponseError = (ticketNewResponse422) & {
+  headers: Headers;
+};
+
+export type ticketNewResponse = (ticketNewResponseSuccess | ticketNewResponseError)
+
+export const getTicketNewUrl = (owner: string,
+    name: string,) => {
+
+
+
+
+  return `/api/tickets/${owner}/${name}`
+}
+
+/**
+ * Write a local ticket: one LLM call reads it first and says what
+ * is missing (it fills nothing in); with gaps it is saved only with
+ * `anyway`. Never sent to GitHub. Paid (about $0.001).
+ * @summary Ticket New
+ */
+export const ticketNew = async (owner: string,
+    name: string,
+    newTicket: NewTicket, options?: RequestInit): Promise<ticketNewResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+const res = await fetch(getTicketNewUrl(owner,name),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(newTicket)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: ticketNewResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as ticketNewResponse
+}
+
+
+
+
+
+export const getTicketNewMutationKey = () => ['ticketNew'] as const;
+
+export const getTicketNewMutationOptions = <TError = HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof ticketNew>>, TError,TicketNewMutationVariables, TContext>, fetch?: RequestInit}
+): UseMutationOptions<Awaited<ReturnType<typeof ticketNew>>, TError,TicketNewMutationVariables, TContext> => {
+
+const mutationKey = getTicketNewMutationKey();
+const {mutation: mutationOptions, fetch: fetchOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, fetch: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof ticketNew>>, TicketNewMutationVariables> = (props) => {
+          const {owner,name,data} = props ?? {};
+
+          return  ticketNew(owner,name,data,fetchOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type TicketNewMutationResult = NonNullable<Awaited<ReturnType<typeof ticketNew>>>
+    export type TicketNewMutationBody = NewTicket
+    export type TicketNewMutationError = HTTPValidationError
+    export type TicketNewMutationVariables = {owner: string;name: string;data: NewTicket}
+
+    /**
+ * @summary Ticket New
+ */
+export const useTicketNew = <TError = HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof ticketNew>>, TError,TicketNewMutationVariables, TContext>, fetch?: RequestInit}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof ticketNew>>,
+        TError,
+        TicketNewMutationVariables,
+        TContext
+      > => {
+      return useMutation(getTicketNewMutationOptions(options), queryClient);
+    }
+
+export type importIssuesResponse200 = {
+  data: Imported
+  status: 200
+}
+
+export type importIssuesResponse409 = {
+  data: Refusal
+  status: 409
+}
+
+export type importIssuesResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type importIssuesResponseSuccess = (importIssuesResponse200) & {
+  headers: Headers;
+};
+export type importIssuesResponseError = (importIssuesResponse409 | importIssuesResponse422) & {
+  headers: Headers;
+};
+
+export type importIssuesResponse = (importIssuesResponseSuccess | importIssuesResponseError)
+
+export const getImportIssuesUrl = (owner: string,
+    name: string,) => {
+
+
+
+
+  return `/api/repos/${owner}/${name}/import`
+}
+
+/**
+ * The newest open issues from GitHub into the store (read-only
+ * towards GitHub). More open than `limit`: nothing is stored and
+ * `asked` says so, until `confirm`. One GraphQL request.
+ * @summary Import Issues
+ */
+export const importIssues = async (owner: string,
+    name: string,
+    importAsk: ImportAsk, options?: RequestInit): Promise<importIssuesResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+const res = await fetch(getImportIssuesUrl(owner,name),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(importAsk)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: importIssuesResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as importIssuesResponse
+}
+
+
+
+
+
+export const getImportIssuesMutationKey = () => ['importIssues'] as const;
+
+export const getImportIssuesMutationOptions = <TError = Refusal | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importIssues>>, TError,ImportIssuesMutationVariables, TContext>, fetch?: RequestInit}
+): UseMutationOptions<Awaited<ReturnType<typeof importIssues>>, TError,ImportIssuesMutationVariables, TContext> => {
+
+const mutationKey = getImportIssuesMutationKey();
+const {mutation: mutationOptions, fetch: fetchOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, fetch: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof importIssues>>, ImportIssuesMutationVariables> = (props) => {
+          const {owner,name,data} = props ?? {};
+
+          return  importIssues(owner,name,data,fetchOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ImportIssuesMutationResult = NonNullable<Awaited<ReturnType<typeof importIssues>>>
+    export type ImportIssuesMutationBody = ImportAsk
+    export type ImportIssuesMutationError = Refusal | HTTPValidationError
+    export type ImportIssuesMutationVariables = {owner: string;name: string;data: ImportAsk}
+
+    /**
+ * @summary Import Issues
+ */
+export const useImportIssues = <TError = Refusal | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importIssues>>, TError,ImportIssuesMutationVariables, TContext>, fetch?: RequestInit}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof importIssues>>,
+        TError,
+        ImportIssuesMutationVariables,
+        TContext
+      > => {
+      return useMutation(getImportIssuesMutationOptions(options), queryClient);
     }

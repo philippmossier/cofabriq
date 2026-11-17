@@ -34,6 +34,91 @@ test("an issue opens in place, as text, before anything is paid for", async ({ p
   await expect(page.getByText(/As last fetched .* Start reads it fresh/)).toBeVisible();
 });
 
+test("a local ticket is listed first, marked local, with no GitHub link", async ({ page }) => {
+  await page.goto("/issues");
+
+  const rows = page.getByRole("row");
+  await expect(rows.nth(1)).toContainText("L1 Shift+Enter sends the message");
+  const row = page.getByRole("row", { name: /L1 Shift\+Enter/ });
+  await expect(row.getByText("local", { exact: true })).toBeVisible();
+  await expect(row.getByRole("link", { name: "on GitHub" })).toHaveCount(0);
+  await row.getByRole("button", { name: /L1 Shift\+Enter/ }).click();
+  await expect(page.getByTestId("issue-text")).toContainText("Enter alone sends");
+  await expect(page.getByText("As you wrote it: a local ticket, on this machine only.")).toBeVisible();
+  await page.getByPlaceholder(/Search by number/).fill("l1");
+  await expect(page.getByText("1 issues")).toBeVisible();
+});
+
+test("Import open issues: says which token, warns when it can write, asks above the cap", async ({ page }) => {
+  const warning = "this token can write to your repositories (scope repo); cofabriq only reads";
+  await page.route("**/api/github", (route) =>
+    route.fulfill({ json: { source: "gh", can_write: true, warning } }),
+  );
+  const sent: unknown[] = [];
+  await page.route("**/api/repos/philippmossier/local-ai-chat-playground/import", (route) => {
+    const data = route.request().postDataJSON() as { confirm: boolean };
+    sent.push(data);
+    return route.fulfill({
+      json: data.confirm
+        ? { total: 120, written: 50, unchanged: 0, asked: false }
+        : { total: 120, written: 0, unchanged: 0, asked: true },
+    });
+  });
+  await page.goto("/#token=e2e");
+  await page.goto("/issues");
+
+  await expect(page.getByText("The newest 50, read with gh's login; cofabriq never writes to GitHub.")).toBeVisible();
+  await expect(page.getByText(`Warning: ${warning}.`)).toBeVisible();
+  await page.getByRole("button", { name: "Import open issues" }).click();
+  await expect(page.getByText("120 open issues on GitHub: import the newest 50?")).toBeVisible();
+  await page.getByRole("button", { name: "Import 50" }).click();
+  await expect(page.getByText("Imported: 50 new or changed, 0 unchanged, of 120 open.")).toBeVisible();
+  expect(sent).toEqual([
+    { limit: 50, confirm: false },
+    { limit: 50, confirm: true },
+  ]);
+});
+
+test("Import open issues is off without a GitHub token", async ({ page }) => {
+  await page.goto("/#token=e2e");
+  await page.goto("/issues");
+
+  await expect(page.getByText(/No GitHub token: set GITHUB_TOKEN/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Import open issues" })).toBeDisabled();
+});
+
+test("Write a ticket: the check lists the gaps, Save anyway saves it", async ({ page }) => {
+  const sent: unknown[] = [];
+  await page.route("**/api/tickets/philippmossier/local-ai-chat-playground", (route) => {
+    const data = route.request().postDataJSON() as { anyway: boolean };
+    sent.push(data);
+    const missing = ["missing version: the version you used"];
+    const saved = data.anyway
+      ? { number: 2, ticket: "L2", source: "local", title: "x", state: "open", labels: [], comments: 0, updated_at: "2026-11-17T10:00:00Z", url: null, flow: null }
+      : null;
+    return route.fulfill({ json: { type: "bug", missing, cost_usd: 0.0004, saved } });
+  });
+  await page.goto("/#token=e2e");
+  await page.goto("/issues");
+
+  await page.getByRole("button", { name: "Write a ticket" }).click();
+  const form = page.getByRole("form", { name: "write a ticket" });
+  await expect(form).toContainText("never sent to GitHub");
+  const check = form.getByRole("button", { name: "Check and save" });
+  await expect(check).toBeDisabled(); // no title yet
+  await form.getByPlaceholder(/Title/).fill("The copy button copies the question");
+  await check.click();
+
+  await expect(form.getByRole("status")).toContainText("Reads as a bug. Not saved, it lacks:");
+  await expect(form.getByText("missing version: the version you used")).toBeVisible();
+  await form.getByRole("button", { name: "Save anyway" }).click();
+  await expect(page.getByText("Saved as L2: it is in the list below.")).toBeVisible();
+  expect(sent).toEqual([
+    { title: "The copy button copies the question", body: "", anyway: false },
+    { title: "The copy button copies the question", body: "", anyway: true },
+  ]);
+});
+
 test("Runs lists the runs on issues; the benchmark runs are under Evals", async ({ page }) => {
   await page.goto("/runs");
 
@@ -58,6 +143,26 @@ test("an approval with open concerns leads with them", async ({ page }) => {
   await expect(card.getByText("src/lib/engine/fake-worker.ts:44")).toBeVisible();
   // no answer key on a real issue: no judge verdicts in the header
   await expect(page.getByText("judge", { exact: true })).toHaveCount(0);
+  // recorded before there was a branch to take: no row for it
+  await expect(page.getByTestId("take-it")).toHaveCount(0);
+});
+
+test("Take it: a branch to fetch from cofabriq's copy, or the patch; your folder untouched", async ({ page }) => {
+  await page.goto(`/runs/${R51}/51`);
+
+  const take = page.getByTestId("take-it");
+  const branch = "cofabriq/51-chat-title-is-cut-off-with-even-though-i";
+  await expect(take.locator("code").first()).toHaveText(
+    new RegExp(`^git fetch '?/.*/philippmossier-local-ai-chat-playground'? ${branch}:${branch} && git switch ${branch}$`),
+  );
+  await expect(take.getByRole("button", { name: "Copy the command" })).toBeVisible();
+  await expect(take).toContainText("Two commits, the test first");
+  await expect(take).toContainText("cofabriq wrote nothing into your folder");
+
+  const href = await take.getByRole("link", { name: "download the patch" }).getAttribute("href");
+  const patch = await page.request.get(href!);
+  expect(patch.headers()["content-disposition"]).toContain("attachment");
+  expect((await patch.text()).match(/^Subject: \[PATCH \d\/2\]/gm)).toHaveLength(2);
 });
 
 test("the diff is per file, with line numbers and a new file marked", async ({ page }) => {

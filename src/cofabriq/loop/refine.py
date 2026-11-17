@@ -20,7 +20,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from cofabriq.git import files_at, git, try_git
-from cofabriq.issues.model import Issue
+from cofabriq.issues.model import Issue, Source
 from cofabriq.loop.engine import Agent, AgentRun
 from cofabriq.targets import target_table
 from cofabriq.untrusted import fenced
@@ -268,6 +268,7 @@ def agent_schema() -> dict[str, Any]:
 class Refined(BaseModel):
     repo: str
     number: int
+    source: Source = "github"  # specs stored before local tickets are GitHub's
     commit: str  # the code the spec was made against
     route: Route = "bug"  # specs stored before 0.3 are all bugs
     spec: Spec
@@ -306,7 +307,7 @@ def prompt(
     rules = FEATURE_INSTRUCTIONS if route == "feature" else INSTRUCTIONS
     if testing:
         rules = f"{rules}\n\n{testing}"
-    out = f"{rules}\n\n{fenced('issue', text, number=str(issue.number))}"
+    out = f"{rules}\n\n{fenced('issue', text, number=issue.key)}"
     if earlier:
         out += f"\n\n{EARLIER}\n\n{fenced('earlier', earlier[:BODY])}"
     return out
@@ -346,7 +347,7 @@ def refine(
     run = agent(asked, agent_schema(), clone)
     spec = Spec.model_validate(run.output)
     if route == "feature" and not [c for c in spec.criteria if c.strip()]:
-        raise NoCriteria(f"#{issue.number}: the feature spec has no criteria")
+        raise NoCriteria(f"{issue.label}: the feature spec has no criteria")
     if route == "bug":
         spec = spec.model_copy(update={"criteria": []})
     if spec.proof is not None:  # a feature's cases are its criteria
@@ -373,6 +374,7 @@ def refine(
     return Refined(
         repo=issue.repo,
         number=issue.number,
+        source=issue.source,
         commit=commit,
         route=route,
         spec=spec,

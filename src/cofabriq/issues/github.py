@@ -31,6 +31,8 @@ FIELDS = _load("issue_fields")
 QUERY = _load("issues") + FIELDS
 ISSUE_QUERY = _load("issue") + FIELDS
 SEARCH_QUERY = _load("search") + FIELDS
+OPEN_QUERY = _load("open") + FIELDS
+MAX_OPEN = 100  # GraphQL's page size limit: one request
 COUNT_QUERY = _load("count")
 PULLS_QUERY = _load("pulls")
 HISTORY_FIELDS = _load("history")
@@ -110,6 +112,25 @@ class GitHubIssueSource:
                 return
             variables["after"] = page["pageInfo"]["endCursor"]
             self._wait_for_budget(data["rateLimit"])
+
+    def open_issues(self, limit: int) -> tuple[list[Issue], int]:
+        """The newest `limit` open issues (at most MAX_OPEN), newest first,
+        and how many are open in all."""
+        if not 1 <= limit <= MAX_OPEN:
+            raise ValueError(f"limit must be 1 to {MAX_OPEN}, got {limit}")
+        owner, name = self._repo.split("/")
+        variables: Json = {
+            "owner": owner,
+            "name": name,
+            "limit": limit,
+            "comments": self._comments,
+        }
+        data = self._query(OPEN_QUERY, variables)
+        if data["repository"] is None:
+            raise GitHubError(f"repository not found: {self._repo}")
+        found = data["repository"]["issues"]
+        issues = [_issue(self._repo, node) for node in found["nodes"]]
+        return issues, int(found["totalCount"])
 
     def created(self, start: date, end: date) -> Iterator[Issue]:
         """Issues created from `start` to `end` (both included, UTC days),

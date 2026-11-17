@@ -1,19 +1,22 @@
 """The tail of a run's graph (`loop/graph.py`, which `cofabriq run` and
 the flow both drive): the target's sentinel for the review gate, the draft
-PR, and the run record in data/runs (`<stem>.json`, `<stem>.pr.md` next to
-it) that the viewer and `lessons` read."""
+PR, and the run record in data/runs (`<stem>.json`, `<stem>.pr.md` and
+`<stem>.patch` next to it) that the viewer and `lessons` read."""
 
 import json
+import subprocess
 from pathlib import Path
 
 from pydantic import BaseModel
 
+from cofabriq.loop import handoff as handoff_mod
 from cofabriq.loop import pr as pr_mod
 from cofabriq.loop import sentinel as sentinel_mod
 from cofabriq.loop.gate import Gated, Round
+from cofabriq.loop.handoff import Handoff
 from cofabriq.loop.refine import Route, Spec
 from cofabriq.loop.review import Review
-from cofabriq.loop.run import CheckResult, LoopResult
+from cofabriq.loop.run import CheckResult, LoopResult, is_test
 from cofabriq.map import components as components_mod
 
 
@@ -31,6 +34,7 @@ class RunRecord(BaseModel):
     draft: pr_mod.Draft | None = None  # None: blocked, or no review
     published: dict[str, object] | None = None  # the PR, or {"error": ...}
     trace: str = ""  # the run's id in data/traces (its steps), "" untraced
+    handoff: Handoff | None = None  # the branch and patch to take; None: no draft
 
 
 def sentinel_for(
@@ -71,6 +75,36 @@ def draft_for(
         route=route,
         evidence=evidence,
     )
+
+
+def handoff_for(
+    clone: Path,
+    patch: Path,
+    *,
+    key: str,
+    issue_title: str,
+    result: LoopResult,
+    title: str,
+    problem: str,
+    tests: list[str],
+) -> Handoff:
+    """The final change as a branch in cofabriq's clone (the test files
+    first) and a patch at `patch`; `title`: the draft PR's, `problem`: the
+    spec's. git's failure is kept, not raised: the run is recorded either
+    way."""
+    try:
+        return handoff_mod.hand_off(
+            clone,
+            base=result.commit,
+            diff=result.diff,
+            tests=[p for p in result.changed if p in result.repro or is_test(p, tests)],
+            title=title,
+            body=problem,
+            branch=handoff_mod.branch_for(key, issue_title),
+            patch=patch,
+        )
+    except subprocess.CalledProcessError as e:
+        return Handoff(base=result.commit, error=f"git: {e.stderr.strip()[:500]}")
 
 
 def write_record(runs_dir: Path, stem: str, record: RunRecord) -> Path:

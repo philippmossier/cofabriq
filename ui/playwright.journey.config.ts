@@ -5,7 +5,8 @@ import { defineConfig, devices } from "@playwright/test";
 // headless. `cofabriq serve --write` on the real data/, Postgres and the agent: an issue is
 // started under Issues, its plan (and test) approved, and every page saved to
 // data/journey/<time>/ for review. Paid at list price (your plan pays), a few minutes.
-// JOURNEY_ISSUE (51) and JOURNEY_ROUTE (bug) pick what runs.
+// JOURNEY_REPO (the playground), JOURNEY_ISSUE (51, or a local ticket: L1) and JOURNEY_ROUTE
+// (bug) pick what runs.
 
 const root = path.resolve(import.meta.dirname, "..");
 const PORT = 8798;

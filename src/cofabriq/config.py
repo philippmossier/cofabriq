@@ -19,12 +19,15 @@ class Settings(BaseSettings):
     extracted_path: Path = Path("data/extracted.json")
     openai_api_key: SecretStr | None = None
     issues_dir: Path = Path("data/issues")
+    tickets_dir: Path = Path("data/tickets")  # the dev's local tickets (L1, L2, ...)
     verdicts_dir: Path = Path("data/verdicts")
     rerank_dir: Path = Path("data/rerank")
     readiness_dir: Path = Path("data/readiness")
     targets_dir: Path = Path("targets")
     target_repo: str | None = None
     github_token: SecretStr | None = None
+    # opt-in: no GITHUB_TOKEN, use `gh auth token` (cofabriq warns: it can write)
+    github_token_from_gh: bool = False
     github_write_token: SecretStr | None = None  # `run --apply` only
     issue_comments: int = 10
     # triage: one more LLM call picks the verdict's 10 candidates from the

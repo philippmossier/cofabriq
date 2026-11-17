@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
-import type { RunTrace } from "@/api/generated";
-import { Loading } from "@/components/bits";
+import type { HandoffView, RunTrace } from "@/api/generated";
+import { CopyButton, Loading } from "@/components/bits";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useRun, useTrace } from "@/api/generated";
 import { parseDiff } from "@/lib/diff";
@@ -71,6 +71,11 @@ export function ResultCard({ t }: { t: RunTrace }) {
           </Row>
         )}
         {review && <Row label="Review">{review.summary}</Row>}
+        {t.handoff && (
+          <Row label="Take it">
+            <TakeIt h={t.handoff} />
+          </Row>
+        )}
         <Row label="Cost">
           <Cost t={t} />
         </Row>
@@ -97,6 +102,33 @@ export function ResultCard({ t }: { t: RunTrace }) {
         </Row>
       </CardContent>
     </Card>
+  );
+}
+
+/** The change to take into your own folder: a branch to fetch from
+ * cofabriq's copy, or the same commits as a patch. Says where it is and
+ * that nothing was written to your folder. */
+function TakeIt({ h }: { h: HandoffView }) {
+  if (h.error) return <span className="text-destructive">no branch: {h.error}</span>;
+  return (
+    <div className="space-y-1.5" data-testid="take-it">
+      <p>In your own folder:</p>
+      <div className="flex items-start gap-2">
+        <code className="flex-1 rounded bg-muted px-2 py-1 text-xs break-all">{h.fetch}</code>
+        <CopyButton text={h.fetch} label="Copy the command" />
+      </div>
+      <p>
+        or{" "}
+        <a href={h.patch_url} download className="underline">
+          download the patch
+        </a>{" "}
+        and run <code className="text-xs">git am &lt; the.patch</code>
+      </p>
+      <p className="text-xs text-muted-foreground">
+        {h.commits === 2 ? "Two commits, the test first, " : "One commit, "}on <code>{h.branch}</code> in
+        cofabriq's own copy ({h.clone}). cofabriq wrote nothing into your folder: you push it yourself.
+      </p>
+    </div>
   );
 }
 
@@ -128,8 +160,8 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 }
 
 /** A flow's run record as a result card, with the link to all of it. */
-export function FlowResult({ file, number }: { file: string; number: number }) {
-  const q = useRun(file, String(number), {
+export function FlowResult({ file, ticket }: { file: string; ticket: string }) {
+  const q = useRun(file, ticket, {
     query: { select: (r) => (r.status === 200 ? r.data : null) },
   });
   if (q.isPending) return <Loading what="the result" />;
@@ -139,7 +171,7 @@ export function FlowResult({ file, number }: { file: string; number: number }) {
       <ResultCard t={q.data} />
       <Link
         to="/runs/$file/$key"
-        params={{ file, key: String(number) }}
+        params={{ file, key: ticket }}
         className="text-sm font-medium hover:underline"
       >
         The whole run: test, diff, review, draft PR →

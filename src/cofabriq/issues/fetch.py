@@ -90,6 +90,46 @@ def fetch_created(
     return IssueFetchReport(written=written, unchanged=unchanged, since=None)
 
 
+@dataclass(frozen=True)
+class OpenFetchReport:
+    written: int
+    unchanged: int
+    total: int  # open on the source; more than written + unchanged: capped
+
+
+def fetch_open(source: IssueSource, issues_dir: Path, limit: int) -> OpenFetchReport:
+    """Store the source's newest `limit` open issues (a repo just added).
+
+    Leaves the resume point where it was, as `fetch_one` does: a store
+    started here gets a cursor of "from the start", so a later
+    `fetch_issues` still fetches everything older than these.
+    """
+    issues, total = source.open_issues(limit)
+    return store_open(issues_dir, source.repo, issues, total)
+
+
+def store_open(
+    issues_dir: Path, repo: str, issues: list[Issue], total: int
+) -> OpenFetchReport:
+    """`fetch_open`'s writing half, for a caller that looked at `total`
+    before deciding to store (the UI asks when there are more)."""
+    repo_dir = issue_dir(issues_dir, repo)
+    index = load_index(repo_dir)
+    if not (repo_dir / CURSOR_FILE).is_file():
+        _write_cursor(repo_dir, max(index.values(), default=None))
+    written = unchanged = 0
+    for issue in issues:
+        if index.get(issue.number) == issue.updated_at:
+            unchanged += 1
+            continue
+        _write_issue(repo_dir, issue)
+        index[issue.number] = issue.updated_at
+        written += 1
+    if written:
+        _write_index(repo_dir, index)
+    return OpenFetchReport(written=written, unchanged=unchanged, total=total)
+
+
 def fetch_one(source: IssueSource, issues_dir: Path, number: int) -> Issue | None:
     """Fetch one issue and store it if it is new or changed; None if the
     source doesn't have it.
