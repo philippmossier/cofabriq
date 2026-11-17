@@ -54,10 +54,9 @@ def test_a_judge_must_be_a_test_file_of_the_target() -> None:
         load_features(PLAYGROUND / "hard.toml", COFABRIQ_TESTS)
 
 
-def test_the_set_on_cofabriq_is_on_the_bug_route_with_pytest_judges() -> None:
-    planted = load_features(ROOT / "evals" / "planted-cofabriq.toml", COFABRIQ_TESTS)
-    assert len(planted) == 5 and {f.route for f in planted} == {"bug"}
-    assert {f.size for f in planted} == {"S", "M"}
+# No test reads evals/planted-cofabriq.toml: the worktree of a run on
+# cofabriq drops it, and such a test would keep every check red there.
+# `eval feature-set` proves that set.
 
 
 def test_the_answer_key_leaves_a_worktree_of_its_own_repo(tmp_path: Path) -> None:
