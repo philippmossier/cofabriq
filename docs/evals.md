@@ -48,6 +48,40 @@ proposal, the check 20-50 s on a warm cache.
   canary went red only because the runner couldn't start; the passing
   canary showed it.
 
+### The repair round, on repos the prompt never saw
+
+A failed check can go back to the agent ("Propose again with this
+failure"): the file as checked and each failed step's output, fenced as
+data, at most twice. The prompt was written looking at the misses above,
+so it is measured on 6 other repos (`evals/repos-heldout.toml`, picked
+before the first run): `eval repo-add --repos evals/repos-heldout.toml
+--repair 2`.
+
+| Repo | Stack | First | After 1 | After 2 | What failed, what the repair did |
+| --- | --- | --- | --- | --- | --- |
+| tj/commander.js | npm, jest | proven | | | |
+| lukeed/kleur | npm, uvu | no | proven | | tests decide on colour from `TERM` and `FORCE_COLOR`: the repair set them per check, citing the line in the code that reads them |
+| pytest-dev/pluggy | uv, pytest, mypy | proven | | | |
+| BurntSushi/toml | Go | no | no | proven | `go run tool@v` looks the version up online: built in the install instead; then that staticcheck version flags the untouched code (CI runs the latest), so round 2 **left the lint check out** and says so |
+| sharkdp/hexyl | Rust | no | no | no | clippy not in the image, then cargo's home in the worktree, then an integration test red on the untouched code |
+| rack/rack-test | Ruby, bundler | no | proven | | gems installed into the worktree (no ignore rule for `vendor/`): moved to the shared cache |
+
+`data/onboard/eval-20261117T102511.json`: **proven 2/6 unedited, 4/6 after
+one round, 5/6 after two**, $0.27 per repo with its rounds (about $0.12 per
+proposal), 94% of the cited commands quoted from their file.
+
+- One of the three repairs proves a weaker file: toml's lint check is gone.
+  The check can only say the commands it was given work; which checks
+  matter is the dev's call, which is why the notes say what was left out.
+- Every repair named the cause from the output and the repo (the line in
+  kleur's code, the missing ignore rule), not from a guess. hexyl's three
+  rounds hit three different walls; a fourth would likely need a person.
+- toml's CONTRIBUTING.md says the project accepts no AI-generated
+  contributions and asks an agent to stop. The agent only read, and put it
+  at the top of its notes. cofabriq never contributes (the result goes to
+  the dev, who pushes it), but a page that adds a repo should show that
+  line, not bury it in notes.
+
 ## 0.2: the loop on planted bugs
 
 The [playground](https://github.com/philippmossier/local-ai-chat-playground)

@@ -23,7 +23,6 @@ checks in `serve_guard`. File names in URLs must be files in the folder (no path
 import importlib.metadata
 import json
 import re
-import shlex
 import subprocess
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -56,9 +55,10 @@ from cofabriq.issues.model import (
     ticket_key,
 )
 from cofabriq.issues.triage import IssueType, Triager
+from cofabriq.loop import repo_jobs
 from cofabriq.loop.gate import Gated
 from cofabriq.loop.graph import FlowRunner, FlowStatus, GateAnswer, Refused
-from cofabriq.loop.handoff import Handoff
+from cofabriq.loop.handoff import Handoff, take_command
 from cofabriq.loop.intake import not_ready
 from cofabriq.loop.onboard import on_github, unproven
 from cofabriq.loop.record import RunRecord
@@ -248,7 +248,8 @@ class HandoffView(BaseModel):
     clone: str  # cofabriq's copy the branch is in
     fetch: str = Field(
         description="Run in your own folder: fetch the branch from cofabriq's "
-        "copy and switch to it."
+        "copy and switch to it; a branch of that name with commits of yours "
+        "stays as it is."
     )
     patch_url: str  # the same commits for `git am`; "" when git failed
     error: str
@@ -409,6 +410,73 @@ class Started(BaseModel):
 
 class Refusal(BaseModel):
     detail: str = Field(description="Why not: a blocker, a flow already there.")
+
+
+class SetupCitation(BaseModel):
+    """Where a proposed command came from: the repo file and the line in
+    it, and whether that line is in that file (else: unchecked)."""
+
+    field: str = Field(description="`image`, `install`, `check test`, ...")
+    value: str = Field(description="The command as proposed. Untrusted.")
+    source: str = Field(description="The repo file; empty: no file says it.")
+    quote: str = Field(description="The line it came from. Untrusted.")
+    found: bool
+
+
+class SetupStep(BaseModel):
+    name: str = Field(description="`install`, a check's name, `canary <suite>`.")
+    ok: bool | None = Field(description="None: running.")
+    output: str = Field(description="A failed step's output, its end. Untrusted.")
+
+
+class RepoSetup(BaseModel):
+    """Adding a repo, as far as it got: the proposed target file (edited by
+    the dev), each command's source, and its check in the sandbox."""
+
+    repo: str
+    path: str = Field(description="The dev's clone, which cofabriq only reads.")
+    clone: str = Field(description="cofabriq's own copy of it: the agent works here.")
+    phase: repo_jobs.SetupPhase
+    running: bool
+    config: str = Field(description="The target file as saved. Untrusted.")
+    citations: list[SetupCitation]
+    notes: str = Field(description="The agent's notes. Untrusted.")
+    cost_usd: float = Field(description="The proposal's agent run.")
+    steps: list[SetupStep] = Field(description="The check's, live while it runs.")
+    error: str = Field(description="The last job died before it could say more.")
+    repairs_left: int = Field(
+        description="How often it may still be proposed again with a failed check."
+    )
+
+
+class AddRepo(BaseModel):
+    path: str = Field(
+        min_length=1,
+        max_length=4096,
+        description="The root of the dev's git clone, absolute (`~` allowed).",
+    )
+    again: bool = Field(
+        default=False,
+        description="Propose again for a repo already added: the file is replaced.",
+    )
+    repair: bool = Field(
+        default=False,
+        description="Propose again, told how the last check failed (its output, "
+        "untrusted, fenced in the prompt). Only after a failed check, at most "
+        "twice.",
+    )
+
+
+class CheckRepo(BaseModel):
+    config: str = Field(
+        min_length=1,
+        max_length=100_000,
+        description="The target file as the dev edited it: saved, then proven.",
+    )
+
+
+class SetupStarted(BaseModel):
+    repo: str
 
 
 class Answer(GateAnswer):
@@ -618,13 +686,11 @@ def _handoff(s: _Stored, clones_dir: Path) -> HandoffView | None:
     if h is None:
         return None
     clone = str(clone_dir(clones_dir, s.judged.result.repo).resolve())
-    b = shlex.quote(h.branch)
-    fetch = f"git fetch {shlex.quote(clone)} {b}:{b} && git switch {b}"
     return HandoffView(
         branch=h.branch,
         commits=h.commits,
         clone=clone,
-        fetch=fetch if h.branch else "",
+        fetch=take_command(clone, h.branch) if h.branch else "",
         patch_url=f"/api/patches/{s.file}" if h.patch else "",
         error=h.error,
     )
@@ -698,6 +764,7 @@ def build(
     triager: Triager | None = None,
     github: Callable[[str], IssueSource | None] | None = None,
     access: token_mod.Access | None = None,
+    setups: repo_jobs.RepoJobs | None = None,
 ) -> FastAPI:
     """The app over these folders. `ui_dir`: the built UI (`ui/dist`), served
     at `/` when it exists. `port`: the port it serves on; with it, the
@@ -705,7 +772,8 @@ def build(
     `write_token` on anything that isn't a read) is installed. `triager`:
     the readiness read before a ticket is saved; None: no ticket is written.
     `github`: the read-only source for an import (None: no token); `access`:
-    what the token can do, checked once at start."""
+    what the token can do, checked once at start. `setups`: the dev's own
+    repos being added (read here; proposed and checked by a write server)."""
     app = FastAPI(
         title="cofabriq",
         version=importlib.metadata.version("cofabriq"),
@@ -906,14 +974,14 @@ def build(
     def repos() -> list[Repo]:
         """The repos a flow can run on: `[loop]` in the target file (proven
         if the dev's own), and an issue store (`fetch-issues`) or local
-        tickets."""
+        tickets; a proven own repo also with neither (just added)."""
         out: list[Repo] = []
         found = {
             f"{folder.parent.name}/{folder.name}"
             for root in (issues_dir, tickets_dir)
             for folder in root.glob("*/*")
             if folder.is_dir()
-        }
+        } | set(setups.repos() if setups is not None else [])
         for repo in sorted(found):
             if _REPO.match(repo) and runnable(repo):
                 owner, name = repo.split("/")
@@ -1022,6 +1090,9 @@ def build(
             return Imported(
                 total=total, written=got.written, unchanged=got.unchanged, asked=False
             )
+
+    if setups is not None:
+        _setup_routes(app, setups, clones_dir, write=flows is not None)
 
     if port is not None:
         guard(app, port, write_token, dev_origins=("http://127.0.0.1:5173",))
@@ -1181,3 +1252,70 @@ def _flow_routes(app: FastAPI, flows: FlowRunner) -> None:
             )
         except Refused as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+def _setup_routes(
+    app: FastAPI, setups: repo_jobs.RepoJobs, clones_dir: Path, write: bool
+) -> None:
+    """Adding the dev's own repo: what each one's setup is (read), and on
+    the write server proposing its `[loop]` and checking it. The two writes
+    start background work the page polls; `serve_guard` decides who may."""
+
+    def view(s: repo_jobs.RepoSetup) -> RepoSetup:
+        clone = str(clone_dir(clones_dir, s.repo).resolve())
+        return RepoSetup(**s.model_dump(), clone=clone)
+
+    def setup_of(owner: str, name: str) -> str:
+        repo = f"{owner}/{name}"
+        if not _REPO.match(repo):
+            raise HTTPException(status_code=404, detail="no such repo")
+        return check_repo(repo)
+
+    @app.get("/api/repos/own", response_model=list[RepoSetup])
+    def repo_setups() -> list[RepoSetup]:
+        """The dev's own repos (`targets/own/`), each as far as its setup got."""
+        found = [setups.status(r) for r in setups.repos()]
+        return [view(s) for s in found if s is not None]
+
+    @app.get("/api/repos/{owner}/{name}/setup", response_model=RepoSetup)
+    def repo_setup(owner: str, name: str) -> RepoSetup:
+        found = setups.status(setup_of(owner, name))
+        if found is None:
+            raise HTTPException(status_code=404, detail="not added")
+        return view(found)
+
+    if not write:
+        return
+
+    @app.post(
+        "/api/repos/add",
+        response_model=SetupStarted,
+        responses={409: {"model": Refusal}},
+    )
+    def repo_add(add: AddRepo) -> SetupStarted:
+        """Propose `[loop]` for the dev's clone at `path`: cofabriq clones it
+        into its own copy (the dev's folder is only read), and a read-only
+        agent reads how it builds there, in the background. Nothing runs
+        until the check. Paid: one agent run (about $0.10)."""
+        try:
+            repo = setups.propose(Path(add.path), again=add.again, repair=add.repair)
+            return SetupStarted(repo=repo)
+        except repo_jobs.Refused as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post(
+        "/api/repos/{owner}/{name}/check",
+        response_model=SetupStarted,
+        responses={409: {"model": Refusal}},
+    )
+    def repo_check(owner: str, name: str, check: CheckRepo) -> SetupStarted:
+        """Save the target file as the dev edited it (refused when it doesn't
+        parse), then prove it in the sandbox in the background: install
+        (the only network), every check, each suite's canaries. Free,
+        minutes."""
+        repo = setup_of(owner, name)
+        try:
+            setups.check(repo, check.config)
+        except repo_jobs.Refused as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return SetupStarted(repo=repo)

@@ -9,13 +9,12 @@ from rich.console import Console
 
 from cofabriq.cli.common import claude_code, repo_app
 from cofabriq.config import get_settings
-from cofabriq.files import write_atomic
-from cofabriq.git import try_git
 from cofabriq.issues.model import check_repo
 from cofabriq.loop import onboard
 from cofabriq.loop import refine as refine_mod
 from cofabriq.loop import run as run_mod
 from cofabriq.loop.engine import AgentError, Guard, Guarded
+from cofabriq.loop.repo_jobs import RepoJobs
 from cofabriq.loop.sandbox import Podman
 from cofabriq.steps import Steps
 from cofabriq.targets import clone_dir, own_target, repo_slug, target_file
@@ -31,16 +30,16 @@ def repo_add(path: Path, force: bool = False) -> None:
     until `repo check`."""
     settings = get_settings()
     steps = Steps(Console(stderr=True, soft_wrap=True))
-    ok, _ = try_git(path, "rev-parse", "--git-dir")
-    if not ok:
-        typer.echo(f"{path} is not a git clone", err=True)
-        raise typer.Exit(code=1)
-    repo = onboard.identity(path)
+    try:
+        source = onboard.clone_source(path.absolute())
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    repo = onboard.identity(source.path)
     out = own_target(settings.targets_dir, repo)
     if out.is_file() and not force:
         typer.echo(f"{out} exists: edit it, or --force to propose again", err=True)
         raise typer.Exit(code=1)
-    source = refine_mod.CloneFrom(path=path.resolve(), branch=onboard.base_branch(path))
     behind = refine_mod.behind(source)
     if behind:
         steps.note(
@@ -68,7 +67,7 @@ def repo_add(path: Path, force: bool = False) -> None:
     if unchecked:
         detail += f"; unchecked: {', '.join(unchecked)}"
     steps.note("sources", detail, ok=not unchecked)
-    write_atomic(out, onboard.render(proposed, source).encode())
+    onboard.save_proposal(settings.targets_dir, proposed, source)
     typer.echo(f"-> {out}")
     typer.echo(f"read it, then: uv run cofabriq repo check {repo}")
 
@@ -94,31 +93,60 @@ def repo_check(repo: str) -> None:
             f"{source.branch} is {behind} commit(s) behind origin/{source.branch}",
             ok=False,
         )
-    clone = clone_dir(settings.clones_dir, target)
-    with steps.step("clone", f"updating {clone}") as done:
-        commit = refine_mod.update_clone(
-            target, clone, targets_dir=settings.targets_dir
-        )
-        done(f"{clone} at {commit[:7]}")
-    with steps.step("check", f"install, {len(rules.checks)} checks, canaries") as done:
-        checked = onboard.check(
-            target,
-            rules,
-            config=onboard.config_hash(path),
-            clone=clone,
-            commit=commit,
-            worktree=settings.work_dir / f"{repo_slug(target)}-check",
-            sandbox=Podman(image=rules.image, setup=rules.setup),
-        )
+    what = f"updating the clone, install, {len(rules.checks)} checks, canaries"
+    with steps.step("check", what) as done:
+        checked = prove(target)
         done(f"{checked.seconds:.0f} s")
     show_checked(checked, steps)
-    proof = onboard.proof_path(settings.targets_dir, target)
-    write_atomic(proof, checked.model_dump_json(indent=2).encode())
-    typer.echo(f"-> {proof}")
+    typer.echo(f"-> {onboard.proof_path(settings.targets_dir, target)}")
     if not checked.proven:
         typer.echo("not proven: fix the target file and check again", err=True)
         raise typer.Exit(code=1)
     typer.echo(f"proven: {target} is ready for the loop (`serve` lists it)")
+
+
+def prove(repo: str, on_step: onboard.OnStep | None = None) -> onboard.Checked:
+    """`repo check`'s work: cofabriq's clone updated from the dev's branch,
+    the check on its tip, the proof saved next to the target file."""
+    settings = get_settings()
+    path = target_file(settings.targets_dir, repo)
+    rules = run_mod.load_rules(settings.targets_dir, repo)
+    if path is None or rules is None:
+        raise ValueError(f"no [loop] for {repo}")
+    clone = clone_dir(settings.clones_dir, repo)
+    commit = refine_mod.update_clone(repo, clone, targets_dir=settings.targets_dir)
+    checked = onboard.check(
+        repo,
+        rules,
+        config=onboard.config_hash(path),
+        clone=clone,
+        commit=commit,
+        worktree=settings.work_dir / f"{repo_slug(repo)}-check",
+        sandbox=Podman(image=rules.image, setup=rules.setup),
+        on_step=on_step,
+    )
+    onboard.save_proof(settings.targets_dir, checked)
+    return checked
+
+
+def propose_at(path: Path, earlier: onboard.Repair | None) -> onboard.Proposed:
+    """`repo add`'s work for the browser: cofabriq's clone from the dev's
+    clone at `path`, the proposal (told how the last one failed, with
+    `earlier`), both files saved."""
+    settings = get_settings()
+    source = onboard.clone_source(path)
+    repo = onboard.identity(source.path)
+    clone = clone_dir(settings.clones_dir, repo)
+    refine_mod.sync_clone(clone, source.url, f"refs/heads/{source.branch}")
+    agent = Guarded(claude_code(), Guard(PROPOSE_BUDGET_USD))
+    proposed = onboard.propose(repo, clone, agent, earlier)
+    onboard.save_proposal(settings.targets_dir, proposed, source)
+    return proposed
+
+
+def setups() -> RepoJobs:
+    """The browser's "Add a repo": `repo add` and `repo check` as jobs."""
+    return RepoJobs(get_settings().targets_dir, propose_at, prove)
 
 
 def show_checked(checked: onboard.Checked, steps: Steps) -> None:

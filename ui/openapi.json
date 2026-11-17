@@ -363,7 +363,7 @@
     "/api/repos": {
       "get": {
         "summary": "Repos",
-        "description": "The repos a flow can run on: `[loop]` in the target file (proven\nif the dev's own), and an issue store (`fetch-issues`) or local\ntickets.",
+        "description": "The repos a flow can run on: `[loop]` in the target file (proven\nif the dev's own), and an issue store (`fetch-issues`) or local\ntickets; a proven own repo also with neither (just added).",
         "operationId": "repos",
         "responses": {
           "200": {
@@ -876,10 +876,227 @@
           }
         }
       }
+    },
+    "/api/repos/own": {
+      "get": {
+        "summary": "Repo Setups",
+        "description": "The dev's own repos (`targets/own/`), each as far as its setup got.",
+        "operationId": "repo_setups",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RepoSetup"
+                  },
+                  "type": "array",
+                  "title": "Response Repo Setups"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/repos/{owner}/{name}/setup": {
+      "get": {
+        "summary": "Repo Setup",
+        "operationId": "repo_setup",
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Owner"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepoSetup"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/repos/add": {
+      "post": {
+        "summary": "Repo Add",
+        "description": "Propose `[loop]` for the dev's clone at `path`: cofabriq clones it\ninto its own copy (the dev's folder is only read), and a read-only\nagent reads how it builds there, in the background. Nothing runs\nuntil the check. Paid: one agent run (about $0.10).",
+        "operationId": "repo_add",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddRepo"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupStarted"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/repos/{owner}/{name}/check": {
+      "post": {
+        "summary": "Repo Check",
+        "description": "Save the target file as the dev edited it (refused when it doesn't\nparse), then prove it in the sandbox in the background: install\n(the only network), every check, each suite's canaries. Free,\nminutes.",
+        "operationId": "repo_check",
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Owner"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckRepo"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupStarted"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "AddRepo": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Path",
+            "description": "The root of the dev's git clone, absolute (`~` allowed)."
+          },
+          "again": {
+            "type": "boolean",
+            "title": "Again",
+            "description": "Propose again for a repo already added: the file is replaced.",
+            "default": false
+          },
+          "repair": {
+            "type": "boolean",
+            "title": "Repair",
+            "description": "Propose again, told how the last check failed (its output, untrusted, fenced in the prompt). Only after a failed check, at most twice.",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "title": "AddRepo"
+      },
       "Answer": {
         "properties": {
           "approve": {
@@ -968,6 +1185,22 @@
           "output"
         ],
         "title": "Check"
+      },
+      "CheckRepo": {
+        "properties": {
+          "config": {
+            "type": "string",
+            "maxLength": 100000,
+            "minLength": 1,
+            "title": "Config",
+            "description": "The target file as the dev edited it: saved, then proven."
+          }
+        },
+        "type": "object",
+        "required": [
+          "config"
+        ],
+        "title": "CheckRepo"
       },
       "Code": {
         "properties": {
@@ -1512,7 +1745,7 @@
           "fetch": {
             "type": "string",
             "title": "Fetch",
-            "description": "Run in your own folder: fetch the branch from cofabriq's copy and switch to it."
+            "description": "Run in your own folder: fetch the branch from cofabriq's copy and switch to it; a branch of that name with commits of yours stays as it is."
           },
           "patch_url": {
             "type": "string",
@@ -1918,6 +2151,88 @@
         ],
         "title": "Repo",
         "description": "A repo a flow can run on: `[loop]` in its target file, and stored\nissues (`fetch-issues`) or local tickets."
+      },
+      "RepoSetup": {
+        "properties": {
+          "repo": {
+            "type": "string",
+            "title": "Repo"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path",
+            "description": "The dev's clone, which cofabriq only reads."
+          },
+          "clone": {
+            "type": "string",
+            "title": "Clone",
+            "description": "cofabriq's own copy of it: the agent works here."
+          },
+          "phase": {
+            "$ref": "#/components/schemas/SetupPhase"
+          },
+          "running": {
+            "type": "boolean",
+            "title": "Running"
+          },
+          "config": {
+            "type": "string",
+            "title": "Config",
+            "description": "The target file as saved. Untrusted."
+          },
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/SetupCitation"
+            },
+            "type": "array",
+            "title": "Citations"
+          },
+          "notes": {
+            "type": "string",
+            "title": "Notes",
+            "description": "The agent's notes. Untrusted."
+          },
+          "cost_usd": {
+            "type": "number",
+            "title": "Cost Usd",
+            "description": "The proposal's agent run."
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/SetupStep"
+            },
+            "type": "array",
+            "title": "Steps",
+            "description": "The check's, live while it runs."
+          },
+          "error": {
+            "type": "string",
+            "title": "Error",
+            "description": "The last job died before it could say more."
+          },
+          "repairs_left": {
+            "type": "integer",
+            "title": "Repairs Left",
+            "description": "How often it may still be proposed again with a failed check."
+          }
+        },
+        "type": "object",
+        "required": [
+          "repo",
+          "path",
+          "clone",
+          "phase",
+          "running",
+          "config",
+          "citations",
+          "notes",
+          "cost_usd",
+          "steps",
+          "error",
+          "repairs_left"
+        ],
+        "title": "RepoSetup",
+        "description": "Adding a repo, as far as it got: the proposed target file (edited by\nthe dev), each command's source, and its check in the sandbox."
       },
       "ReviewRound": {
         "properties": {
@@ -2399,6 +2714,100 @@
           "handoff"
         ],
         "title": "RunTrace"
+      },
+      "SetupCitation": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "title": "Field",
+            "description": "`image`, `install`, `check test`, ..."
+          },
+          "value": {
+            "type": "string",
+            "title": "Value",
+            "description": "The command as proposed. Untrusted."
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "description": "The repo file; empty: no file says it."
+          },
+          "quote": {
+            "type": "string",
+            "title": "Quote",
+            "description": "The line it came from. Untrusted."
+          },
+          "found": {
+            "type": "boolean",
+            "title": "Found"
+          }
+        },
+        "type": "object",
+        "required": [
+          "field",
+          "value",
+          "source",
+          "quote",
+          "found"
+        ],
+        "title": "SetupCitation",
+        "description": "Where a proposed command came from: the repo file and the line in\nit, and whether that line is in that file (else: unchecked)."
+      },
+      "SetupPhase": {
+        "type": "string",
+        "enum": [
+          "proposing",
+          "draft",
+          "checking",
+          "proven",
+          "failed"
+        ]
+      },
+      "SetupStarted": {
+        "properties": {
+          "repo": {
+            "type": "string",
+            "title": "Repo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "repo"
+        ],
+        "title": "SetupStarted"
+      },
+      "SetupStep": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "`install`, a check's name, `canary <suite>`."
+          },
+          "ok": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ok",
+            "description": "None: running."
+          },
+          "output": {
+            "type": "string",
+            "title": "Output",
+            "description": "A failed step's output, its end. Untrusted."
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "ok",
+          "output"
+        ],
+        "title": "SetupStep"
       },
       "Source": {
         "type": "string",

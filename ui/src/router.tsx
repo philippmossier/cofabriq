@@ -2,6 +2,7 @@ import { createRootRoute, createRoute, createRouter, redirect } from "@tanstack/
 import { Layout } from "./components/layout";
 import { FlowPage, FlowsPage } from "./pages/flows";
 import { IssuesPage } from "./pages/issues";
+import { RepoPage, ReposPage } from "./pages/repos";
 import { type EvalTab, evalTab } from "./lib/evals";
 import { EvalsPage, RunPage, RunsPage } from "./pages/runs";
 import { SpecPage } from "./pages/specs";
@@ -18,7 +19,14 @@ const index = createRoute({
   },
 });
 
-const issues = createRoute({ getParentRoute: () => root, path: "/issues", component: IssuesPage });
+// ?repo=owner/name: the repo shown first (a repo just added links here)
+export const issues = createRoute({
+  getParentRoute: () => root,
+  path: "/issues",
+  validateSearch: (search: Record<string, unknown>): { repo?: string } =>
+    typeof search.repo === "string" ? { repo: search.repo } : {},
+  component: IssuesPage,
+});
 
 const flows = createRoute({ getParentRoute: () => root, path: "/flows", component: FlowsPage });
 const flow = createRoute({
@@ -26,6 +34,9 @@ const flow = createRoute({
   path: "/flows/$owner/$name/$ticket",
   component: FlowPage,
 });
+
+const repos = createRoute({ getParentRoute: () => root, path: "/repos", component: ReposPage });
+const repo = createRoute({ getParentRoute: () => root, path: "/repos/$owner/$name", component: RepoPage });
 
 const runs = createRoute({ getParentRoute: () => root, path: "/runs", component: RunsPage });
 export const run = createRoute({
@@ -57,7 +68,7 @@ export const spec = createRoute({
 });
 
 export const router = createRouter({
-  routeTree: root.addChildren([index, issues, flows, flow, runs, run, evals, specs, spec]),
+  routeTree: root.addChildren([index, issues, flows, flow, repos, repo, runs, run, evals, specs, spec]),
 });
 
 declare module "@tanstack/react-router" {

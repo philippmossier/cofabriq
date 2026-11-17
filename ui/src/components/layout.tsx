@@ -29,6 +29,9 @@ export function Layout() {
               </span>
             )}
           </Link>
+          <Link to="/repos" className={tab} activeProps={active}>
+            Repos
+          </Link>
           <Link to="/runs" className={tab} activeProps={active}>
             Runs
           </Link>

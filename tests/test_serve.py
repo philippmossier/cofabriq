@@ -1,11 +1,13 @@
 import json
 from pathlib import Path
+from typing import Never
 
 from fastapi.testclient import TestClient
 
 from cofabriq.eval.loop import Judged
 from cofabriq.git import git
 from cofabriq.loop.graph import FlowRunner
+from cofabriq.loop.repo_jobs import RepoJobs
 from cofabriq.loop.run import CheckResult
 from cofabriq.serve import build
 from cofabriq.targets import clone_dir
@@ -86,11 +88,15 @@ def test_the_write_routes_are_the_gate_a_ticket_and_an_import(tmp_path: Path) ->
     app = build(tmp_path, tmp_path, tmp_path, None)
     paths: dict[str, dict[str, object]] = app.openapi()["paths"]
     assert {m for ops in paths.values() for m in ops} == {"get"}
+    setups = RepoJobs(tmp_path, never, never)
+    paths = build(tmp_path, tmp_path, tmp_path, None, setups=setups).openapi()["paths"]
+    assert {m for ops in paths.values() for m in ops} == {"get"}
     # with the browser gate: answer a gate, start a flow, write a local
-    # ticket, import open issues (only the store is written); nothing else
+    # ticket, import open issues (only the store is written), propose a
+    # repo's config and check it (only targets/own is written); nothing else
     flows = FlowRunner("", lambda repo, spent: None)  # pyright: ignore[reportArgumentType]
     gated: dict[str, dict[str, object]] = build(
-        tmp_path, tmp_path, tmp_path, None, flows=flows
+        tmp_path, tmp_path, tmp_path, None, flows=flows, setups=setups
     ).openapi()["paths"]
     writes = [p for p, ops in gated.items() if set(ops) - {"get"}]
     assert writes == [
@@ -98,7 +104,13 @@ def test_the_write_routes_are_the_gate_a_ticket_and_an_import(tmp_path: Path) ->
         "/api/flows/{owner}/{name}/{ticket}/start",
         "/api/tickets/{owner}/{name}",
         "/api/repos/{owner}/{name}/import",
+        "/api/repos/add",
+        "/api/repos/{owner}/{name}/check",
     ]
+
+
+def never(*args: object) -> Never:
+    raise AssertionError("no job runs here")
 
 
 def test_the_committed_schema_is_current(tmp_path: Path) -> None:
@@ -106,7 +118,10 @@ def test_the_committed_schema_is_current(tmp_path: Path) -> None:
     with `cofabriq openapi` when a response model changes."""
     committed = Path(__file__).parent.parent / "ui" / "openapi.json"
     flows = FlowRunner("", lambda repo, spent: None)  # pyright: ignore[reportArgumentType]
-    schema = build(tmp_path, tmp_path, tmp_path, None, flows=flows).openapi()
+    setups = RepoJobs(tmp_path, never, never)
+    schema = build(
+        tmp_path, tmp_path, tmp_path, None, flows=flows, setups=setups
+    ).openapi()
     assert json.loads(committed.read_text("utf-8")) == schema
 
 

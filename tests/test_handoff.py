@@ -2,11 +2,12 @@
 from the stored diff; the dev fetches the branch or applies the patch in
 their own folder."""
 
+import subprocess
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from cofabriq.loop.handoff import Handoff, branch_for, hand_off
+from cofabriq.loop.handoff import Handoff, branch_for, hand_off, take_command
 from cofabriq.loop.record import RunRecord, handoff_for, write_record
 from cofabriq.serve import build
 from cofabriq.targets import clone_dir
@@ -159,9 +160,9 @@ def test_the_viewer_gives_the_fetch_command_and_only_the_records_patch(
     view = c.get(f"/api/runs/{stem}/{result.number}").json()["handoff"]
     clone = str(clone_dir(clones, result.repo).resolve())
     assert view["clone"] == clone
-    assert view["fetch"] == (
-        f"git fetch '{clone}' {BRANCH}:{BRANCH} && git switch {BRANCH}"
-    )
+    assert view["fetch"] == take_command(clone, BRANCH)
+    assert view["fetch"].startswith(f"git fetch '{clone}' {BRANCH} && ")
+    assert view["fetch"].endswith(f" && git switch -C {BRANCH} FETCH_HEAD")
     got = c.get(view["patch_url"])
     assert got.text == "From abc\n"
     assert got.headers["content-type"].startswith("text/x-diff")
@@ -175,6 +176,82 @@ def test_the_viewer_gives_the_fetch_command_and_only_the_records_patch(
     write_record(runs, "acme-app-53-20261117T101500", RunRecord(result=result))
     for name in ["acme-app-52-20261117T101500", "acme-app-53-20261117T101500", "other"]:
         assert c.get(f"/api/patches/{name}").status_code == 404, name
+
+
+AGAIN = DIFF.replace("+fixed", "+fixed again")
+
+
+def card_clone(tmp_path: Path) -> tuple[Path, str]:
+    """cofabriq's clone where the viewer looks for it, a space to quote."""
+    where = clone_dir(tmp_path / "my clones", "o/r")
+    clone = init_repo(where, {"src/a.ts": "bug\n"})
+    return clone, git(clone, "rev-parse", "HEAD")
+
+
+def card_fetch(tmp_path: Path, handoff: Handoff) -> str:
+    """The command the viewer's "Take it" card gives for this handoff."""
+    runs, clones = tmp_path / "runs", tmp_path / "my clones"
+    result = loop_result("green", 1, ["src/a.ts"])
+    stem = "acme-app-51-20261117T101500"
+    write_record(runs, stem, RunRecord(result=result, handoff=handoff))
+    c = TestClient(build(tmp_path, runs, clones, None))
+    return c.get(f"/api/runs/{stem}/{result.number}").json()["handoff"]["fetch"]
+
+
+def run_card(mine: Path, fetch: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["sh", "-c", fetch], cwd=mine, capture_output=True, text=True, check=False
+    )
+
+
+def dev_on_the_branch(tmp_path: Path) -> tuple[Path, Path, str]:
+    clone, base = card_clone(tmp_path)
+    fetch = card_fetch(tmp_path, take(clone, base))
+    mine = tmp_path / "mine"
+    git(tmp_path, "clone", "-q", str(clone), str(mine))
+    ran = run_card(mine, fetch)
+    assert ran.returncode == 0, ran.stderr
+    return clone, mine, base
+
+
+def test_the_fetch_command_works_the_first_time(tmp_path: Path) -> None:
+    _, mine, _ = dev_on_the_branch(tmp_path)
+    assert git(mine, "branch", "--show-current") == BRANCH
+    assert (mine / "src/a.ts").read_text() == "fixed\n"
+
+
+def test_the_fetch_command_takes_a_rerun_while_the_branch_is_checked_out(
+    tmp_path: Path,
+) -> None:
+    clone, mine, base = dev_on_the_branch(tmp_path)
+    fetch = card_fetch(tmp_path, take(clone, base, AGAIN))
+    ran = run_card(mine, fetch)
+    assert ran.returncode == 0, ran.stderr
+    assert git(mine, "branch", "--show-current") == BRANCH
+    assert (mine / "src/a.ts").read_text() == "fixed again\n"
+
+
+def test_the_fetch_command_takes_a_rerun_from_another_branch(tmp_path: Path) -> None:
+    clone, mine, base = dev_on_the_branch(tmp_path)
+    git(mine, "switch", "-q", "--detach", base)
+    fetch = card_fetch(tmp_path, take(clone, base, AGAIN))
+    ran = run_card(mine, fetch)
+    assert ran.returncode == 0, ran.stderr
+    assert git(mine, "rev-parse", BRANCH) == git(clone, "rev-parse", BRANCH)
+    assert (mine / "src/a.ts").read_text() == "fixed again\n"
+
+
+def test_the_fetch_command_never_drops_a_commit_of_the_devs(tmp_path: Path) -> None:
+    clone, mine, base = dev_on_the_branch(tmp_path)
+    (mine / "NOTES").write_text("mine\n")
+    git(mine, "add", "NOTES")
+    git(mine, "-c", "user.email=dev@example.com", "commit", "-qm", "my own")
+    kept = git(mine, "rev-parse", "HEAD")
+
+    ran = run_card(mine, card_fetch(tmp_path, take(clone, base, AGAIN)))
+    assert ran.returncode != 0
+    assert f"{BRANCH} has commits of yours" in ran.stderr
+    assert git(mine, "rev-parse", BRANCH) == kept
 
 
 def test_the_branch_is_one_per_issue_and_safe() -> None:

@@ -32,6 +32,8 @@ export default defineConfig({
       ISSUES_DIR: path.join(data, "issues"),
       TICKETS_DIR: path.join(data, "tickets"),
       CLONES_DIR: path.join(data, "clones"), // none: a snippet says so
+      // the shipped playground target only (a link): no repo of the dev's own in targets/own
+      TARGETS_DIR: path.join(import.meta.dirname, "e2e", "fixtures", "targets"),
     },
   },
 });

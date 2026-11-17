@@ -25,6 +25,7 @@ def load_set(path: Path) -> list[str]:
 class Scored(BaseModel):
     repo: str
     commit: str
+    repairs: int = 0  # 0: the first proposal; n: proposed again n times
     proven: bool
     failed: list[str]  # "install", a check's name, "canary <suite>"
     why: dict[str, str]  # the end of each failure's output, by its name
@@ -57,6 +58,7 @@ def score(proposed: onboard.Proposed, checked: onboard.Checked) -> Scored:
     return Scored(
         repo=proposed.repo,
         commit=proposed.commit,
+        repairs=proposed.repairs,
         proven=checked.proven,
         failed=list(why),
         why=why,
@@ -73,19 +75,30 @@ def score(proposed: onboard.Proposed, checked: onboard.Checked) -> Scored:
 
 class Summary(BaseModel):
     repos: int
-    proven: int
+    proven: int  # unedited, by the first proposal
+    # repos proven after at most k proposals again: [first, after 1, after 2]
+    proven_after: list[int]
     quotes_found: float  # share of cited values whose quote is in their file
-    cost_usd: float  # per repo, mean
-    propose_s: float  # per repo, mean
+    cost_usd: float  # per repo, mean, its proposals again included
+    propose_s: float  # per proposal, mean
 
 
 def summarize(scored: list[Scored]) -> Summary:
-    n = len(scored) or 1
-    cited = sum(s.cited for s in scored) or 1
+    """The first proposal's numbers as before (proven unedited, quotes),
+    and how many more each round of proposing again proved."""
+    first = [s for s in scored if s.repairs == 0]
+    n = len(first) or 1
+    cited = sum(s.cited for s in first) or 1
+    rounds = max((s.repairs for s in scored), default=0)
+    proven_after = [
+        len({s.repo for s in scored if s.proven and s.repairs <= k})
+        for k in range(rounds + 1)
+    ]
     return Summary(
-        repos=len(scored),
-        proven=sum(s.proven for s in scored),
-        quotes_found=round(1 - sum(len(s.unchecked) for s in scored) / cited, 2),
+        repos=len(first),
+        proven=sum(s.proven for s in first),
+        proven_after=proven_after,
+        quotes_found=round(1 - sum(len(s.unchecked) for s in first) / cited, 2),
         cost_usd=round(sum(s.cost_usd for s in scored) / n, 3),
-        propose_s=round(sum(s.propose_s for s in scored) / n, 1),
+        propose_s=round(sum(s.propose_s for s in scored) / (len(scored) or 1), 1),
     )

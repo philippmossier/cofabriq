@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { type Page, expect, test } from "@playwright/test";
-import type { RunStep, StepTree } from "../src/api/generated.ts";
+import type { RepoSetup, RunStep, SetupPhase, SetupStep, StepTree } from "../src/api/generated.ts";
 
 // The viewer on recorded runs of the playground (e2e/fixtures/data): what each page shows.
 // Fixtures: #51 (approved, a two-part run with a plan gate), #8 (approved with two open
@@ -153,7 +153,7 @@ test("Take it: a branch to fetch from cofabriq's copy, or the patch; your folder
   const take = page.getByTestId("take-it");
   const branch = "cofabriq/51-chat-title-is-cut-off-with-even-though-i";
   await expect(take.locator("code").first()).toHaveText(
-    new RegExp(`^git fetch '?/.*/philippmossier-local-ai-chat-playground'? ${branch}:${branch} && git switch ${branch}$`),
+    new RegExp(`^git fetch '?/.*/philippmossier-local-ai-chat-playground'? ${branch} && .* has commits of yours.* && git switch -C ${branch} FETCH_HEAD$`),
   );
   await expect(take.getByRole("button", { name: "Copy the command" })).toBeVisible();
   await expect(take).toContainText("Two commits, the test first");
@@ -388,4 +388,122 @@ test("a finished flow: the result first, one cost, the PR body a click away", as
   await expect(page).toHaveURL(new RegExp(`/runs/${R51}/51#draft-pr$`));
   await expect(page.getByRole("heading", { name: /^#51 Chat title is cut off/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "Copy", exact: true })).toBeVisible();
+});
+
+// Adding a repo: the API's answers replayed (a proposal is a paid agent run, a check
+// minutes in podman); what the page shows at each phase, and what it sends.
+const CONFIG = `# Proposed by \`cofabriq repo add\` for acme/app at abc1234 (claude, $0.31).
+[clone]
+path = "/home/dev/app"
+branch = "main"
+
+[loop]
+image = "node:22"
+install = "pnpm install --frozen-lockfile"
+`;
+
+function setup(phase: SetupPhase, steps: SetupStep[] = []): RepoSetup {
+  return {
+    repo: "acme/app",
+    path: "/home/dev/app",
+    clone: "/opt/cofabriq/data/clones/acme-app",
+    phase,
+    running: phase === "proposing" || phase === "checking",
+    config: phase === "proposing" ? "" : CONFIG,
+    citations: [
+      { field: "install", value: "pnpm install --frozen-lockfile", source: ".github/workflows/ci.yml", quote: "run: pnpm install --frozen-lockfile", found: true },
+      { field: "image", value: "node:22", source: "", quote: "", found: false },
+    ],
+    notes: "Left out e2e: it needs a database.",
+    cost_usd: 0.31,
+    steps,
+    error: "",
+    repairs_left: 2,
+  };
+}
+
+test("Add a repo: a path in, the commands with their sources, edited, then checked live", async ({ page }) => {
+  let now = setup("proposing");
+  const sent: unknown[] = [];
+  await page.route("**/api/repos/own", (route) => route.fulfill({ json: [now] }));
+  await page.route("**/api/repos/add", async (route) => {
+    sent.push(route.request().postDataJSON());
+    await route.fulfill({ json: { repo: "acme/app" } });
+  });
+  await page.route("**/api/repos/acme/app/setup", (route) => route.fulfill({ json: now }));
+  await page.route("**/api/repos/acme/app/check", async (route) => {
+    sent.push(route.request().postDataJSON());
+    now = setup("checking", [
+      { name: "install", ok: true, output: "" },
+      { name: "test", ok: null, output: "" },
+    ]);
+    await route.fulfill({ json: { repo: "acme/app" } });
+  });
+  await page.goto("/#token=e2e");
+  await page.getByRole("link", { name: "Repos" }).click();
+
+  // the three places, before anything is added
+  await expect(page.getByTestId("three-places")).toContainText("cofabriq only reads it");
+  await expect(page.getByTestId("three-places")).toContainText("GitHubnever written");
+  await page.getByRole("textbox", { name: "path" }).fill("/home/dev/app");
+  await page.getByRole("button", { name: "Add a repo" }).click();
+  await expect(page).toHaveURL(/\/repos\/acme\/app$/);
+  expect(sent[0]).toEqual({ path: "/home/dev/app", again: false, repair: false });
+  await expect(page.getByRole("status")).toContainText("It changes nothing and runs nothing");
+  await expect(page.getByTestId("three-places")).toContainText("/opt/cofabriq/data/clones/acme-app");
+
+  // the proposal lands (the page polls while it runs): sources, notes, the file
+  now = setup("draft");
+  await expect(page.getByText("1 of 2 quoted from the repo, proposed for $0.31")).toBeVisible();
+  const image = page.getByRole("row", { name: /^image/ });
+  await expect(image).toContainText("unchecked");
+  await expect(image).toContainText("no file says it: read it");
+  await expect(page.getByRole("row", { name: /^install/ })).toContainText(".github/workflows/ci.yml");
+  await expect(page.getByText("Left out e2e: it needs a database.")).toBeVisible();
+
+  // an edit turns Check into Save and check; the edited text is what is sent
+  const file = page.getByRole("textbox", { name: "target file" });
+  await expect(file).toHaveValue(CONFIG);
+  await file.fill(CONFIG.replace("node:22", "node:22.11"));
+  await page.getByRole("button", { name: "Save and check" }).click();
+  expect(sent[1]).toEqual({ config: CONFIG.replace("node:22", "node:22.11") });
+  const steps = page.getByTestId("check-steps");
+  await expect(steps).toContainText("install (the only step with network)");
+  await expect(steps).toContainText("check test");
+
+  // proven: off to Issues with this repo picked
+  now = setup("proven", [
+    { name: "install", ok: true, output: "" },
+    { name: "test", ok: true, output: "" },
+    { name: "canary vitest", ok: true, output: "" },
+  ]);
+  await page.reload();
+  await expect(page.getByText("Proven: the install, every check, and a test that can fail.")).toBeVisible();
+  await expect(page.getByRole("link", { name: /Write a ticket or import issues/ })).toHaveAttribute(
+    "href",
+    "/issues?repo=acme%2Fapp",
+  );
+});
+
+test("a failed check shows what failed and goes back to the agent with it", async ({ page }) => {
+  const failed = setup("failed", [
+    { name: "install", ok: true, output: "" },
+    { name: "types", ok: false, output: "src/a.ts(3,1): error TS2304" },
+  ]);
+  const sent: unknown[] = [];
+  await page.route("**/api/repos/acme/app/setup", (route) => route.fulfill({ json: failed }));
+  await page.route("**/api/repos/add", async (route) => {
+    sent.push(route.request().postDataJSON());
+    await route.fulfill({ json: { repo: "acme/app" } });
+  });
+  await page.goto("/repos/acme/app");
+
+  await expect(page.getByText("check failed")).toBeVisible();
+  await expect(page.getByTestId("check-steps")).toContainText("src/a.ts(3,1): error TS2304");
+  await expect(page.getByRole("button", { name: "Check" })).toBeDisabled(); // read-only without the link
+
+  await page.goto("/repos/acme/app#token=e2e");
+  await expect(page.getByText(/2 of 2 left/)).toBeVisible();
+  await page.getByRole("button", { name: "Propose again with this failure" }).click();
+  await expect.poll(() => sent).toEqual([{ path: "/home/dev/app", again: false, repair: true }]);
 });

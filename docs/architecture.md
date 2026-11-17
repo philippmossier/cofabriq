@@ -47,7 +47,8 @@ features removed on purpose.
 
 | Module | Step |
 | --- | --- |
-| `onboard.py` | before any run, once per repo of the dev's own: `[loop]` proposed from its files with checked quotes, then proven in the sandbox (install, checks, a canary per suite) |
+| `onboard.py` | before any run, once per repo of the dev's own: `[loop]` proposed from its files with checked quotes, then proven in the sandbox (install, checks, a canary per suite); a failed check proposed again with its output, twice at most |
+| `repo_jobs.py` | the Repos page's propose and check as background jobs, one at a time per repo, the check's steps live; what a repo's setup is comes from the files in `targets/own/` |
 | `intake.py` | is the ticket blocked, is another cofabriq PR still open, is the spec ready |
 | `refine.py` | issue -> spec (problem, files, criteria, plan, open questions, size), read-only agent |
 | `graph.py` | the run as a LangGraph graph with pauses at the plan and test gates: `cofabriq run` drives it in one process, `cofabriq flow` across processes |

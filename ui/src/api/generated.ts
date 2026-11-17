@@ -23,6 +23,19 @@ import type {
   UseQueryResult
 } from '@tanstack/react-query';
 
+export interface AddRepo {
+  /**
+     * The root of the dev's git clone, absolute (`~` allowed).
+     * @minLength 1
+     * @maxLength 4096
+     */
+  path: string;
+  /** Propose again for a repo already added: the file is replaced. */
+  again?: boolean;
+  /** Propose again, told how the last check failed (its output, untrusted, fenced in the prompt). Only after a failed check, at most twice. */
+  repair?: boolean;
+}
+
 export interface Answer {
   approve: boolean;
   /** @maxLength 500 */
@@ -46,6 +59,15 @@ export interface Check {
   ok: boolean;
   seconds: number;
   output: string;
+}
+
+export interface CheckRepo {
+  /**
+     * The target file as the dev edited it: saved, then proven.
+     * @minLength 1
+     * @maxLength 100000
+     */
+  config: string;
 }
 
 /**
@@ -270,7 +292,7 @@ export interface HandoffView {
   branch: string;
   commits: number;
   clone: string;
-  /** Run in your own folder: fetch the branch from cofabriq's copy and switch to it. */
+  /** Run in your own folder: fetch the branch from cofabriq's copy and switch to it; a branch of that name with commits of yours stays as it is. */
   fetch: string;
   patch_url: string;
   error: string;
@@ -395,6 +417,69 @@ export interface Repo {
   tickets: number;
   /** Its issues are on github.com: they can be imported. */
   on_github: boolean;
+}
+
+export type SetupPhase = typeof SetupPhase[keyof typeof SetupPhase];
+
+
+export const SetupPhase = {
+  proposing: 'proposing',
+  draft: 'draft',
+  checking: 'checking',
+  proven: 'proven',
+  failed: 'failed',
+} as const;
+
+/**
+ * Where a proposed command came from: the repo file and the line in
+ * it, and whether that line is in that file (else: unchecked).
+ */
+export interface SetupCitation {
+  /** `image`, `install`, `check test`, ... */
+  field: string;
+  /** The command as proposed. Untrusted. */
+  value: string;
+  /** The repo file; empty: no file says it. */
+  source: string;
+  /** The line it came from. Untrusted. */
+  quote: string;
+  found: boolean;
+}
+
+export interface SetupStep {
+  /** `install`, a check's name, `canary <suite>`. */
+  name: string;
+  /** None: running. */
+  ok: boolean | null;
+  /** A failed step's output, its end. Untrusted. */
+  output: string;
+}
+
+/**
+ * Adding a repo, as far as it got: the proposed target file (edited by
+ * the dev), each command's source, and its check in the sandbox.
+ */
+export interface RepoSetup {
+  repo: string;
+  /** The dev's clone, which cofabriq only reads. */
+  path: string;
+  /** cofabriq's own copy of it: the agent works here. */
+  clone: string;
+  phase: SetupPhase;
+  running: boolean;
+  /** The target file as saved. Untrusted. */
+  config: string;
+  citations: SetupCitation[];
+  /** The agent's notes. Untrusted. */
+  notes: string;
+  /** The proposal's agent run. */
+  cost_usd: number;
+  /** The check's, live while it runs. */
+  steps: SetupStep[];
+  /** The last job died before it could say more. */
+  error: string;
+  /** How often it may still be proposed again with a failed check. */
+  repairs_left: number;
 }
 
 export type StepPhase = typeof StepPhase[keyof typeof StepPhase];
@@ -542,6 +627,10 @@ export interface RunTrace {
   trace: string;
   pr_url: string | null;
   handoff: HandoffView | null;
+}
+
+export interface SetupStarted {
+  repo: string;
 }
 
 export type SpecSummaryRoute = typeof SpecSummaryRoute[keyof typeof SpecSummaryRoute];
@@ -1759,7 +1848,7 @@ export const getReposUrl = () => {
 /**
  * The repos a flow can run on: `[loop]` in the target file (proven
  * if the dev's own), and an issue store (`fetch-issues`) or local
- * tickets.
+ * tickets; a proven own repo also with neither (just added).
  * @summary Repos
  */
 export const repos = async ( options?: RequestInit): Promise<reposResponse> => {
@@ -3016,4 +3105,509 @@ export const useImportIssues = <TError = Refusal | HTTPValidationError,
         TContext
       > => {
       return useMutation(getImportIssuesMutationOptions(options), queryClient);
+    }
+
+export type repoSetupsResponse200 = {
+  data: RepoSetup[]
+  status: 200
+}
+
+export type repoSetupsResponseSuccess = (repoSetupsResponse200) & {
+  headers: Headers;
+};
+;
+
+export type repoSetupsResponse = (repoSetupsResponseSuccess)
+
+export const getRepoSetupsUrl = () => {
+
+
+
+
+  return `/api/repos/own`
+}
+
+/**
+ * The dev's own repos (`targets/own/`), each as far as its setup got.
+ * @summary Repo Setups
+ */
+export const repoSetups = async ( options?: RequestInit): Promise<repoSetupsResponse> => {
+
+  const res = await fetch(getRepoSetupsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: repoSetupsResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as repoSetupsResponse
+}
+
+
+
+
+
+export const getRepoSetupsQueryKey = () => {
+    return [
+    `/api/repos/own`
+    ] as const;
+    }
+
+
+export const getRepoSetupsQueryOptions = <TData = Awaited<ReturnType<typeof repoSetups>>, TError = unknown>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof repoSetups>>, TError, TData>>, fetch?: RequestInit}
+) => {
+
+const {query: queryOptions, fetch: fetchOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getRepoSetupsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof repoSetups>>> = ({ signal }) => repoSetups({ signal, ...fetchOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof repoSetups>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type RepoSetupsQueryResult = NonNullable<Awaited<ReturnType<typeof repoSetups>>>
+export type RepoSetupsQueryError = unknown
+
+
+export function useRepoSetups<TData = Awaited<ReturnType<typeof repoSetups>>, TError = unknown>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof repoSetups>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof repoSetups>>,
+          TError,
+          Awaited<ReturnType<typeof repoSetups>>
+        > , 'initialData'
+      >, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useRepoSetups<TData = Awaited<ReturnType<typeof repoSetups>>, TError = unknown>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof repoSetups>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof repoSetups>>,
+          TError,
+          Awaited<ReturnType<typeof repoSetups>>
+        > , 'initialData'
+      >, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useRepoSetups<TData = Awaited<ReturnType<typeof repoSetups>>, TError = unknown>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof repoSetups>>, TError, TData>>, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Repo Setups
+ */
+
+export function useRepoSetups<TData = Awaited<ReturnType<typeof repoSetups>>, TError = unknown>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof repoSetups>>, TError, TData>>, fetch?: RequestInit}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getRepoSetupsQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export type repoSetupResponse200 = {
+  data: RepoSetup
+  status: 200
+}
+
+export type repoSetupResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type repoSetupResponseSuccess = (repoSetupResponse200) & {
+  headers: Headers;
+};
+export type repoSetupResponseError = (repoSetupResponse422) & {
+  headers: Headers;
+};
+
+export type repoSetupResponse = (repoSetupResponseSuccess | repoSetupResponseError)
+
+export const getRepoSetupUrl = (owner: string,
+    name: string,) => {
+
+
+
+
+  return `/api/repos/${owner}/${name}/setup`
+}
+
+/**
+ * @summary Repo Setup
+ */
+export const repoSetup = async (owner: string,
+    name: string, options?: RequestInit): Promise<repoSetupResponse> => {
+
+  const res = await fetch(getRepoSetupUrl(owner,name),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: repoSetupResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as repoSetupResponse
+}
+
+
+
+
+
+export const getRepoSetupQueryKey = (owner: string,
+    name: string,) => {
+    return [
+    `/api/repos/${owner}/${name}/setup`
+    ] as const;
+    }
+
+
+export const getRepoSetupQueryOptions = <TData = Awaited<ReturnType<typeof repoSetup>>, TError = HTTPValidationError>(owner: string,
+    name: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof repoSetup>>, TError, TData>>, fetch?: RequestInit}
+) => {
+
+const {query: queryOptions, fetch: fetchOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getRepoSetupQueryKey(owner,name);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof repoSetup>>> = ({ signal }) => repoSetup(owner,name, { signal, ...fetchOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: owner !== null && owner !== undefined && name !== null && name !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof repoSetup>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type RepoSetupQueryResult = NonNullable<Awaited<ReturnType<typeof repoSetup>>>
+export type RepoSetupQueryError = HTTPValidationError
+
+
+export function useRepoSetup<TData = Awaited<ReturnType<typeof repoSetup>>, TError = HTTPValidationError>(
+ owner: string,
+    name: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof repoSetup>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof repoSetup>>,
+          TError,
+          Awaited<ReturnType<typeof repoSetup>>
+        > , 'initialData'
+      >, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useRepoSetup<TData = Awaited<ReturnType<typeof repoSetup>>, TError = HTTPValidationError>(
+ owner: string,
+    name: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof repoSetup>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof repoSetup>>,
+          TError,
+          Awaited<ReturnType<typeof repoSetup>>
+        > , 'initialData'
+      >, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useRepoSetup<TData = Awaited<ReturnType<typeof repoSetup>>, TError = HTTPValidationError>(
+ owner: string,
+    name: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof repoSetup>>, TError, TData>>, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Repo Setup
+ */
+
+export function useRepoSetup<TData = Awaited<ReturnType<typeof repoSetup>>, TError = HTTPValidationError>(
+ owner: string,
+    name: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof repoSetup>>, TError, TData>>, fetch?: RequestInit}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getRepoSetupQueryOptions(owner,name,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export type repoAddResponse200 = {
+  data: SetupStarted
+  status: 200
+}
+
+export type repoAddResponse409 = {
+  data: Refusal
+  status: 409
+}
+
+export type repoAddResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type repoAddResponseSuccess = (repoAddResponse200) & {
+  headers: Headers;
+};
+export type repoAddResponseError = (repoAddResponse409 | repoAddResponse422) & {
+  headers: Headers;
+};
+
+export type repoAddResponse = (repoAddResponseSuccess | repoAddResponseError)
+
+export const getRepoAddUrl = () => {
+
+
+
+
+  return `/api/repos/add`
+}
+
+/**
+ * Propose `[loop]` for the dev's clone at `path`: cofabriq clones it
+ * into its own copy (the dev's folder is only read), and a read-only
+ * agent reads how it builds there, in the background. Nothing runs
+ * until the check. Paid: one agent run (about $0.10).
+ * @summary Repo Add
+ */
+export const repoAdd = async (addRepo: AddRepo, options?: RequestInit): Promise<repoAddResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+const res = await fetch(getRepoAddUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(addRepo)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: repoAddResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as repoAddResponse
+}
+
+
+
+
+
+export const getRepoAddMutationKey = () => ['repoAdd'] as const;
+
+export const getRepoAddMutationOptions = <TError = Refusal | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof repoAdd>>, TError,RepoAddMutationVariables, TContext>, fetch?: RequestInit}
+): UseMutationOptions<Awaited<ReturnType<typeof repoAdd>>, TError,RepoAddMutationVariables, TContext> => {
+
+const mutationKey = getRepoAddMutationKey();
+const {mutation: mutationOptions, fetch: fetchOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, fetch: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof repoAdd>>, RepoAddMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  repoAdd(data,fetchOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RepoAddMutationResult = NonNullable<Awaited<ReturnType<typeof repoAdd>>>
+    export type RepoAddMutationBody = AddRepo
+    export type RepoAddMutationError = Refusal | HTTPValidationError
+    export type RepoAddMutationVariables = {data: AddRepo}
+
+    /**
+ * @summary Repo Add
+ */
+export const useRepoAdd = <TError = Refusal | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof repoAdd>>, TError,RepoAddMutationVariables, TContext>, fetch?: RequestInit}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof repoAdd>>,
+        TError,
+        RepoAddMutationVariables,
+        TContext
+      > => {
+      return useMutation(getRepoAddMutationOptions(options), queryClient);
+    }
+
+export type repoCheckResponse200 = {
+  data: SetupStarted
+  status: 200
+}
+
+export type repoCheckResponse409 = {
+  data: Refusal
+  status: 409
+}
+
+export type repoCheckResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type repoCheckResponseSuccess = (repoCheckResponse200) & {
+  headers: Headers;
+};
+export type repoCheckResponseError = (repoCheckResponse409 | repoCheckResponse422) & {
+  headers: Headers;
+};
+
+export type repoCheckResponse = (repoCheckResponseSuccess | repoCheckResponseError)
+
+export const getRepoCheckUrl = (owner: string,
+    name: string,) => {
+
+
+
+
+  return `/api/repos/${owner}/${name}/check`
+}
+
+/**
+ * Save the target file as the dev edited it (refused when it doesn't
+ * parse), then prove it in the sandbox in the background: install
+ * (the only network), every check, each suite's canaries. Free,
+ * minutes.
+ * @summary Repo Check
+ */
+export const repoCheck = async (owner: string,
+    name: string,
+    checkRepo: CheckRepo, options?: RequestInit): Promise<repoCheckResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+const res = await fetch(getRepoCheckUrl(owner,name),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(checkRepo)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: repoCheckResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as repoCheckResponse
+}
+
+
+
+
+
+export const getRepoCheckMutationKey = () => ['repoCheck'] as const;
+
+export const getRepoCheckMutationOptions = <TError = Refusal | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof repoCheck>>, TError,RepoCheckMutationVariables, TContext>, fetch?: RequestInit}
+): UseMutationOptions<Awaited<ReturnType<typeof repoCheck>>, TError,RepoCheckMutationVariables, TContext> => {
+
+const mutationKey = getRepoCheckMutationKey();
+const {mutation: mutationOptions, fetch: fetchOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, fetch: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof repoCheck>>, RepoCheckMutationVariables> = (props) => {
+          const {owner,name,data} = props ?? {};
+
+          return  repoCheck(owner,name,data,fetchOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RepoCheckMutationResult = NonNullable<Awaited<ReturnType<typeof repoCheck>>>
+    export type RepoCheckMutationBody = CheckRepo
+    export type RepoCheckMutationError = Refusal | HTTPValidationError
+    export type RepoCheckMutationVariables = {owner: string;name: string;data: CheckRepo}
+
+    /**
+ * @summary Repo Check
+ */
+export const useRepoCheck = <TError = Refusal | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof repoCheck>>, TError,RepoCheckMutationVariables, TContext>, fetch?: RequestInit}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof repoCheck>>,
+        TError,
+        RepoCheckMutationVariables,
+        TContext
+      > => {
+      return useMutation(getRepoCheckMutationOptions(options), queryClient);
     }

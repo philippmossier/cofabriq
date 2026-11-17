@@ -18,13 +18,14 @@ and committer are cofabriq: it wrote the change.
 """
 
 import re
+import shlex
 import tempfile
 import textwrap
 from pathlib import Path
 
 from pydantic import BaseModel
 
-from cofabriq.git import AS_COFABRIQ, git, git_env
+from cofabriq.git import AS_COFABRIQ, COFABRIQ_EMAIL, git, git_env
 
 BRANCH_PREFIX = "cofabriq/"  # every branch cofabriq makes or pushes
 
@@ -49,6 +50,27 @@ def branch_for(key: str, title: str) -> str:
     """`cofabriq/51-chat-title-is-cut-off-too-early`: one per ticket (a
     local one: `cofabriq/L3-...`)."""
     return f"{BRANCH_PREFIX}{key}-{slug(title)}"
+
+
+def take_command(clone: str, branch: str) -> str:
+    """The shell line the dev runs in their own folder to take `branch`
+    from cofabriq's `clone`. A rerun of the ticket rebuilt the branch from
+    the base, so the dev's branch of that name can't fast-forward to it:
+    the line fetches into FETCH_HEAD and moves the branch there (`switch
+    -C`), but only while every commit on it that the new one lacks is
+    cofabriq's. A commit of the dev's own (or one they amended) stops it
+    with a message; their branch stays as it is."""
+    b, src = shlex.quote(branch), shlex.quote(clone)
+    theirs = (
+        f"git log --format=%ae refs/heads/{b} --not FETCH_HEAD -- 2>/dev/null"
+        f" | grep -vx {shlex.quote(COFABRIQ_EMAIL)}"
+    )
+    why = f"{branch} has commits of yours: rename it, then run this again"
+    refuse = f"echo {shlex.quote(why)} >&2"
+    return (
+        f'git fetch {src} {b} && {{ test -z "$({theirs})" || {{ {refuse}; false; }}; }}'
+        f" && git switch -C {b} FETCH_HEAD"
+    )
 
 
 def tree_of(clone: Path, base: str, diff: str, only: list[str] | None = None) -> str:

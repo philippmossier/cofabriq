@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import type { HandoffView, RunTrace } from "@/api/generated";
 import { CopyButton, Loading } from "@/components/bits";
+import { ThreePlaces } from "@/components/three-places";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useRun, useTrace } from "@/api/generated";
 import { parseDiff } from "@/lib/diff";
@@ -126,8 +127,10 @@ function TakeIt({ h }: { h: HandoffView }) {
       </p>
       <p className="text-xs text-muted-foreground">
         {h.commits === 2 ? "Two commits, the test first, " : "One commit, "}on <code>{h.branch}</code> in
-        cofabriq's own copy ({h.clone}). cofabriq wrote nothing into your folder: you push it yourself.
+        cofabriq's own copy. cofabriq wrote nothing into your folder: you push it yourself. After a rerun, the same
+        command moves your branch to the new result, unless that branch has commits of yours.
       </p>
+      <ThreePlaces clone={h.clone} />
     </div>
   );
 }
