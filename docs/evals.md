@@ -82,6 +82,47 @@ proposal), 94% of the cited commands quoted from their file.
   the dev, who pushes it), but a page that adds a repo should show that
   line, not bury it in notes.
 
+### The loop on cofabriq itself
+
+The 0.6 hard set left one question open: does a much bigger codebase make
+it harder? So 5 bugs were planted in cofabriq (`evals/planted-cofabriq.toml`,
+the removed-set format: a patch on main plants the bug and removes the
+test cases that would catch it, main's pytest files judge). Tickets
+describe the symptom as a user would ("intake says ready although the
+ticket is blocked"), in the file, never on GitHub. The set sits in the repo
+under test, so the worktree drops it with the plant: the agent never sees
+the answer key. `eval feature-set` proves it: 5/5, the own target's checks
+(ruff, pyright, pytest) green with the plant, the hidden tests red.
+
+| Ticket | Size | Refine: the fix's file | Loop |
+| --- | --- | --- | --- |
+| After a stop, eval review forgets the earlier green runs | S | first | resolved, first try |
+| intake says ready although the ticket is blocked | S | first | resolved, first try |
+| No warning for my gh token, although it can write | S | first | resolved, first try |
+| Rejecting the test shows the plan as rejected | S | first | resolved, first try |
+| cofabriq's draft PR shows up on other people's issues | M | first (sized S) | resolved, first try; own test invalid on main |
+
+`data/refine/features-20261117T161123.json`, `data/runs/features-
+20261117T161400.json` and `-161938.json`: **resolved 5/5 on cofabriq**,
+all first try, all in the reference's file; refine 23 s and $0.25 per bug,
+the loop 71 s and $0.13 per S bug, $0.57 for the M bug (list prices).
+
+- Not harder than the playground. Every spec named the cause with its line
+  in about 6 turns. The size of the repo didn't matter because its
+  CLAUDE.md maps every command to the module behind it, so a ticket that
+  names a command names the file. A codebase without that map is the
+  untested case.
+- The one invalid test is a real find: it asks for more than main does,
+  and main has the hole (the set's header says which; causes stay out of
+  every file the agent reads).
+- The first loop run lost 4 of 5 bugs to setup: five parallel installs of
+  uv into the one shared cache, and the installer's `mv` collided. The
+  numbers above are a rerun of those 4 one at a time. Two flows started at
+  once on cofabriq would hit the same race: the target's install should
+  skip uv when it is there.
+- Not measured here: the review gate (`eval gate` takes the planted-repro
+  format only).
+
 ## 0.2: the loop on planted bugs
 
 The [playground](https://github.com/philippmossier/local-ai-chat-playground)

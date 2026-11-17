@@ -1,0 +1,36 @@
+diff --git a/src/cofabriq/serve.py b/src/cofabriq/serve.py
+index 010aec6..0c759da 100644
+--- a/src/cofabriq/serve.py
++++ b/src/cofabriq/serve.py
+@@ -1138,8 +1138,8 @@ def _flow_summary(f: FlowStatus) -> FlowSummary:
+ def _phase(f: FlowStatus) -> Phase:
+     """Where a flow is: the gate it waits at, else the part after the last
+     step its checkpoint finished (that part runs now, or the flow ended
+-    there). The stage alone can't say it: "rejected" is either gate,
+-    "failed" is refine, setup or the test."""
++    there). The stage alone can't say it: "failed" is refine, setup or the
++    test."""
+     st = f.state
+     if f.waiting is not None:
+         return "plan" if f.waiting == "plan" else "test_gate"
+@@ -1149,7 +1149,7 @@ def _phase(f: FlowStatus) -> Phase:
+         case "refined":  # refine done, the plan gate not reached: cut off
+             return "spec"
+         case "rejected":
+-            return "plan" if st.progress is None else "test_gate"
++            return "plan"
+         case "approved" | "set_up" | "retest" | "failed":
+             return "test"
+         case "tested":  # the test gate approved it
+diff --git a/tests/test_serve_flows.py b/tests/test_serve_flows.py
+index 7c38bc0..7c95c7d 100644
+--- a/tests/test_serve_flows.py
++++ b/tests/test_serve_flows.py
+@@ -93,7 +93,6 @@ def test_the_phase_is_where_it_runs_waits_or_ended() -> None:
+     assert at("approved", running=True) == "test"
+     assert at("failed", progress=progress) == "test"  # no repro, setup failed
+     assert at("tested", waiting="test", progress=progress) == "test_gate"
+-    assert at("rejected", progress=progress) == "test_gate"
+     assert at("tested", running=True, progress=progress) == "build"
+     assert at("built", result=red) == "build"
+     assert at("built", running=True, result=green) == "review"

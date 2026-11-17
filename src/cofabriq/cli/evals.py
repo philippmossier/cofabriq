@@ -606,9 +606,10 @@ def _eval_refine_features(
     --features`)."""
     settings = get_settings()
     target = check_repo(repo)
+    rules = loop_rules(target)
     agent = claude_code()
     feats = pick_only(
-        features_eval.load_features(path), only, lambda f: f.key, "feature"
+        features_eval.load_features(path, rules.tests), only, lambda f: f.key, "feature"
     )
     clone = clone_dir(settings.clones_dir, target)
     commit = refine_mod.update_clone(target, clone, targets_dir=settings.targets_dir)
@@ -751,7 +752,7 @@ def eval_feature_set(
     settings = get_settings()
     target = check_repo(repo)
     rules = loop_rules(target)
-    feats = features_eval.load_features(features)
+    feats = features_eval.load_features(features, rules.tests)
     clone = clone_dir(settings.clones_dir, target)
     commit = refine_mod.update_clone(target, clone, targets_dir=settings.targets_dir)
     typer.echo(f"{target} at {commit[:7]}: {len(feats)} removed features")
@@ -914,7 +915,7 @@ def _eval_loop_features(repo: str, only: str | None, workers: int, path: Path) -
     rules = loop_rules(target)
     agent = claude_code().editing(budget_usd=1.0)
     feats = pick_only(
-        features_eval.load_features(path), only, lambda f: f.key, "feature"
+        features_eval.load_features(path, rules.tests), only, lambda f: f.key, "feature"
     )
     clone = clone_dir(settings.clones_dir, target)
     commit = refine_mod.update_clone(target, clone, targets_dir=settings.targets_dir)
@@ -930,7 +931,6 @@ def _eval_loop_features(repo: str, only: str | None, workers: int, path: Path) -
         refined = specs[f.key]
         worktree = settings.work_dir / f"feature-{f.key}"
         guarded = Guarded(agent, Guard(settings.run_budget_usd))  # per feature
-        patch = features_eval.removal_path(path, f.key)
         try:
             result = run_mod.run_loop(
                 repo=target,
@@ -944,7 +944,7 @@ def _eval_loop_features(repo: str, only: str | None, workers: int, path: Path) -
                 agent=guarded,
                 sandbox=sandbox,
                 route=f.route,
-                prepare=partial(features_eval.remove, patch=patch),
+                prepare=partial(features_eval.remove, features_file=path, key=f.key),
             )
             return features_eval.against_reference(result, worktree, f, rules, sandbox)
         finally:

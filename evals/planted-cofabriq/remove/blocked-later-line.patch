@@ -1,0 +1,30 @@
+diff --git a/src/cofabriq/loop/intake.py b/src/cofabriq/loop/intake.py
+index 1f1f72d..2e57d20 100644
+--- a/src/cofabriq/loop/intake.py
++++ b/src/cofabriq/loop/intake.py
+@@ -30,7 +30,7 @@ from cofabriq.loop.refine import Refined
+ type State = Literal["done", "blocked", "waiting", "ready"]
+ 
+ # "Blocked by #12", "blocked by: #12, #13", "Blocked by owner/name#7"
+-_BLOCKED_LINE = re.compile(r"(?im)^\W*blocked by:?\s+(.+)$")
++_BLOCKED_LINE = re.compile(r"(?i)^\W*blocked by:?\s+(.+)$")
+ _REF = re.compile(r"(?:([A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9._-]+))?#(\d+)\b")
+ 
+ 
+diff --git a/tests/test_intake.py b/tests/test_intake.py
+index 78d6f08..2fa0daa 100644
+--- a/tests/test_intake.py
++++ b/tests/test_intake.py
+@@ -24,11 +24,7 @@ def issues_by_ref(*issues: Issue) -> dict[IssueRef, Issue]:
+ 
+ 
+ def test_blockers_native_and_from_the_body() -> None:
+-    t = blocked(
+-        5,
+-        body="Part 2.\n\nBlocked by #3, #4 and Other/Repo#9\n- blocked by: #3\n#7 too",
+-        native=[2, 3],
+-    )
++    t = blocked(5, body="Blocked by #3, #4 and Other/Repo#9", native=[2, 3])
+     assert blockers(t) == [ref(2), ref(3), ref(4), ref(9, "other/repo")]
+     assert blockers(blocked(5, body="Blocked by #5")) == []  # itself
+ 
