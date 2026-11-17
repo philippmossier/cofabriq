@@ -9,7 +9,8 @@ decisions that matter. A tool devs point at their repo, not a review queue.
 
 You approve the plan and the failing test, an agent fixes the code in a
 sandbox, and a second agent reviews it. You get a draft PR and nothing is
-merged for you. Tried on a demo app with bugs planted on purpose.
+merged for you. Tried on a demo app with bugs planted on purpose, and on
+cofabriq's own code.
 
 [Quickstart](#quickstart)
 
@@ -159,6 +160,19 @@ plausible but wrong fix), since the loop itself made none. Early and easy:
 small changes in a small repo, one model in every role. Of the 12 browser
 tests, 3 also needed a neighbouring planted bug fixed, and the agent fixed
 it on the way. Details and caveats: [docs/evals.md](docs/evals.md).
+
+On your own repo (0.9), measured on repos cofabriq had never seen and on
+cofabriq's own code:
+
+| | |
+| --- | --- |
+| config proposed and proven as written, 6 repos of different stacks | 3/6 |
+| the same on 6 other repos, with up to two "propose again" rounds | 2/6 first, 5/6 after two |
+| bugs planted in cofabriq (Python, 17,500 lines of source), fixed with the agent's own failing test first | 5/5, 4 on the first try |
+| cost per proposal / per planted bug, end to end | about $0.12 / $0.42 |
+
+Not harder than the demo app: cofabriq's CLAUDE.md maps every command to
+the module behind it, so a ticket that names a command names the file.
 
 ## Quickstart
 
@@ -325,9 +339,13 @@ through the real UI and saves every page to review.
       time and cost; a test gate on every run, a test sent back is written
       again; how each fix will be proven; 0.8.1: the plan gate reworked, the
       planned test as cases
+- [x] **0.9** your own repo, read-only: its config proposed by an agent and
+      proven in the sandbox, local tickets or imported issues, the result
+      pulled as a branch or a patch; measured on cofabriq's own code
 - [ ] **Next:** a second reviewer model, "who knows this area" for risky
       changes, publishing runs from the browser
-- [ ] **Later:** a real repository with tests, self-host packaging
+- [ ] **Later:** a repository without a map in its CLAUDE.md, self-host
+      packaging
 
 0.x releases: the CLI may still change. Decisions are recorded in
 [`docs/adr/`](docs/adr/) as they are made.

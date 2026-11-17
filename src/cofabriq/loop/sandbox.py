@@ -7,11 +7,22 @@ a throwaway podman container that sees only the worktree (mounted at
 /app) and three cache volumes. Only the install gets network, and it runs
 before the agent has changed anything (the target's own lockfile, as a dev
 would install it); the repro and the checks run with `--network none`.
+
+The cache volumes are shared by every run on the machine, and an install
+writes into them (uv's installer replaces its binary in /cache/bin, also
+while another worktree's check runs it). So a lock file on the host,
+across threads and processes: an install holds it alone, every other
+command shares it, so checks run side by side and never while a tool
+under them is replaced.
 """
 
+import fcntl
 import re
 import subprocess
+import tempfile
 import time
+from collections.abc import Generator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -22,6 +33,23 @@ from cofabriq import tracing
 
 TAIL = 4000  # characters of output kept from a failing command
 _ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+# one per user, like the named volumes it guards (podman's are per user too)
+CACHE_LOCK = Path(tempfile.gettempdir()) / "cofabriq-cache.lock"
+
+
+@contextmanager
+def holding(lock: Path, *, alone: bool) -> Generator[None]:
+    """The block runs holding `lock`: `alone` waits until no one else holds
+    it and keeps everyone out; otherwise it is shared with others who
+    share. Across threads and processes (each `open` is its own holder);
+    the OS drops it when the holder dies."""
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    with lock.open("a") as f:
+        fcntl.flock(f, fcntl.LOCK_EX if alone else fcntl.LOCK_SH)
+        try:
+            yield
+        finally:
+            fcntl.flock(f, fcntl.LOCK_UN)
 
 
 class Ran(BaseModel):
@@ -42,6 +70,7 @@ class Podman:
     setup: str = ""  # shell line run first in every container (e.g. corepack)
     timeout_s: float = 600
     binary: str = "podman"
+    lock: Path = CACHE_LOCK  # alone with network (the install), else shared
 
     def command(self, cmd: str, worktree: Path, *, network: bool) -> list[str]:
         """`podman run` of one shell line in a new container, as argv.
@@ -107,9 +136,9 @@ class Podman:
             "cofabriq.sandbox.network": network,
         }
         with tracing.span("sandbox.run", attributes, code=Podman.__call__) as span:
-            ran = run_command(
-                self.command(cmd, worktree, network=network), worktree, self.timeout_s
-            )
+            argv = self.command(cmd, worktree, network=network)
+            with holding(self.lock, alone=network):
+                ran = run_command(argv, worktree, self.timeout_s)
             span.set_attribute("cofabriq.sandbox.ok", ran.ok)  # red can be the goal
             tracing.capture(span, output=ran.output)
         return ran

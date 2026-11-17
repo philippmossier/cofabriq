@@ -1,0 +1,76 @@
+diff --git a/src/cofabriq/loop/pr.py b/src/cofabriq/loop/pr.py
+index a6fcb68..df25f5d 100644
+--- a/src/cofabriq/loop/pr.py
++++ b/src/cofabriq/loop/pr.py
+@@ -100,8 +100,8 @@ class Draft(BaseModel):
+ 
+ 
+ def unref(text: str) -> str:
+-    """A zero-width space after `@` and `#`: no ping, no cross-reference."""
+-    return re.sub(r"([@#])(?=\w)", "\\1\u200b", text)
++    """A zero-width space after `@`: no ping."""
++    return re.sub(r"(@)(?=\w)", "\\1\u200b", text)
+ 
+ 
+ # an inline code span: a backtick run, not escaped, closed by the same run
+@@ -114,16 +114,11 @@ def safe(text: str) -> str:
+     turns some markdown into actions or hidden content:
+ 
+         cc @octocat             pings octocat     -> @<zwsp>octocat
+-        see o/r#123             posts a backlink  -> o/r#<zwsp>123
+-                                on that issue
+         <!-- x -->              hides text from   -> &lt;!-- x --&gt;
+                                 the dev
+         ![a](http://t/p.png)    loads an image    -> !\[a]\(http://t/p.png)
+         [docs](http://x)        a link in a PR    -> [docs]\(http://x)
+                                 the dev trusts
+-        https://github.com/     a bare URL links, -> https:<zwsp>//github.com/
+-          o/r/issues/3          and to an issue      o/r/issues/3
+-                                posts a backlink
+ 
+     (<zwsp> is a zero-width space: the text reads the same.) Code spans
+     stay as written: GitHub shows them literally (no HTML, pings or
+@@ -139,7 +134,7 @@ def safe(text: str) -> str:
+ def _prose(text: str) -> str:
+     """The table in `safe`, for text outside code spans."""
+     text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+-    text = unref(text).replace("://", ":\u200b//").replace("www.", "www\u200b.")
++    text = unref(text).replace("www.", "www\u200b.")
+     return text.replace("![", "!\\[").replace("](", "]\\(")
+ 
+ 
+diff --git a/tests/test_pr.py b/tests/test_pr.py
+index 164e0db..f8393da 100644
+--- a/tests/test_pr.py
++++ b/tests/test_pr.py
+@@ -109,11 +109,9 @@ def test_playground_tiers_cover_every_named_component() -> None:
+ def test_safe_neutralises_mentions_refs_html_and_images() -> None:
+     text = safe("cc @octocat, see #12 and o/r#3 <img src=x> ![p](http://t/x.png)")
+     assert "@octocat" not in text and "@​octocat" in text
+-    assert "#12" not in text and "o/r#3" not in text
+     assert "<img" not in text and "&lt;img" in text
+     assert "![" not in text and "](" not in text
+-    url = safe("https://github.com/o/r/issues/3 or www.x.org")
+-    assert "://" not in url and "www." not in url
++    assert "www." not in safe("or www.x.org")
+ 
+ 
+ def test_safe_leaves_code_spans_as_written() -> None:
+@@ -147,7 +145,7 @@ def test_draft_body_carries_the_evidence(tmp_path: Path) -> None:
+         agent=agent,
+     )
+     pr = draft(
+-        issue_title="Title says @someone #4",
++        issue_title="Title says @someone",
+         spec=spec("src/a.ts", "src/c.ts"),
+         result=result,
+         tests=AGENT_RULES.tests,
+@@ -156,7 +154,7 @@ def test_draft_body_carries_the_evidence(tmp_path: Path) -> None:
+         review=got,
+     )
+     body = pr.body
+-    assert pr.title == "Fix #1: Title says @​someone #​4"
++    assert pr.title == "Fix #1: Title says @​someone"
+     assert body.startswith("Fixes #1.\n")
+     assert "**Risk: high** (src)" in body
+     assert "**Review: approved.** Fine but &lt;b&gt;extra&lt;/b&gt;." in body

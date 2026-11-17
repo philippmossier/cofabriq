@@ -24,6 +24,7 @@ from cofabriq.issues import tickets as tickets_mod
 from cofabriq.issues import triage as triage_mod
 from cofabriq.issues import vectors
 from cofabriq.issues.fetch import fetch_created, fetch_issues, fetch_open, load_issues
+from cofabriq.issues.model import parse_key
 from cofabriq.loop import onboard as onboard_mod
 from cofabriq.map import impact as impact_mod
 from cofabriq.steps import Steps
@@ -137,6 +138,28 @@ def ticket_new(
     typer.echo(
         f"-> cofabriq flow start {ticket.key} --repo {target} --type {found.type}"
     )
+
+
+@ticket_app.command("close")
+def ticket_close(key: str, repo: str | None = None) -> None:
+    """Close a local ticket (`L1`) as completed; a GitHub issue is closed on
+    GitHub."""
+    settings = get_settings()
+    target = target_repo(repo)
+    try:
+        source, number = parse_key(key)
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    if source == "github":
+        typer.echo(f"#{number} is a GitHub issue: close it on GitHub", err=True)
+        raise typer.Exit(code=1)
+    found = tickets_mod.close_ticket(settings.tickets_dir, target, number)
+    if found is None:
+        typer.echo(f"no local ticket {key} for {target}", err=True)
+        raise typer.Exit(code=1)
+    ticket, closed = found
+    typer.echo(f"{ticket.key} closed" if closed else f"{ticket.key} is closed already")
 
 
 @app.command()

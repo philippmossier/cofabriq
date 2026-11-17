@@ -1,0 +1,63 @@
+diff --git a/src/cofabriq/files.py b/src/cofabriq/files.py
+index bc04714..25bcd3e 100644
+--- a/src/cofabriq/files.py
++++ b/src/cofabriq/files.py
+@@ -43,13 +43,15 @@ def newest_by_key[T](
+     """Key -> its newest value over the `{key: value}` files `glob` matches
+     in `folder` (stamped names sort by time). Newest file first, and a value
+     is parsed only if its key is new: superseded entries in an older format
+-    are never read. A value `keep` refuses never shadows an older one."""
++    are never read. `keep` drops a value from the result."""
+     newest: dict[str, T] = {}
++    seen: set[str] = set()
+     for path in sorted(folder.glob(glob), reverse=True):
+         stored: dict[str, object] = json.loads(path.read_text("utf-8"))
+         for key, raw in stored.items():
+-            if key in newest:
++            if key in seen:
+                 continue
++            seen.add(key)
+             value = adapter.validate_python(raw)
+             if keep(value):
+                 newest[key] = value
+diff --git a/tests/test_files.py b/tests/test_files.py
+index 3f9f13f..750d1b3 100644
+--- a/tests/test_files.py
++++ b/tests/test_files.py
+@@ -30,12 +30,6 @@ def test_a_superseded_entry_is_never_parsed(tmp_path: Path) -> None:
+     assert newest_by_key(tmp_path, "eval-*.json", _ints) == {"a": 2}
+ 
+ 
+-def test_a_refused_value_never_shadows_an_older_one(tmp_path: Path) -> None:
+-    (tmp_path / "eval-20261018T100000.json").write_text('{"a": 1}')
+-    (tmp_path / "eval-20261018T110000.json").write_text('{"a": 0}')
+-    assert newest_by_key(tmp_path, "eval-*.json", _ints, keep=bool) == {"a": 1}
+-
+-
+ def test_an_atomic_write_leaves_no_temp_file(tmp_path: Path) -> None:
+     path = tmp_path / "cache" / "verdicts.json"
+     write_atomic(path, b"[1]")
+diff --git a/tests/test_kill_switch.py b/tests/test_kill_switch.py
+index d29efdb..dac2249 100644
+--- a/tests/test_kill_switch.py
++++ b/tests/test_kill_switch.py
+@@ -126,19 +126,3 @@ def test_a_failed_run_still_counts_against_the_budget(tmp_path: Path) -> None:
+     with pytest.raises(AgentError):
+         Guarded(a, guard)("p", SCHEMA, tmp_path)
+     assert guard.spent_usd == 0.7
+-
+-
+-def test_a_halted_run_never_shadows_an_older_result(tmp_path: Path) -> None:
+-    from cofabriq.eval.loop import Judged
+-    from cofabriq.eval.review import load_runs
+-    from tests.builders import loop_result
+-
+-    old = Judged(result=loop_result("green", 1, ["src/a.ts"]))
+-    new = Judged(result=loop_result("halted", 0, []))
+-    (tmp_path / "eval-20261018T100000.json").write_text(
+-        json.dumps({"bug": old.model_dump(mode="json")})
+-    )
+-    (tmp_path / "eval-20261018T110000.json").write_text(
+-        json.dumps({"bug": new.model_dump(mode="json")})
+-    )
+-    assert load_runs(tmp_path, "eval")["bug"].result.status == "green"

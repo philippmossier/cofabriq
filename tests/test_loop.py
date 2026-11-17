@@ -1,4 +1,6 @@
 import json
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from cofabriq.eval.bugs import PlantedBug, load_bugs, planted_for
@@ -16,7 +18,7 @@ from cofabriq.loop.run import (
     reproduce_prompt,
     run_loop,
 )
-from cofabriq.loop.sandbox import Podman, Ran, tail
+from cofabriq.loop.sandbox import Podman, Ran, holding, tail
 from cofabriq.loop.worktree import remove_worktree
 from tests.builders import AGENT_RULES, REPRO, RULES, loop_result, setup, spec
 from tests.fakes import Edit, EditingAgent, HostSandbox, both, loop, write
@@ -106,6 +108,25 @@ def test_podman_mounts_only_the_worktree_and_cuts_network() -> None:
     assert [m for m in mounts if m.startswith("/")] == ["/w:/app"]
     on = sandbox.command("pnpm install", Path("/w"), network=True)
     assert on[on.index("--network") + 1] == "bridge"
+
+
+def test_an_install_runs_alone_checks_side_by_side(tmp_path: Path) -> None:
+    # Nov 17: parallel installs of uv into the shared cache collided, then an
+    # install replaced uv while another worktree's check ran it
+    lock = tmp_path / "cache.lock"
+    sandbox = Podman(image="x", binary="true", lock=lock)  # `true` ignores argv
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        with holding(lock, alone=False):  # a check is running
+            assert sandbox("pytest", tmp_path, network=False).ok
+            install = pool.submit(sandbox, "uv sync", tmp_path, network=True)
+            time.sleep(0.3)
+            assert not install.done()
+        assert install.result(timeout=10).ok
+        with holding(lock, alone=True):  # an install is running
+            check = pool.submit(sandbox, "pytest", tmp_path, network=False)
+            time.sleep(0.3)
+            assert not check.done()
+        assert check.result(timeout=10).ok
 
 
 def test_tail_strips_colour_and_keeps_the_end() -> None:

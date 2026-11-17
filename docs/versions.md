@@ -4,6 +4,39 @@ One real example per version, newest first. Release notes:
 [GitHub releases](https://github.com/philippmossier/cofabriq/releases);
 numbers: [evals](evals.md).
 
+## Your own repo, read-only (0.9)
+
+Until 0.8 cofabriq ran on one demo app, with a target file written by hand,
+issues from GitHub and a draft PR that needed a write token. Now it runs on
+a repo it has never seen, with no token at all. The first one was cofabriq
+itself:
+
+1. **Add a repo.** The path of the clone, then one agent session proposed
+   the config, each command with the file and line it came from:
+
+   ```text
+   ok      install: .github/workflows/check.yml: - run: uv sync --locked
+   ok      check lint: Makefile: uv run ruff check .
+   ok      check types: Makefile: uv run pyright
+   ok      check test: Makefile: uv run pytest
+   ```
+
+   Two edits by hand (the UI checks out; `CI=` before pytest, so database
+   tests skip in the sandbox), then Check: the install, every check green,
+   and a canary test that must fail and one that must pass.
+2. **A local ticket**, never on GitHub: "ticket close: a local ticket can't
+   be closed". It said what was wanted and what to refuse, and the
+   readiness check read it as a feature.
+3. **Start** under Issues: plan gate, test gate, build, review. Approved
+   on the first try, 4.8 min and $1.64 (API list price) for 6 agent
+   sessions.
+4. **Take it.** The result came back as two commits by cofabriq, the test
+   first, on a branch in cofabriq's own copy. Nothing was written into my
+   folder or to GitHub; I fetched it, added the one test the reviewer
+   asked for, and pushed it myself.
+
+The same loop on 5 bugs planted in cofabriq: [evals](evals.md#the-loop-on-cofabriq-itself).
+
 ## A test you can judge, started from the browser (0.8)
 
 A green test only means something if it first failed for the reported

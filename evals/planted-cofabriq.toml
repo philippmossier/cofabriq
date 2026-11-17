@@ -1,0 +1,89 @@
+# Planted bugs in cofabriq itself (0.9): the loop on a real codebase of its
+# own size, not a demo app. The playground's sets saturated every stage;
+# what was left to test was a bigger repo, where finding the cause is the
+# work.
+#
+# The removed-set mechanism of playground/hard.toml: planted-cofabriq/
+# remove/<key>.patch, applied to the tip of main in the worktree only,
+# plants the bug and removes the test cases that would catch it; main's test
+# files are the hidden judge. Nothing is planted on main, nothing filed on
+# GitHub: the tickets live here. This file and its folder are in the repo
+# under test, so the worktree drops them with the plant (`eval/features.py`,
+# `remove`): the agent never sees the answer key.
+#
+#   halted-shadows        a shared helper (files.newest_by_key): a value
+#                         `keep` refuses still hides an older one; the
+#                         symptom is in the evals
+#   blocked-later-line    a regex flag (intake): only a body that is one
+#                         "Blocked by" line counts
+#   scope-after-comma     the scopes header is split without stripping:
+#                         only the first scope is read right
+#   stepper-test-reject   serve._phase: a rejected flow always ends at the
+#                         plan, a test rejected at the test gate too
+#   pr-backlinks          two places in pr.py: `#` refs and bare URLs are no
+#                         longer broken, so a PR body posts backlinks
+#
+# Both runs (Nov 17): the agent's pr-backlinks test also asks for `GH-5`
+# (`GH-7` the second time) to be broken. GitHub autolinks that form to an
+# issue and main leaves it: the test is stricter than the reference, and
+# main has the hole.
+#
+# Tickets describe the symptom only, as a user would: no file, no cause.
+# Fields as in playground/features.toml, plus `route = "bug"`; `files` is
+# the truth. Proved by `cofabriq eval feature-set --repo
+# philippmossier/cofabriq --features evals/planted-cofabriq.toml`.
+
+[[feature]]
+key = "halted-shadows"
+route = "bug"
+size = "S"
+files = ["src/cofabriq/files.py"]
+tests = ["tests/test_files.py", "tests/test_kill_switch.py"]
+title = "After a stop, eval review forgets the earlier green runs"
+body = """
+I ran `cofabriq eval loop` on the planted bugs, all of them green. Later I ran it again and stopped it halfway with `cofabriq stop`. Since then `cofabriq eval review` and `eval gate` list fewer right fixes: every bug whose second run was halted is gone, as if its first, green run had never happened. `cofabriq stop --clear` doesn't bring them back.
+"""
+
+[[feature]]
+key = "blocked-later-line"
+route = "bug"
+size = "S"
+files = ["src/cofabriq/loop/intake.py"]
+tests = ["tests/test_intake.py"]
+title = "intake says ready although the ticket is blocked"
+body = """
+Ticket #14 says, after a short description of the change, on its own line: "Blocked by #12". #12 is still open. `cofabriq intake 12 14` shows #14 as ready, and `cofabriq flow start 14` starts it right away.
+"""
+
+[[feature]]
+key = "scope-after-comma"
+route = "bug"
+size = "S"
+files = ["src/cofabriq/issues/token.py"]
+tests = ["tests/test_import.py"]
+title = "No warning for my gh token, although it can write"
+body = """
+I set GITHUB_TOKEN_FROM_GH=true. `gh auth status` lists my token's scopes as 'gist', 'read:org', 'repo', 'workflow'. The README says cofabriq warns when the token can write to my repositories, but `cofabriq serve --write` prints no warning, and `GET /api/github` says it can't write.
+"""
+
+[[feature]]
+key = "stepper-test-reject"
+route = "bug"
+size = "S"
+files = ["src/cofabriq/serve.py"]
+tests = ["tests/test_serve_flows.py"]
+title = "Rejecting the test shows the plan as rejected"
+body = """
+I approved the plan in the browser, then rejected the test at the test gate because it checked the wrong thing. On the flow page the stepper now marks Plan as the step where the flow ended, as if I had rejected the plan.
+"""
+
+[[feature]]
+key = "pr-backlinks"
+route = "bug"
+size = "M"
+files = ["src/cofabriq/loop/pr.py"]
+tests = ["tests/test_pr.py"]
+title = "cofabriq's draft PR shows up on other people's issues"
+body = """
+After `cofabriq run 83 --apply`, the draft PR's body quoted from the issue, which mentions the upstream ticket acme/widgets#212 and links an older bug by its full GitHub URL. Both of those issues now show "mentioned this pull request", in a repository we don't own. A PR body from cofabriq should never notify anyone.
+"""

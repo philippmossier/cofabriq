@@ -82,6 +82,55 @@ proposal), 94% of the cited commands quoted from their file.
   the dev, who pushes it), but a page that adds a repo should show that
   line, not bury it in notes.
 
+### The loop on cofabriq itself
+
+The 0.6 hard set left one question open: does a much bigger codebase make
+it harder? So 5 bugs were planted in cofabriq (`evals/planted-cofabriq.toml`,
+the removed-set format: a patch on main plants the bug and removes the
+test cases that would catch it, main's pytest files judge). Tickets
+describe the symptom as a user would ("intake says ready although the
+ticket is blocked"), in the file, never on GitHub. The set sits in the repo
+under test, so the worktree drops it with the plant: the agent never sees
+the answer key. `eval feature-set` proves it: 5/5, the own target's checks
+(ruff, pyright, pytest) green with the plant, the hidden tests red.
+
+| Ticket | Size | Refine: the fix's file | Loop |
+| --- | --- | --- | --- |
+| After a stop, eval review forgets the earlier green runs | S | first | resolved, first try |
+| intake says ready although the ticket is blocked | S | first | resolved, first try |
+| No warning for my gh token, although it can write | S | first | resolved, second try (a sandbox flake, below) |
+| Rejecting the test shows the plan as rejected | S | first | resolved, first try |
+| cofabriq's draft PR shows up on other people's issues | M | first (sized S) | resolved, first try; own test invalid on main |
+
+At `5cc783e`, a tip that contains the set, so the hiding was live (the
+worktree had no `evals/planted-cofabriq.toml`), 4 bugs at a time:
+`data/refine/features-20261117T164557.json` and
+`data/runs/features-20261117T164905.json`. **Resolved 5/5 on cofabriq**,
+first try 4/5, all in the reference's file, the agent's test valid on
+main 4/5; refine 24 s and $0.20 per bug, the loop 98 s and $0.22 per bug
+(list prices). An earlier run at `b5f2eb5`, before the set was on main,
+gave the same 5/5.
+
+- Not harder than the playground. Every spec named the cause with its line
+  in about 6 turns. The size of the repo didn't matter because its
+  CLAUDE.md maps every command to the module behind it, so a ticket that
+  names a command names the file. A codebase without that map is the
+  untested case.
+- The one invalid test is a real find: it asks for more than main does,
+  and main has the hole (the set's header says which; causes stay out of
+  every file the agent reads). Two runs, two different tests, the same
+  demand.
+- The runs found two faults of cofabriq's, not of the agent. Parallel
+  installs of uv into the one shared cache collided (4 of 5 bugs lost to
+  setup in the first run); with installs serialized, an install still
+  replaced uv while another worktree's check ran it (the second try
+  above). Now an install holds a host lock alone and every other command
+  shares it (`loop/sandbox.py`); the shared half came after this run and
+  is unit-tested, not rerun. And a test that read the set kept every
+  check red once the worktree dropped it: no test reads it now.
+- Not measured here: the review gate (`eval gate` takes the planted-repro
+  format only).
+
 ## 0.2: the loop on planted bugs
 
 The [playground](https://github.com/philippmossier/local-ai-chat-playground)

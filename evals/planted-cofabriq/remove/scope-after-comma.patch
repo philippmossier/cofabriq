@@ -1,0 +1,28 @@
+diff --git a/src/cofabriq/issues/token.py b/src/cofabriq/issues/token.py
+index ca5da99..8e95107 100644
+--- a/src/cofabriq/issues/token.py
++++ b/src/cofabriq/issues/token.py
+@@ -74,7 +74,7 @@ def scopes(
+     header = resp.headers.get("x-oauth-scopes")
+     if header is None:
+         return None
+-    return sorted(s.strip() for s in header.split(",") if s.strip())
++    return sorted(s for s in header.split(",") if s)
+ 
+ 
+ def access(source: TokenSource | None, listed: list[str] | None) -> Access:
+diff --git a/tests/test_import.py b/tests/test_import.py
+index 7de9126..35927c7 100644
+--- a/tests/test_import.py
++++ b/tests/test_import.py
+@@ -105,8 +105,8 @@ def scopes_of(headers: dict[str, str]) -> list[str] | None:
+ 
+ 
+ def test_a_token_that_can_write_is_named_one_that_cant_tell_is_not() -> None:
+-    gh = token.access("gh", scopes_of({"X-OAuth-Scopes": "gist, read:org, repo"}))
+-    assert (gh.scopes, gh.can_write) == (["gist", "read:org", "repo"], True)
++    gh = token.access("gh", scopes_of({"X-OAuth-Scopes": "repo"}))
++    assert (gh.scopes, gh.can_write) == (["repo"], True)
+     assert "can write to your repositories (scope repo)" in gh.warning
+ 
+     read = token.access("env", scopes_of({"X-OAuth-Scopes": "read:org"}))

@@ -1,14 +1,17 @@
-"""The removed features in the playground: the answer key for the feature
-route.
+"""Removed sets: the answer key for the feature route and for planted bugs
+that live only in a patch.
 
 `playground/features.toml` says per feature which files the reference
 changes and which test files judge it; `features/remove/<key>.patch` takes
 the feature out of the tip of main. See the header of features.toml for how
 the set was made. The tickets live there too, not on GitHub: `ticket` turns
-one into the `Issue` the loop takes.
+one into the `Issue` the loop takes. `evals/planted-cofabriq.toml` is a set
+on cofabriq itself: there the set is in the repo under test, so `remove`
+takes it out of the worktree with the plant.
 """
 
 import re
+import subprocess
 import tomllib
 from datetime import UTC, datetime
 from pathlib import Path
@@ -22,7 +25,13 @@ from cofabriq.git import git
 from cofabriq.issues.model import Issue
 from cofabriq.loop.engine import Agent
 from cofabriq.loop.refine import Refined, Route, refine
-from cofabriq.loop.run import CheckResult, LoopResult, LoopRules, repro_command
+from cofabriq.loop.run import (
+    CheckResult,
+    LoopResult,
+    LoopRules,
+    is_test,
+    repro_command,
+)
 from cofabriq.loop.sandbox import Sandbox
 from cofabriq.loop.worktree import (
     add_worktree,
@@ -62,9 +71,11 @@ def patched_files(patch: str) -> set[str]:
     return set(_PATCHED.findall(patch))
 
 
-def load_features(path: Path) -> list[Feature]:
+def load_features(path: Path, test_globs: list[str]) -> list[Feature]:
     """The `[[feature]]` list, checked against the removal patches: every
-    listed file and test file is one the patch changes."""
+    listed file and test file is one the patch changes, and every test file
+    one the target's `[loop] tests` globs match (a file the agent's own
+    test could be)."""
     features = _features_adapter.validate_python(
         tomllib.loads(path.read_text("utf-8"))["feature"]
     )
@@ -80,8 +91,8 @@ def load_features(path: Path) -> list[Feature]:
         if unlisted:
             names = ", ".join(sorted(unlisted))
             raise ValueError(f"{f.key}: not in the patch: {names}")
-        if not f.tests or not all(t.endswith(".test.ts") for t in f.tests):
-            raise ValueError(f"{f.key}: tests must be vitest files (.test.ts)")
+        if not f.tests or not all(is_test(t, test_globs) for t in f.tests):
+            raise ValueError(f"{f.key}: tests must be test files of the target")
     return features
 
 
@@ -108,12 +119,28 @@ def ticket(feature: Feature, repo: str) -> Issue:
     )
 
 
-def remove(worktree: Path, patch: Path) -> None:
+def answer_key(features_file: Path) -> list[str]:
+    """The set's own files (the toml and its folder of patches) as paths in
+    the repo that holds them; none outside a repo."""
+    try:
+        top = git(features_file.resolve().parent, "rev-parse", "--show-toplevel")
+    except subprocess.CalledProcessError:
+        return []
+    own = features_file.resolve().relative_to(Path(top.strip()).resolve())
+    return [own.as_posix(), own.with_suffix("").as_posix()]
+
+
+def remove(worktree: Path, features_file: Path, key: str) -> None:
     """Applies the removal and commits it in the (detached) worktree, so
-    every later diff against HEAD shows only the agent's work. The commit
-    stays local (the worktree is never pushed); its message says nothing
-    about the feature, since the agent may read the worktree."""
-    git(worktree, "apply", str(patch.resolve()))
+    every later diff against HEAD shows only the agent's work. When the
+    worktree is the repo that holds the set (cofabriq's own), the set goes
+    too: the agent reads the worktree, and the set names the cause. The
+    commit stays local (the worktree is never pushed); its message says
+    nothing about the feature."""
+    git(worktree, "apply", str(removal_path(features_file, key).resolve()))
+    hide = [p for p in answer_key(features_file) if (worktree / p).exists()]
+    if hide:
+        git(worktree, "rm", "-r", "-q", "--", *hide)
     commit_layer(worktree, "eval base")
 
 
@@ -159,7 +186,7 @@ def prove(
     proofs: list[Proof] = []
     for f in features:
         reset_hard(worktree, commit)
-        remove(worktree, removal_path(features_file, f.key))
+        remove(worktree, features_file, f.key)
         checks = [
             CheckResult.of(c.name, sandbox(c.cmd, worktree, network=False))
             for c in rules.checks
@@ -186,7 +213,7 @@ def refine_feature(
     loop, it lives only in the worktree)."""
     add_worktree(clone, worktree, commit)
     try:
-        remove(worktree, removal_path(features_file, feature.key))
+        remove(worktree, features_file, feature.key)
         refined = refine(
             ticket(feature, repo), worktree, agent, feature.route, testing=testing
         )
