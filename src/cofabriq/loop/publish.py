@@ -20,15 +20,14 @@ refused, git fails instead of falling back to the caller's own login.
 """
 
 import base64
-import re
 import subprocess
-import tempfile
 from pathlib import Path
 
 import httpx
 from pydantic import BaseModel
 
 from cofabriq.git import git, git_env
+from cofabriq.loop.handoff import branch_for, tree_of
 from cofabriq.targets import PLAYGROUND
 
 # the repos `--apply` may write to: the demo playground only
@@ -53,14 +52,10 @@ def check_writable(repo: str) -> None:
         raise PublishError(f"{repo} is not writable (only {', '.join(WRITABLE)})")
 
 
-BRANCH_PREFIX = "cofabriq/"  # every branch cofabriq pushes (intake reads it)
-
-
 def branch_name(number: int, title: str, sha: str) -> str:
     """`cofabriq/51-title-cut-too-early-1a2b3c4`: the issue title (untrusted)
-    reduced to [a-z0-9-]."""
-    slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")[:40].rstrip("-")
-    return f"{BRANCH_PREFIX}{number}-{slug or 'fix'}-{sha[:7]}"
+    reduced to [a-z0-9-]; the sha keeps it new on GitHub."""
+    return f"{branch_for(number, title)}-{sha[:7]}"
 
 
 def _git(clone: Path, *args: str, env: dict[str, str], stdin: str = "") -> str:
@@ -72,12 +67,11 @@ def _git(clone: Path, *args: str, env: dict[str, str], stdin: str = "") -> str:
 
 def commit_diff(clone: Path, base: str, diff: str, message: str) -> str:
     """A commit of `diff` applied to `base`, built in a throwaway index."""
-    with tempfile.TemporaryDirectory() as tmp:
-        env = git_env() | {"GIT_INDEX_FILE": str(Path(tmp) / "index")}
-        _git(clone, "read-tree", base, env=env)
-        _git(clone, "apply", "--cached", "-", env=env, stdin=diff)
-        tree = _git(clone, "write-tree", env=env)
-        return _git(clone, "commit-tree", tree, "-p", base, "-m", message, env=env)
+    try:
+        tree = tree_of(clone, base, diff)
+    except subprocess.CalledProcessError as e:
+        raise PublishError(f"git apply: {e.stderr.strip()[:500]}") from e
+    return _git(clone, "commit-tree", tree, "-p", base, "-m", message, env=git_env())
 
 
 def push_env(token: str) -> dict[str, str]:

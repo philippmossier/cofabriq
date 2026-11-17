@@ -290,5 +290,12 @@
       }
     }
   },
-  "trace": "877bcb0d38c3b9cc8b054c95c1ba2611"
+  "trace": "877bcb0d38c3b9cc8b054c95c1ba2611",
+  "handoff": {
+    "branch": "cofabriq/51-chat-title-is-cut-off-with-even-though-i",
+    "base": "50c141408e067f3a878ad49b131a40f583600034",
+    "commits": 2,
+    "patch": "philippmossier-local-ai-chat-playground-51-20261115T133809.patch",
+    "error": ""
+  }
 }

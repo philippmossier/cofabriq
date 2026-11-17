@@ -46,6 +46,7 @@ from cofabriq.loop.engine import (
     Guarded,
     stop_reason,
 )
+from cofabriq.loop.handoff import BRANCH_PREFIX
 from cofabriq.loop.sandbox import Podman
 from cofabriq.serve import build as build_api
 from cofabriq.serve_guard import new_token, write_token_file
@@ -235,7 +236,7 @@ def _blocker_issues(tickets: list[Issue]) -> dict[IssueRef, Issue]:
 def _open_prs(repo: str) -> list[int] | None:
     """cofabriq's open PRs in `repo`; None without a token (unknown)."""
     source = github(repo)
-    return None if source is None else source.open_pulls(publish_mod.BRANCH_PREFIX)
+    return None if source is None else source.open_pulls(BRANCH_PREFIX)
 
 
 def _api(

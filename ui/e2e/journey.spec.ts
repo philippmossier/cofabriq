@@ -94,7 +94,9 @@ test(`#${ISSUE} (${ROUTE}): Start, the gates, the result`, async ({ page }) => {
       await expect(page.getByRole("heading", { name: new RegExp(`^${part}`) })).toBeVisible();
     }
     await expect(page.getByRole("list", { name: "progress" }).locator('[aria-current="step"]')).toHaveText(/Plan/);
-    await expect(page.getByText("the lines the change touches")).toBeVisible();
+    // the colour legend shows only when a file has no sketch; a sketch says what it is
+    const legend = page.getByText("the lines the change touches");
+    await expect(legend.or(page.getByText(/^proposed by the agent, not run/)).first()).toBeVisible();
     await api(page, `/api/flows/${OWNER}/${NAME}/${ISSUE}`, "flow-at-plan-gate.json");
     state = await approve(page, "plan", 12);
   }

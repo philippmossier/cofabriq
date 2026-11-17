@@ -32,6 +32,7 @@ from tests.fakes import (
     deps,
     write,
 )
+from tests.gitrepo import git
 
 
 def run_graph(d: Deps, state: FlowState, *answers: GateAnswer) -> FlowState:
@@ -174,6 +175,12 @@ def test_feature_flow_pauses_twice_and_resumes_in_a_new_graph(tmp_path: Path) ->
     stored = json.loads(record)
     assert stored["result"] == state.result.model_dump(mode="json")  # before review
     assert "judge" not in stored  # no answer key: the key stays out
+    # the change to take: the test, then the change, on a branch in the clone
+    handoff = stored["handoff"]
+    assert handoff["commits"] == 2 and handoff["error"] == ""
+    assert (runs / f"{state.record}.patch").is_file()
+    files = git(d.clone, "show", "--name-only", "--format=", f"{handoff['branch']}~1")
+    assert files.split() == ["src/a.test.sh"]
     assert editor.roles == ["reproduce", "implement"]
     assert not (tmp_path / "work").exists() or not any((tmp_path / "work").iterdir())
 

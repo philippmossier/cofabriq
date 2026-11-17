@@ -232,6 +232,20 @@ export interface HTTPValidationError {
 }
 
 /**
+ * The change to take: a branch in cofabriq's own copy of the repo and
+ * the same commits as a patch. Nothing was written to the dev's folder.
+ */
+export interface HandoffView {
+  branch: string;
+  commits: number;
+  clone: string;
+  /** Run in your own folder: fetch the branch from cofabriq's copy and switch to it. */
+  fetch: string;
+  patch_url: string;
+  error: string;
+}
+
+/**
  * One stored issue, as the Issues page lists it.
  */
 export interface IssueRow {
@@ -431,6 +445,7 @@ export interface RunTrace {
   evidence: string[];
   trace: string;
   pr_url: string | null;
+  handoff: HandoffView | null;
 }
 
 export type SpecSummaryRoute = typeof SpecSummaryRoute[keyof typeof SpecSummaryRoute];

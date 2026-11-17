@@ -4,7 +4,8 @@ the built UI.
     data/refine/*.json   specs: {key: Refined}
     data/runs/*.json     runs:  {key: Judged} (eval-, features-, wrong-),
                                 [GateCase] (gate-), or one run record
-                                (<owner>-<name>-<n>-<stamp>.json, `run`)
+                                (<owner>-<name>-<n>-<stamp>.json, `run`),
+                                its change next to it (`.patch`)
     data/traces/         a flow's steps while and after it runs
                                 (`runsteps.py`), what each step got and gave
 
@@ -20,6 +21,7 @@ folder (no paths, no `..`).
 import importlib.metadata
 import json
 import re
+import shlex
 import subprocess
 from datetime import UTC, datetime
 from functools import cache
@@ -39,6 +41,7 @@ from cofabriq.issues.fetch import load_index, load_issue, load_issues
 from cofabriq.issues.model import Issue, check_repo
 from cofabriq.loop.gate import Gated
 from cofabriq.loop.graph import FlowRunner, FlowStatus, GateAnswer, Refused
+from cofabriq.loop.handoff import Handoff
 from cofabriq.loop.intake import not_ready
 from cofabriq.loop.onboard import unproven
 from cofabriq.loop.record import RunRecord
@@ -208,6 +211,21 @@ class RunSummary(BaseModel):
     made_at: datetime | None
 
 
+class HandoffView(BaseModel):
+    """The change to take: a branch in cofabriq's own copy of the repo and
+    the same commits as a patch. Nothing was written to the dev's folder."""
+
+    branch: str  # "" when git failed (`error`)
+    commits: int  # the test, then the change
+    clone: str  # cofabriq's copy the branch is in
+    fetch: str = Field(
+        description="Run in your own folder: fetch the branch from cofabriq's "
+        "copy and switch to it."
+    )
+    patch_url: str  # the same commits for `git am`; "" when git failed
+    error: str
+
+
 class RunTrace(RunSummary):
     commit: str
     red: Check | None
@@ -221,6 +239,7 @@ class RunTrace(RunSummary):
     evidence: list[str]  # screenshot URLs of the browser test after the change
     trace: str  # its steps: /api/traces/<trace>; "" for a run before traces
     pr_url: str | None  # the draft PR `run --apply` opened; None: dry run
+    handoff: HandoffView | None  # None: no draft (blocked, not reviewed, older run)
 
 
 class FlowSummary(BaseModel):
@@ -419,6 +438,7 @@ class _Stored(BaseModel):
     evidence: list[str] = []  # file names in the run's folder
     trace: str = ""  # the run's id in data/traces
     pr_url: str | None = None
+    handoff: Handoff | None = None
 
 
 def _runs_in(path: Path) -> list[_Stored]:
@@ -451,6 +471,7 @@ def _runs_in(path: Path) -> list[_Stored]:
             evidence=record.evidence,
             trace=record.trace,
             pr_url=_pr_url(record.published),
+            handoff=record.handoff,
         )
     ]
 
@@ -507,7 +528,24 @@ def _summary(s: _Stored, title: str) -> RunSummary:
     )
 
 
-def _trace(s: _Stored, title: str) -> RunTrace:
+def _handoff(s: _Stored, clones_dir: Path) -> HandoffView | None:
+    h = s.handoff
+    if h is None:
+        return None
+    clone = str(clone_dir(clones_dir, s.judged.result.repo).resolve())
+    b = shlex.quote(h.branch)
+    fetch = f"git fetch {shlex.quote(clone)} {b}:{b} && git switch {b}"
+    return HandoffView(
+        branch=h.branch,
+        commits=h.commits,
+        clone=clone,
+        fetch=fetch if h.branch else "",
+        patch_url=f"/api/patches/{s.file}" if h.patch else "",
+        error=h.error,
+    )
+
+
+def _trace(s: _Stored, title: str, clones_dir: Path) -> RunTrace:
     r = s.judged.result
     rounds: list[ReviewRound] = []
     if s.gated is not None:
@@ -552,6 +590,7 @@ def _trace(s: _Stored, title: str) -> RunTrace:
         evidence=[f"/api/runs/{s.file}/evidence/{n}" for n in s.evidence],
         trace=s.trace,
         pr_url=s.pr_url,
+        handoff=_handoff(s, clones_dir),
     )
 
 
@@ -679,8 +718,23 @@ def build(
     def run(file: str, key: str) -> RunTrace:
         for s in _runs_in(_file(runs_dir, file)):
             if s.key == key:
-                return _trace(s, title(s))
+                return _trace(s, title(s), clones_dir)
         raise HTTPException(status_code=404, detail="no such run")
+
+    @app.get("/api/patches/{file}", include_in_schema=False)
+    def patch(file: str) -> FileResponse:
+        """A run's change as a patch to download, only the one its record
+        names. Agent-written text: sent as an attachment, never shown."""
+        names = [s.handoff.patch for s in _runs_in(_file(runs_dir, file)) if s.handoff]
+        name = names[0] if names else ""
+        if not _NAME.match(name) or not (runs_dir / name).is_file():
+            raise HTTPException(status_code=404, detail="no patch for this run")
+        return FileResponse(
+            runs_dir / name,
+            media_type="text/x-diff",
+            filename=name,
+            headers={"X-Content-Type-Options": "nosniff"},
+        )
 
     @app.get("/api/traces/{run}", response_model=StepTree)
     def trace(run: str) -> StepTree:

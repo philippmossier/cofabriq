@@ -62,7 +62,13 @@ from cofabriq.loop import refine as refine_mod
 from cofabriq.loop.engine import Agent, AgentError, Guard, Halted
 from cofabriq.loop.intake import not_ready
 from cofabriq.loop.lessons import log_rejection
-from cofabriq.loop.record import RunRecord, draft_for, sentinel_for, write_record
+from cofabriq.loop.record import (
+    RunRecord,
+    draft_for,
+    handoff_for,
+    sentinel_for,
+    write_record,
+)
 from cofabriq.loop.run import (
     FEATURE,
     INSTRUCTIONS,
@@ -385,8 +391,8 @@ def build_graph(deps: Deps) -> StateGraph[FlowState]:
 
     def record(s: FlowState) -> dict[str, object]:
         """The run in data/runs: the loop's result (before review), the
-        gate, the judge's verdicts (a hook), the draft PR body unless
-        blocked or not reviewed."""
+        gate, the judge's verdicts (a hook); unless blocked or not
+        reviewed, the draft PR body and the change as a branch and a patch."""
         assert s.refined is not None and s.result is not None
         stem = f"{repo_slug(s.issue.repo)}-{s.issue.number}-{stamp()}"
         worktree = deps.worktree(s.issue)
@@ -416,6 +422,17 @@ def build_graph(deps: Deps) -> StateGraph[FlowState]:
                 rounds=s.gated.rounds,
                 route=s.route,
                 evidence=len(evidence),
+            )
+            # the change to take: a branch in cofabriq's clone and a patch
+            out.handoff = handoff_for(
+                deps.clone,
+                deps.runs_dir / f"{stem}.patch",
+                number=s.issue.number,
+                issue_title=s.issue.title,
+                result=s.gated.result,
+                title=out.draft.title,
+                problem=s.refined.spec.problem,
+                tests=deps.rules.tests,
             )
         write_record(deps.runs_dir, stem, out)
         return {"record": stem}

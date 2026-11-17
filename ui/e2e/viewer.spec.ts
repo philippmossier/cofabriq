@@ -58,6 +58,26 @@ test("an approval with open concerns leads with them", async ({ page }) => {
   await expect(card.getByText("src/lib/engine/fake-worker.ts:44")).toBeVisible();
   // no answer key on a real issue: no judge verdicts in the header
   await expect(page.getByText("judge", { exact: true })).toHaveCount(0);
+  // recorded before there was a branch to take: no row for it
+  await expect(page.getByTestId("take-it")).toHaveCount(0);
+});
+
+test("Take it: a branch to fetch from cofabriq's copy, or the patch; your folder untouched", async ({ page }) => {
+  await page.goto(`/runs/${R51}/51`);
+
+  const take = page.getByTestId("take-it");
+  const branch = "cofabriq/51-chat-title-is-cut-off-with-even-though-i";
+  await expect(take.locator("code").first()).toHaveText(
+    new RegExp(`^git fetch '?/.*/philippmossier-local-ai-chat-playground'? ${branch}:${branch} && git switch ${branch}$`),
+  );
+  await expect(take.getByRole("button", { name: "Copy the command" })).toBeVisible();
+  await expect(take).toContainText("Two commits, the test first");
+  await expect(take).toContainText("cofabriq wrote nothing into your folder");
+
+  const href = await take.getByRole("link", { name: "download the patch" }).getAttribute("href");
+  const patch = await page.request.get(href!);
+  expect(patch.headers()["content-disposition"]).toContain("attachment");
+  expect((await patch.text()).match(/^Subject: \[PATCH \d\/2\]/gm)).toHaveLength(2);
 });
 
 test("the diff is per file, with line numbers and a new file marked", async ({ page }) => {

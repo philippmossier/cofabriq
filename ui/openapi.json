@@ -1254,6 +1254,46 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "HandoffView": {
+        "properties": {
+          "branch": {
+            "type": "string",
+            "title": "Branch"
+          },
+          "commits": {
+            "type": "integer",
+            "title": "Commits"
+          },
+          "clone": {
+            "type": "string",
+            "title": "Clone"
+          },
+          "fetch": {
+            "type": "string",
+            "title": "Fetch",
+            "description": "Run in your own folder: fetch the branch from cofabriq's copy and switch to it."
+          },
+          "patch_url": {
+            "type": "string",
+            "title": "Patch Url"
+          },
+          "error": {
+            "type": "string",
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "branch",
+          "commits",
+          "clone",
+          "fetch",
+          "patch_url",
+          "error"
+        ],
+        "title": "HandoffView",
+        "description": "The change to take: a branch in cofabriq's own copy of the repo and\nthe same commits as a patch. Nothing was written to the dev's folder."
+      },
       "IssueRow": {
         "properties": {
           "number": {
@@ -1932,6 +1972,16 @@
               }
             ],
             "title": "Pr Url"
+          },
+          "handoff": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HandoffView"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -1959,7 +2009,8 @@
           "sentinel",
           "evidence",
           "trace",
-          "pr_url"
+          "pr_url",
+          "handoff"
         ],
         "title": "RunTrace"
       },

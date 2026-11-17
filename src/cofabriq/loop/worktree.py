@@ -9,13 +9,11 @@ import shutil
 import threading
 from pathlib import Path
 
-from cofabriq.git import git, tracked
+from cofabriq.git import AS_COFABRIQ, git, tracked
 
 # git keeps worktree bookkeeping in the clone's .git: parallel runs (eval)
 # add and remove their worktrees one at a time
 _worktrees = threading.Lock()
-
-_COFABRIQ = ["-c", "user.name=cofabriq", "-c", "user.email=cofabriq@localhost"]
 
 
 def add_worktree(clone: Path, path: Path, commit: str) -> None:
@@ -119,7 +117,7 @@ def commit_layer(worktree: Path, message: str) -> None:
     git(worktree, "add", "-A")
     git(
         worktree,
-        *_COFABRIQ,
+        *AS_COFABRIQ,
         "commit",
         "-q",
         "--no-verify",

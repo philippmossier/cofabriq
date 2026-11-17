@@ -4,6 +4,9 @@ import os
 import subprocess
 from pathlib import Path
 
+# the identity of every commit cofabriq makes itself (layers, the handoff)
+AS_COFABRIQ = ("-c", "user.name=cofabriq", "-c", "user.email=cofabriq@localhost")
+
 
 def git_env() -> dict[str, str]:
     """The environment for git on a target repo: without the caller's
