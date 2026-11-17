@@ -17,6 +17,7 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from cofabriq import llm
+from cofabriq.files import write_atomic
 from cofabriq.issues import readiness
 from cofabriq.issues import triage as triage_mod
 from cofabriq.issues.fetch import issue_dir, load_issue
@@ -98,6 +99,31 @@ def _ticket(repo: str, number: int, title: str, body: str, at: datetime) -> Issu
 def load_ticket(tickets_dir: Path, repo: str, number: int) -> Issue | None:
     path = ticket_dir(tickets_dir, repo) / f"L{number}.json"
     return Issue.model_validate_json(path.read_bytes()) if path.is_file() else None
+
+
+def close_ticket(
+    tickets_dir: Path, repo: str, number: int, now: datetime | None = None
+) -> tuple[Issue, bool] | None:
+    """Mark a ticket closed as completed. None when there is no such ticket;
+    otherwise the ticket and whether this call closed it (False: it was
+    closed already, the file untouched)."""
+    ticket = load_ticket(tickets_dir, repo, number)
+    if ticket is None:
+        return None
+    if ticket.state == "closed":
+        return ticket, False
+    at = now or datetime.now(UTC)
+    closed = ticket.model_copy(
+        update={
+            "state": "closed",
+            "state_reason": "completed",
+            "closed_at": at,
+            "updated_at": at,
+        }
+    )
+    path = ticket_dir(tickets_dir, repo) / f"L{number}.json"
+    write_atomic(path, closed.model_dump_json(indent=2).encode())
+    return closed, True
 
 
 def load_tickets(tickets_dir: Path, repo: str) -> list[Issue]:

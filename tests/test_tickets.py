@@ -2,15 +2,22 @@
 the loop does differently for one (no GitHub link, no `Fixes #`)."""
 
 import json
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from typer.testing import CliRunner, Result
 
+from cofabriq.cli import app
+from cofabriq.cli import issues as cli_issues
+from cofabriq.config import Settings
 from cofabriq.issues import readiness
+from cofabriq.issues import tickets as tickets_mod
 from cofabriq.issues.model import Issue, IssueRef, key_label, parse_key, ticket_key
 from cofabriq.issues.readiness import Evidence
-from cofabriq.issues.tickets import check, find, load_tickets, new_ticket
+from cofabriq.issues.tickets import check, find, load_ticket, load_tickets, new_ticket
 from cofabriq.issues.triage import Fields, IssueType
 from cofabriq.llm import Usage
 from cofabriq.loop import lessons
@@ -161,3 +168,121 @@ def test_records_specs_and_rejections_from_before_local_tickets_still_load(
     found = lessons.collect(tmp_path / "runs", tmp_path, REPO)
 
     assert [s.where for s in found] == ["#7 t", "L2 t"]
+
+
+@pytest.fixture
+def close_in(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Callable[[str], Result]:
+    """`ticket close <key> --repo acme/app` on a tickets dir in tmp_path."""
+    settings = Settings(tickets_dir=tmp_path)
+    monkeypatch.setattr(cli_issues, "get_settings", lambda: settings)
+
+    def close(key: str) -> Result:
+        return CliRunner().invoke(app, ["ticket", "close", key, "--repo", REPO])
+
+    return close
+
+
+def test_ticket_close_closes_a_local_ticket(
+    tmp_path: Path, close_in: Callable[[str], Result]
+) -> None:
+    made = new_ticket(tmp_path, REPO, "t", "", now=datetime(2026, 1, 1, tzinfo=UTC))
+
+    out = close_in("L1")
+
+    assert out.exit_code == 0, out.output
+    assert "L1" in out.output
+    closed = load_ticket(tmp_path, REPO, 1)
+    assert closed is not None
+    assert (closed.state, closed.state_reason) == ("closed", "completed")
+    assert closed.closed_at is not None
+    assert closed.closed_at == closed.updated_at
+    assert closed.closed_at >= made.created_at
+    assert closed.created_at == made.created_at
+
+
+def test_ticket_close_refuses_a_github_key(
+    tmp_path: Path, close_in: Callable[[str], Result]
+) -> None:
+    out = close_in("51")
+
+    assert out.exit_code == 1
+    assert out.output.strip()
+    assert [p for p in tmp_path.rglob("*") if p.is_file()] == []
+
+
+@pytest.mark.parametrize("key", ["../1", "l2", "L01", "L"])
+def test_ticket_close_refuses_a_key_of_neither_form(
+    tmp_path: Path, close_in: Callable[[str], Result], key: str
+) -> None:
+    out = close_in(key)
+
+    assert out.exit_code == 1
+    assert "not a ticket key (51 or L3)" in out.output
+    assert [p for p in tmp_path.rglob("*") if p.is_file()] == []
+
+
+def test_ticket_close_says_when_there_is_no_such_ticket(
+    tmp_path: Path, close_in: Callable[[str], Result]
+) -> None:
+    new_ticket(tmp_path, REPO, "t", "")
+
+    out = close_in("L2")
+
+    assert out.exit_code == 1
+    assert "L2" in out.output
+    assert not (tmp_path / "acme" / "app" / "L2.json").exists()
+
+
+def test_closing_twice_changes_nothing_the_second_time(
+    tmp_path: Path, close_in: Callable[[str], Result]
+) -> None:
+    new_ticket(tmp_path, REPO, "t", "")
+    assert close_in("L1").exit_code == 0
+    path = tmp_path / "acme" / "app" / "L1.json"
+    before = path.read_bytes()
+
+    again = close_in("L1")
+
+    assert again.exit_code == 0, again.output
+    assert "closed already" in again.output
+    assert path.read_bytes() == before
+
+
+def test_closing_one_ticket_leaves_the_others_open(
+    tmp_path: Path, close_in: Callable[[str], Result]
+) -> None:
+    new_ticket(tmp_path, REPO, "first", "")
+    new_ticket(tmp_path, REPO, "second", "")
+
+    assert close_in("L1").exit_code == 0
+
+    assert [(t.key, t.state) for t in load_tickets(tmp_path, REPO)] == [
+        ("L1", "closed"),
+        ("L2", "open"),
+    ]
+
+
+def test_close_ticket_returns_the_ticket_and_whether_this_call_closed_it(
+    tmp_path: Path,
+) -> None:
+    close_ticket: Callable[..., tuple[Issue, bool] | None] = vars(tickets_mod)[
+        "close_ticket"
+    ]
+    new_ticket(tmp_path, REPO, "t", "", now=datetime(2026, 1, 1, tzinfo=UTC))
+    at = datetime(2026, 2, 1, tzinfo=UTC)
+
+    first = close_ticket(tmp_path, REPO, 1, now=at)
+    later = datetime(2026, 3, 1, tzinfo=UTC)
+    second = close_ticket(tmp_path, REPO, 1, now=later)
+
+    assert first is not None and second is not None
+    assert (first[0].state, first[0].closed_at, first[0].updated_at, first[1]) == (
+        "closed",
+        at,
+        at,
+        True,
+    )
+    assert (second[0].closed_at, second[1]) == (at, False)
+    assert close_ticket(tmp_path, REPO, 2) is None
