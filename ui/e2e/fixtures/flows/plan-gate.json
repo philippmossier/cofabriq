@@ -2,6 +2,8 @@
   "thread": "philippmossier/local-ai-chat-playground#51",
   "repo": "philippmossier/local-ai-chat-playground",
   "number": 51,
+  "ticket": "51",
+  "url": "https://github.com/philippmossier/local-ai-chat-playground/issues/51",
   "title": "Chat title is cut off with \"…\" even though it fits",
   "route": "bug",
   "waiting": "plan",

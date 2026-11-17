@@ -45,7 +45,11 @@ def blockers(issue: Issue) -> list[IssueRef]:
     return list(dict.fromkeys(r for r in found if r != _ref(issue)))
 
 
-def _ref(issue: Issue) -> IssueRef:
+def _ref(issue: Issue) -> IssueRef | None:
+    """The issue as a ref names it; None for a local ticket (a ref is
+    always GitHub's: L3 blocked by #3 is not blocked by itself)."""
+    if issue.source == "local":
+        return None
     return IssueRef(repo=issue.repo, number=issue.number)
 
 
@@ -54,7 +58,7 @@ def done(issue: Issue) -> bool:
 
 
 class Slice(BaseModel):
-    number: int
+    key: str  # `51` or `L3`
     title: str
     state: State
     reason: str  # why it can't start; empty when ready or done
@@ -69,7 +73,7 @@ def slices(
     out: list[Slice] = []
     for t in tickets:
         if done(t):
-            out.append(Slice(number=t.number, title=t.title, state="done", reason=""))
+            out.append(Slice(key=t.key, title=t.title, state="done", reason=""))
             continue
         open_blockers = [b for b in blockers(t) if b not in known or not done(known[b])]
         if open_blockers:
@@ -80,7 +84,7 @@ def slices(
             state, reason = "waiting", f"cofabriq's PR {prs} is still open"
         else:
             state, reason = "ready", ""
-        out.append(Slice(number=t.number, title=t.title, state=state, reason=reason))
+        out.append(Slice(key=t.key, title=t.title, state=state, reason=reason))
     return out
 
 

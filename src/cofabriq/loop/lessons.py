@@ -20,7 +20,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 
-from cofabriq.issues.model import Issue
+from cofabriq.issues.model import Issue, key_label
 from cofabriq.loop.engine import Agent, AgentRun
 from cofabriq.loop.gate import Gated
 from cofabriq.loop.record import RunRecord
@@ -86,6 +86,7 @@ def log_rejection(
         "at": datetime.now(UTC).isoformat(timespec="seconds"),
         "repo": issue.repo,
         "number": issue.number,
+        "key": issue.key,
         "title": issue.title,
         "route": route,
         "gate": gate,
@@ -117,7 +118,8 @@ def collect(runs_dir: Path, lessons_dir: Path, repo: str) -> list[Signal]:
             r = json.loads(line)
             kind: Kind = "rejected plan" if r["gate"] == "plan" else "rejected test"
             text = r["reason"] or "(no reason given)"
-            raw.append((kind, f"#{r['number']} {r['title']}", text, rejections.name))
+            key = key_label(r.get("key") or str(r["number"]))  # no key: older lines
+            raw.append((kind, f"{key} {r['title']}", text, rejections.name))
     return [
         Signal(id=f"s{n}", kind=k, where=w, text=t, source=src)
         for n, (k, w, t, src) in enumerate(raw, 1)

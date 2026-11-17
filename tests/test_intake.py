@@ -42,8 +42,8 @@ def test_slice_states() -> None:
         blocked(6, native=[99]),  # blocker unknown: open
     ]
     known = issues_by_ref(closed, tickets[1])
-    states = [(s.number, s.state) for s in slices(tickets, known, [])]
-    assert states == [(1, "done"), (3, "ready"), (4, "blocked"), (6, "blocked")]
+    states = [(s.key, s.state) for s in slices(tickets, known, [])]
+    assert states == [("1", "done"), ("3", "ready"), ("4", "blocked"), ("6", "blocked")]
     waiting = slices([tickets[1]], known, [40])[0]
     assert waiting.state == "waiting" and "#40" in waiting.reason
 

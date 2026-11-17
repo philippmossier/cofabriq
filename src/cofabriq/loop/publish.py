@@ -55,7 +55,7 @@ def check_writable(repo: str) -> None:
 def branch_name(number: int, title: str, sha: str) -> str:
     """`cofabriq/51-title-cut-too-early-1a2b3c4`: the issue title (untrusted)
     reduced to [a-z0-9-]; the sha keeps it new on GitHub."""
-    return f"{branch_for(number, title)}-{sha[:7]}"
+    return f"{branch_for(str(number), title)}-{sha[:7]}"
 
 
 def _git(clone: Path, *args: str, env: dict[str, str], stdin: str = "") -> str:

@@ -12,10 +12,11 @@ the built UI.
 The API returns its own response models, not the stored ones: a stored
 shape can change without changing the UI's contract (ADR-009). Everything
 is read per request from the files, nothing is cached. It binds to
-127.0.0.1 only. Every route reads, except two: with `--write`, the browser
-starts a flow and answers a paused flow's gate (`_flow_routes`), behind the
-token and the checks in `serve_guard`. File names in URLs must be files in the
-folder (no paths, no `..`).
+127.0.0.1 only. Every route reads, except three: with `--write`, the browser
+starts a flow and answers a paused flow's gate (`_flow_routes`) and writes a
+local ticket (`/api/tickets`), behind the token and the checks in
+`serve_guard`. File names in URLs must be files in the folder (no paths, no
+`..`); a ticket in a URL is a key (`51`, `L3`), checked by its pattern.
 """
 
 import importlib.metadata
@@ -26,9 +27,10 @@ import subprocess
 from datetime import UTC, datetime
 from functools import cache
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
 from fastapi import FastAPI, HTTPException
+from fastapi import Path as PathParam
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, JsonValue, TypeAdapter, ValidationError
@@ -37,8 +39,11 @@ from cofabriq import git as git_mod
 from cofabriq import runsteps, tracing
 from cofabriq.eval.loop import Judged
 from cofabriq.files import STAMP
-from cofabriq.issues.fetch import load_index, load_issue, load_issues
-from cofabriq.issues.model import Issue, check_repo
+from cofabriq.issues import tickets as tickets_mod
+from cofabriq.issues import triage as triage_mod
+from cofabriq.issues.fetch import load_index, load_issues
+from cofabriq.issues.model import KEY, Issue, Source, check_repo, ticket_key
+from cofabriq.issues.triage import IssueType, Triager
 from cofabriq.loop.gate import Gated
 from cofabriq.loop.graph import FlowRunner, FlowStatus, GateAnswer, Refused
 from cofabriq.loop.handoff import Handoff
@@ -58,6 +63,9 @@ _MAX_LINES = 80  # one snippet, however wide the range the spec names
 _STAMP = re.compile(r"(\d{8}T\d{6})")
 
 type RunKind = Literal["eval", "features", "wrong", "gate", "run"]
+# a ticket in a path, `51` or `L3`: anything else is a 422 before the route runs
+# (a plain alias: FastAPI reads `Annotated` metadata through it, not through `type`)
+TicketKey = Annotated[str, PathParam(pattern=KEY, description="`51` or `L3`.")]
 # a flow's parts as the browser shows them, in order (`_phase`)
 type Phase = Literal["spec", "plan", "test", "test_gate", "build", "review", "done"]
 
@@ -65,11 +73,17 @@ type Phase = Literal["spec", "plan", "test", "test_gate", "build", "review", "do
 # ---- the contract (what the UI sees) -----------------------------------------
 
 
+Ticket = Annotated[
+    str, Field(description="The ticket: `51` (GitHub's #51) or `L3` (a local one).")
+]
+
+
 class SpecSummary(BaseModel):
     file: str
     key: str
     repo: str
     number: int
+    ticket: Ticket
     route: Literal["bug", "feature"]
     size: str
     files: int
@@ -132,6 +146,7 @@ class SpecView(BaseModel):
     key: str
     repo: str
     number: int
+    ticket: Ticket
     commit: str
     route: Literal["bug", "feature"]
     size: str
@@ -202,6 +217,7 @@ class RunSummary(BaseModel):
     kind: RunKind
     repo: str
     number: int
+    ticket: Ticket
     title: str  # the issue's, from the store; "" for an eval or one not stored
     status: str  # the loop's status, or the gate's when it ran
     judge: bool | None  # hidden repro / reference tests green
@@ -248,6 +264,8 @@ class FlowSummary(BaseModel):
     thread: str
     repo: str
     number: int
+    ticket: Ticket
+    url: str | None = Field(description="The issue on GitHub; null: a local ticket.")
     title: str
     route: Literal["bug", "feature"]
     waiting: Literal["plan", "test"] | None
@@ -279,7 +297,7 @@ class FlowView(FlowSummary):
     proof: ProofNote | None
     unknown_paths: list[str]  # not in the repo at the commit: new files
     trace: str  # its steps so far: /api/traces/<trace>; "" untraced
-    record: str  # the finished run: /api/runs/<record>/<number>; "" before
+    record: str  # the finished run: /api/runs/<record>/<ticket>; "" before
 
 
 class CodeLines(BaseModel):
@@ -302,23 +320,26 @@ class StepTree(BaseModel):
 
 
 class Repo(BaseModel):
-    """A repo a flow can run on: an issue store and `[loop]` in its target
-    file."""
+    """A repo a flow can run on: `[loop]` in its target file, and stored
+    issues (`fetch-issues`) or local tickets."""
 
     repo: str
     issues: int
+    tickets: int = Field(description="Local tickets (L1, L2, ...).")
 
 
 class IssueRow(BaseModel):
-    """One stored issue, as the Issues page lists it."""
+    """One stored issue or local ticket, as the Issues page lists it."""
 
     number: int
+    ticket: Ticket
+    source: Source
     title: str
     state: str = Field(description="`open` or `closed`, as last fetched.")
     labels: list[str]
     comments: int
     updated_at: datetime
-    url: str = Field(description="The issue on GitHub.")
+    url: str | None = Field(description="The issue on GitHub; null: a local ticket.")
     flow: FlowSummary | None = Field(
         description="Its flow, where it waits or how it ended; null: none yet."
     )
@@ -353,6 +374,25 @@ class Answer(GateAnswer):
 
 class Answered(BaseModel):
     started: bool
+
+
+class NewTicket(BaseModel):
+    title: str = Field(min_length=1, max_length=tickets_mod.MAX_TITLE)
+    body: str = Field(default="", max_length=tickets_mod.MAX_BODY)
+    anyway: bool = Field(
+        default=False, description="Save it even when the check finds gaps."
+    )
+
+
+class TicketSaved(BaseModel):
+    """What the readiness read found, and the ticket if it was saved."""
+
+    type: IssueType = Field(description="How the check reads it: bug, feature, ...")
+    missing: list[str] = Field(description="What it lacks; empty: ready to run.")
+    cost_usd: float
+    saved: IssueRow | None = Field(
+        description="The new ticket; null: not saved (gaps, and not `anyway`)."
+    )
 
 
 # ---- reading the files ------------------------------------------------------
@@ -463,7 +503,7 @@ def _runs_in(path: Path) -> list[_Stored]:
     return [
         _Stored(
             file=file,
-            key=str(judged.result.number),
+            key=judged.result.key,
             kind="run",
             judged=judged,
             gated=record.gate,
@@ -518,6 +558,7 @@ def _summary(s: _Stored, title: str) -> RunSummary:
         kind=s.kind,
         repo=r.repo,
         number=r.number,
+        ticket=r.key,
         title=title,
         status=status,
         judge=None if s.judged.judge is None else s.judged.judge.ok,
@@ -609,11 +650,14 @@ def build(
     docs_dir: Path = runsteps.DOCS,
     issues_dir: Path = Path("data/issues"),
     targets_dir: Path = Path("targets"),
+    tickets_dir: Path = Path("data/tickets"),
+    triager: Triager | None = None,
 ) -> FastAPI:
     """The app over these folders. `ui_dir`: the built UI (`ui/dist`), served
     at `/` when it exists. `port`: the port it serves on; with it, the
     trust boundary (`serve_guard`: Host on every request, Origin + JSON +
-    `write_token` on anything that isn't a read) is installed."""
+    `write_token` on anything that isn't a read) is installed. `triager`:
+    the readiness read before a ticket is saved; None: no ticket is written."""
     app = FastAPI(
         title="cofabriq",
         version=importlib.metadata.version("cofabriq"),
@@ -651,6 +695,7 @@ def build(
                         key=key,
                         repo=r.repo,
                         number=r.number,
+                        ticket=ticket_key(r.source, r.number),
                         route=r.route,
                         size=r.spec.size,
                         files=len(r.spec.files),
@@ -673,6 +718,7 @@ def build(
             key=key,
             repo=found.repo,
             number=found.number,
+            ticket=ticket_key(found.source, found.number),
             commit=found.commit,
             route=found.route,
             size=s.size,
@@ -694,7 +740,9 @@ def build(
     def title(s: _Stored) -> str:
         """A run on an issue: the issue's title, if the store has it."""
         r = s.judged.result
-        found = load_issue(issues_dir, r.repo, r.number) if s.kind == "run" else None
+        if s.kind != "run":
+            return ""
+        found = tickets_mod.find(issues_dir, tickets_dir, r.repo, r.key)
         return found.title if found is not None else ""
 
     @app.get("/api/runs", response_model=list[RunSummary])
@@ -808,45 +856,87 @@ def build(
 
     @app.get("/api/repos", response_model=list[Repo])
     def repos() -> list[Repo]:
-        """The repos a flow can run on: an issue store (`fetch-issues`) and
-        `[loop]` in the target file, proven if the dev's own."""
+        """The repos a flow can run on: `[loop]` in the target file (proven
+        if the dev's own), and an issue store (`fetch-issues`) or local
+        tickets."""
         out: list[Repo] = []
-        for folder in sorted(issues_dir.glob("*/*")):
-            repo = f"{folder.parent.name}/{folder.name}"
-            if folder.is_dir() and _REPO.match(repo) and runnable(repo):
-                out.append(Repo(repo=repo, issues=len(load_index(folder))))
+        found = {
+            f"{folder.parent.name}/{folder.name}"
+            for root in (issues_dir, tickets_dir)
+            for folder in root.glob("*/*")
+            if folder.is_dir()
+        }
+        for repo in sorted(found):
+            if _REPO.match(repo) and runnable(repo):
+                owner, name = repo.split("/")
+                issues = len(load_index(issues_dir / owner / name))
+                tickets = len(tickets_mod.load_tickets(tickets_dir, repo))
+                out.append(Repo(repo=repo, issues=issues, tickets=tickets))
         return out
 
-    @app.get("/api/issues/{owner}/{name}", response_model=list[IssueRow])
-    def issues(owner: str, name: str) -> list[IssueRow]:
-        """A repo's stored issues, newest first. Read from data/issues, not
-        from GitHub: Start refreshes the one it starts."""
-        repo = runnable_repo(owner, name)
-        by_number: dict[int, FlowSummary] = {}
+    def flows_by_ticket(repo: str) -> dict[str, FlowSummary]:
+        out: dict[str, FlowSummary] = {}
         for t in flows.threads() if flows is not None else []:
             if t.startswith(f"{repo}#") and flows is not None:
                 status = flows.status(t)
                 if status is not None:
-                    by_number[status.state.issue.number] = _flow_summary(status)
-        found = sorted(
-            load_issues(issues_dir, repo), key=lambda i: i.number, reverse=True
-        )
-        return [_issue_row(i, by_number.get(i.number)) for i in found]
+                    out[status.state.issue.key] = _flow_summary(status)
+        return out
 
-    @app.get("/api/issues/{owner}/{name}/{number}", response_model=IssueView)
-    def issue(owner: str, name: str, number: int) -> IssueView:
-        """One stored issue with its text, as last fetched."""
+    @app.get("/api/issues/{owner}/{name}", response_model=list[IssueRow])
+    def issues(owner: str, name: str) -> list[IssueRow]:
+        """A repo's local tickets, then its stored issues, newest first. Read
+        from data/, not from GitHub: Start refreshes the one it starts."""
         repo = runnable_repo(owner, name)
-        found = load_issue(issues_dir, repo, number)
+        by_ticket = flows_by_ticket(repo)
+        found = [
+            *reversed(tickets_mod.load_tickets(tickets_dir, repo)),
+            *sorted(
+                load_issues(issues_dir, repo), key=lambda i: i.number, reverse=True
+            ),
+        ]
+        return [_issue_row(i, by_ticket.get(i.key)) for i in found]
+
+    @app.get("/api/issues/{owner}/{name}/{ticket}", response_model=IssueView)
+    def issue(owner: str, name: str, ticket: TicketKey) -> IssueView:
+        """One stored issue or local ticket with its text, as last fetched."""
+        repo = runnable_repo(owner, name)
+        found = tickets_mod.find(issues_dir, tickets_dir, repo, ticket)
         if found is None:
             raise HTTPException(status_code=404, detail="no such issue")
-        thread = f"{check_repo(repo)}#{number}"
+        thread = f"{check_repo(repo)}#{ticket}"
         status = flows.status(thread) if flows is not None else None
         flow = _flow_summary(status) if status is not None else None
         return IssueView(**_issue_row(found, flow).model_dump(), body=found.body)
 
-    if flows is not None:
+    if flows is not None:  # the write server: flows and tickets
         _flow_routes(app, flows)
+
+        @app.post("/api/tickets/{owner}/{name}", response_model=TicketSaved)
+        def ticket_new(owner: str, name: str, new: NewTicket) -> TicketSaved:
+            """Write a local ticket: one LLM call reads it first and says what
+            is missing (it fills nothing in); with gaps it is saved only with
+            `anyway`. Never sent to GitHub. Paid (about $0.001)."""
+            repo = runnable_repo(owner, name)
+            if triager is None:
+                raise HTTPException(status_code=503, detail="no OPENAI_API_KEY")
+            components = triage_mod.load_components(targets_dir, repo)
+            try:
+                found = tickets_mod.check(
+                    repo, new.title, new.body, components, triager
+                )
+                saved = None
+                if not found.missing or new.anyway:
+                    t = tickets_mod.new_ticket(tickets_dir, repo, new.title, new.body)
+                    saved = _issue_row(t, None)
+            except ValueError as exc:  # a blank title once stripped
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+            return TicketSaved(
+                type=found.type,
+                missing=found.missing,
+                cost_usd=found.cost_usd,
+                saved=saved,
+            )
 
     if port is not None:
         guard(app, port, write_token, dev_origins=("http://127.0.0.1:5173",))
@@ -877,6 +967,8 @@ def _flow_summary(f: FlowStatus) -> FlowSummary:
         thread=f.thread,
         repo=st.issue.repo,
         number=st.issue.number,
+        ticket=st.issue.key,
+        url=_github_url(st.issue),
         title=st.issue.title,
         route=st.route,
         waiting=f.waiting,
@@ -914,27 +1006,35 @@ def _phase(f: FlowStatus) -> Phase:
             return "review" if blocked else "done"
 
 
+def _github_url(i: Issue) -> str | None:
+    if i.source == "local":
+        return None
+    return f"https://github.com/{i.repo}/issues/{i.number}"
+
+
 def _issue_row(i: Issue, flow: FlowSummary | None) -> IssueRow:
     return IssueRow(
         number=i.number,
+        ticket=i.key,
+        source=i.source,
         title=i.title,
         state=i.state,
         labels=i.labels,
         comments=i.comment_count,
         updated_at=i.updated_at,
-        url=f"https://github.com/{i.repo}/issues/{i.number}",
+        url=_github_url(i),
         flow=flow,
     )
 
 
 def _flow_routes(app: FastAPI, flows: FlowRunner) -> None:
-    """The browser gate: list flows, show one, answer its gate. The answer
-    is the only route that changes anything; `serve_guard` decides who may
-    call it."""
+    """The browser gate: list flows, show one, start one, answer its gate.
+    Start and answer change something; `serve_guard` decides who may call
+    them."""
 
-    def thread(owner: str, name: str, number: int) -> str:
+    def thread(owner: str, name: str, ticket: str) -> str:
         try:
-            return f"{check_repo(f'{owner}/{name}')}#{number}"
+            return f"{check_repo(f'{owner}/{name}')}#{ticket}"
         except ValueError as exc:
             raise HTTPException(status_code=404, detail="no such flow") from exc
 
@@ -943,9 +1043,9 @@ def _flow_routes(app: FastAPI, flows: FlowRunner) -> None:
         found = [flows.status(t) for t in flows.threads()]
         return [_flow_summary(f) for f in found if f is not None]
 
-    @app.get("/api/flows/{owner}/{name}/{number}", response_model=FlowView)
-    def flow(owner: str, name: str, number: int) -> FlowView:
-        f = flows.status(thread(owner, name, number))
+    @app.get("/api/flows/{owner}/{name}/{ticket}", response_model=FlowView)
+    def flow(owner: str, name: str, ticket: TicketKey) -> FlowView:
+        f = flows.status(thread(owner, name, ticket))
         if f is None:
             raise HTTPException(status_code=404, detail="no such flow")
         spec = f.state.refined.spec if f.state.refined else None
@@ -970,26 +1070,29 @@ def _flow_routes(app: FastAPI, flows: FlowRunner) -> None:
             record=f.state.record,
         )
 
-    @app.post("/api/flows/{owner}/{name}/{number}/answer", response_model=Answered)
-    def flow_answer(owner: str, name: str, number: int, answer: Answer) -> Answered:
-        if not flows.answer(thread(owner, name, number), answer):
+    @app.post("/api/flows/{owner}/{name}/{ticket}/answer", response_model=Answered)
+    def flow_answer(
+        owner: str, name: str, ticket: TicketKey, answer: Answer
+    ) -> Answered:
+        if not flows.answer(thread(owner, name, ticket), answer):
             raise HTTPException(status_code=409, detail="not waiting at a gate")
         return Answered(started=True)
 
     @app.post(
-        "/api/flows/{owner}/{name}/{number}/start",
+        "/api/flows/{owner}/{name}/{ticket}/start",
         response_model=Started,
         responses={409: {"model": Refusal}},
     )
-    def flow_start(owner: str, name: str, number: int, start: Start) -> Started:
-        """Start a flow on a stored issue: the issue refreshed from GitHub,
-        its blockers checked, the clone updated (here, so a refusal comes
-        back at once), then refine in the background up to the plan gate.
-        Paid: an agent run."""
-        repo = thread(owner, name, number).split("#", 1)[0]
+    def flow_start(owner: str, name: str, ticket: TicketKey, start: Start) -> Started:
+        """Start a flow on a stored issue or local ticket: the issue
+        refreshed from GitHub (a local ticket as stored), its blockers
+        checked, the clone updated (here, so a refusal comes back at once),
+        then refine in the background up to the plan gate. Paid: an agent
+        run."""
+        repo = thread(owner, name, ticket).split("#", 1)[0]
         try:
             return Started(
-                thread=flows.start(repo, number, start.route, again=start.again)
+                thread=flows.start(repo, ticket, start.route, again=start.again)
             )
         except Refused as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc

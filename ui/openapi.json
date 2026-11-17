@@ -363,7 +363,7 @@
     "/api/repos": {
       "get": {
         "summary": "Repos",
-        "description": "The repos a flow can run on: an issue store (`fetch-issues`) and\n`[loop]` in the target file, proven if the dev's own.",
+        "description": "The repos a flow can run on: `[loop]` in the target file (proven\nif the dev's own), and an issue store (`fetch-issues`) or local\ntickets.",
         "operationId": "repos",
         "responses": {
           "200": {
@@ -386,7 +386,7 @@
     "/api/issues/{owner}/{name}": {
       "get": {
         "summary": "Issues",
-        "description": "A repo's stored issues, newest first. Read from data/issues, not\nfrom GitHub: Start refreshes the one it starts.",
+        "description": "A repo's local tickets, then its stored issues, newest first. Read\nfrom data/, not from GitHub: Start refreshes the one it starts.",
         "operationId": "issues",
         "parameters": [
           {
@@ -436,10 +436,10 @@
         }
       }
     },
-    "/api/issues/{owner}/{name}/{number}": {
+    "/api/issues/{owner}/{name}/{ticket}": {
       "get": {
         "summary": "Issue",
-        "description": "One stored issue with its text, as last fetched.",
+        "description": "One stored issue or local ticket with its text, as last fetched.",
         "operationId": "issue",
         "parameters": [
           {
@@ -461,13 +461,16 @@
             }
           },
           {
-            "name": "number",
+            "name": "ticket",
             "in": "path",
             "required": true,
             "schema": {
-              "type": "integer",
-              "title": "Number"
-            }
+              "type": "string",
+              "pattern": "^L?(0|[1-9][0-9]*)$",
+              "description": "`51` or `L3`.",
+              "title": "Ticket"
+            },
+            "description": "`51` or `L3`."
           }
         ],
         "responses": {
@@ -516,7 +519,7 @@
         }
       }
     },
-    "/api/flows/{owner}/{name}/{number}": {
+    "/api/flows/{owner}/{name}/{ticket}": {
       "get": {
         "summary": "Flow",
         "operationId": "flow",
@@ -540,13 +543,16 @@
             }
           },
           {
-            "name": "number",
+            "name": "ticket",
             "in": "path",
             "required": true,
             "schema": {
-              "type": "integer",
-              "title": "Number"
-            }
+              "type": "string",
+              "pattern": "^L?(0|[1-9][0-9]*)$",
+              "description": "`51` or `L3`.",
+              "title": "Ticket"
+            },
+            "description": "`51` or `L3`."
           }
         ],
         "responses": {
@@ -573,7 +579,7 @@
         }
       }
     },
-    "/api/flows/{owner}/{name}/{number}/answer": {
+    "/api/flows/{owner}/{name}/{ticket}/answer": {
       "post": {
         "summary": "Flow Answer",
         "operationId": "flow_answer",
@@ -597,13 +603,16 @@
             }
           },
           {
-            "name": "number",
+            "name": "ticket",
             "in": "path",
             "required": true,
             "schema": {
-              "type": "integer",
-              "title": "Number"
-            }
+              "type": "string",
+              "pattern": "^L?(0|[1-9][0-9]*)$",
+              "description": "`51` or `L3`.",
+              "title": "Ticket"
+            },
+            "description": "`51` or `L3`."
           }
         ],
         "requestBody": {
@@ -640,10 +649,10 @@
         }
       }
     },
-    "/api/flows/{owner}/{name}/{number}/start": {
+    "/api/flows/{owner}/{name}/{ticket}/start": {
       "post": {
         "summary": "Flow Start",
-        "description": "Start a flow on a stored issue: the issue refreshed from GitHub,\nits blockers checked, the clone updated (here, so a refusal comes\nback at once), then refine in the background up to the plan gate.\nPaid: an agent run.",
+        "description": "Start a flow on a stored issue or local ticket: the issue\nrefreshed from GitHub (a local ticket as stored), its blockers\nchecked, the clone updated (here, so a refusal comes back at once),\nthen refine in the background up to the plan gate. Paid: an agent\nrun.",
         "operationId": "flow_start",
         "parameters": [
           {
@@ -665,13 +674,16 @@
             }
           },
           {
-            "name": "number",
+            "name": "ticket",
             "in": "path",
             "required": true,
             "schema": {
-              "type": "integer",
-              "title": "Number"
-            }
+              "type": "string",
+              "pattern": "^L?(0|[1-9][0-9]*)$",
+              "description": "`51` or `L3`.",
+              "title": "Ticket"
+            },
+            "description": "`51` or `L3`."
           }
         ],
         "requestBody": {
@@ -704,6 +716,65 @@
               }
             },
             "description": "Conflict"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tickets/{owner}/{name}": {
+      "post": {
+        "summary": "Ticket New",
+        "description": "Write a local ticket: one LLM call reads it first and says what\nis missing (it fills nothing in); with gaps it is saved only with\n`anyway`. Never sent to GitHub. Paid (about $0.001).",
+        "operationId": "ticket_new",
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Owner"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewTicket"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketSaved"
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -988,6 +1059,23 @@
             "type": "integer",
             "title": "Number"
           },
+          "ticket": {
+            "type": "string",
+            "title": "Ticket",
+            "description": "The ticket: `51` (GitHub's #51) or `L3` (a local one)."
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url",
+            "description": "The issue on GitHub; null: a local ticket."
+          },
           "title": {
             "type": "string",
             "title": "Title"
@@ -1037,6 +1125,8 @@
           "thread",
           "repo",
           "number",
+          "ticket",
+          "url",
           "title",
           "route",
           "waiting",
@@ -1061,6 +1151,23 @@
           "number": {
             "type": "integer",
             "title": "Number"
+          },
+          "ticket": {
+            "type": "string",
+            "title": "Ticket",
+            "description": "The ticket: `51` (GitHub's #51) or `L3` (a local one)."
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url",
+            "description": "The issue on GitHub; null: a local ticket."
           },
           "title": {
             "type": "string",
@@ -1214,6 +1321,8 @@
           "thread",
           "repo",
           "number",
+          "ticket",
+          "url",
           "title",
           "route",
           "waiting",
@@ -1300,6 +1409,14 @@
             "type": "integer",
             "title": "Number"
           },
+          "ticket": {
+            "type": "string",
+            "title": "Ticket",
+            "description": "The ticket: `51` (GitHub's #51) or `L3` (a local one)."
+          },
+          "source": {
+            "$ref": "#/components/schemas/Source"
+          },
           "title": {
             "type": "string",
             "title": "Title"
@@ -1326,9 +1443,16 @@
             "title": "Updated At"
           },
           "url": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Url",
-            "description": "The issue on GitHub."
+            "description": "The issue on GitHub; null: a local ticket."
           },
           "flow": {
             "anyOf": [
@@ -1345,6 +1469,8 @@
         "type": "object",
         "required": [
           "number",
+          "ticket",
+          "source",
           "title",
           "state",
           "labels",
@@ -1354,13 +1480,31 @@
           "flow"
         ],
         "title": "IssueRow",
-        "description": "One stored issue, as the Issues page lists it."
+        "description": "One stored issue or local ticket, as the Issues page lists it."
+      },
+      "IssueType": {
+        "type": "string",
+        "enum": [
+          "bug",
+          "feature",
+          "question",
+          "docs",
+          "chore"
+        ]
       },
       "IssueView": {
         "properties": {
           "number": {
             "type": "integer",
             "title": "Number"
+          },
+          "ticket": {
+            "type": "string",
+            "title": "Ticket",
+            "description": "The ticket: `51` (GitHub's #51) or `L3` (a local one)."
+          },
+          "source": {
+            "$ref": "#/components/schemas/Source"
           },
           "title": {
             "type": "string",
@@ -1388,9 +1532,16 @@
             "title": "Updated At"
           },
           "url": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Url",
-            "description": "The issue on GitHub."
+            "description": "The issue on GitHub; null: a local ticket."
           },
           "flow": {
             "anyOf": [
@@ -1412,6 +1563,8 @@
         "type": "object",
         "required": [
           "number",
+          "ticket",
+          "source",
           "title",
           "state",
           "labels",
@@ -1425,6 +1578,33 @@
         "description": "One stored issue with its text, to read before starting a flow."
       },
       "JsonValue": {},
+      "NewTicket": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "body": {
+            "type": "string",
+            "maxLength": 20000,
+            "title": "Body",
+            "default": ""
+          },
+          "anyway": {
+            "type": "boolean",
+            "title": "Anyway",
+            "description": "Save it even when the check finds gaps.",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "title": "NewTicket"
+      },
       "Phase": {
         "type": "string",
         "enum": [
@@ -1535,15 +1715,21 @@
           "issues": {
             "type": "integer",
             "title": "Issues"
+          },
+          "tickets": {
+            "type": "integer",
+            "title": "Tickets",
+            "description": "Local tickets (L1, L2, ...)."
           }
         },
         "type": "object",
         "required": [
           "repo",
-          "issues"
+          "issues",
+          "tickets"
         ],
         "title": "Repo",
-        "description": "A repo a flow can run on: an issue store and `[loop]` in its target\nfile."
+        "description": "A repo a flow can run on: `[loop]` in its target file, and stored\nissues (`fetch-issues`) or local tickets."
       },
       "ReviewRound": {
         "properties": {
@@ -1744,6 +1930,11 @@
             "type": "integer",
             "title": "Number"
           },
+          "ticket": {
+            "type": "string",
+            "title": "Ticket",
+            "description": "The ticket: `51` (GitHub's #51) or `L3` (a local one)."
+          },
           "title": {
             "type": "string",
             "title": "Title"
@@ -1802,6 +1993,7 @@
           "kind",
           "repo",
           "number",
+          "ticket",
           "title",
           "status",
           "judge",
@@ -1832,6 +2024,11 @@
           "number": {
             "type": "integer",
             "title": "Number"
+          },
+          "ticket": {
+            "type": "string",
+            "title": "Ticket",
+            "description": "The ticket: `51` (GitHub's #51) or `L3` (a local one)."
           },
           "title": {
             "type": "string",
@@ -1991,6 +2188,7 @@
           "kind",
           "repo",
           "number",
+          "ticket",
           "title",
           "status",
           "judge",
@@ -2014,6 +2212,13 @@
         ],
         "title": "RunTrace"
       },
+      "Source": {
+        "type": "string",
+        "enum": [
+          "github",
+          "local"
+        ]
+      },
       "SpecSummary": {
         "properties": {
           "file": {
@@ -2031,6 +2236,11 @@
           "number": {
             "type": "integer",
             "title": "Number"
+          },
+          "ticket": {
+            "type": "string",
+            "title": "Ticket",
+            "description": "The ticket: `51` (GitHub's #51) or `L3` (a local one)."
           },
           "route": {
             "type": "string",
@@ -2089,6 +2299,7 @@
           "key",
           "repo",
           "number",
+          "ticket",
           "route",
           "size",
           "files",
@@ -2116,6 +2327,11 @@
           "number": {
             "type": "integer",
             "title": "Number"
+          },
+          "ticket": {
+            "type": "string",
+            "title": "Ticket",
+            "description": "The ticket: `51` (GitHub's #51) or `L3` (a local one)."
           },
           "commit": {
             "type": "string",
@@ -2229,6 +2445,7 @@
           "key",
           "repo",
           "number",
+          "ticket",
           "commit",
           "route",
           "size",
@@ -2407,6 +2624,46 @@
         ],
         "title": "StepTree",
         "description": "A run's steps so far: the roots are its flow invocations in order\n(`flow start` up to the first gate, then one per answered gate)."
+      },
+      "TicketSaved": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/IssueType",
+            "description": "How the check reads it: bug, feature, ..."
+          },
+          "missing": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing",
+            "description": "What it lacks; empty: ready to run."
+          },
+          "cost_usd": {
+            "type": "number",
+            "title": "Cost Usd"
+          },
+          "saved": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IssueRow"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The new ticket; null: not saved (gaps, and not `anyway`)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "missing",
+          "cost_usd",
+          "saved"
+        ],
+        "title": "TicketSaved",
+        "description": "What the readiness read found, and the ticket if it was saved."
       },
       "Totals": {
         "properties": {

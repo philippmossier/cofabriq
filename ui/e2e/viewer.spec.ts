@@ -34,6 +34,53 @@ test("an issue opens in place, as text, before anything is paid for", async ({ p
   await expect(page.getByText(/As last fetched .* Start reads it fresh/)).toBeVisible();
 });
 
+test("a local ticket is listed first, marked local, with no GitHub link", async ({ page }) => {
+  await page.goto("/issues");
+
+  const rows = page.getByRole("row");
+  await expect(rows.nth(1)).toContainText("L1 Shift+Enter sends the message");
+  const row = page.getByRole("row", { name: /L1 Shift\+Enter/ });
+  await expect(row.getByText("local", { exact: true })).toBeVisible();
+  await expect(row.getByRole("link", { name: "on GitHub" })).toHaveCount(0);
+  await row.getByRole("button", { name: /L1 Shift\+Enter/ }).click();
+  await expect(page.getByTestId("issue-text")).toContainText("Enter alone sends");
+  await expect(page.getByText("As you wrote it: a local ticket, on this machine only.")).toBeVisible();
+  await page.getByPlaceholder(/Search by number/).fill("l1");
+  await expect(page.getByText("1 issues")).toBeVisible();
+});
+
+test("Write a ticket: the check lists the gaps, Save anyway saves it", async ({ page }) => {
+  const sent: unknown[] = [];
+  await page.route("**/api/tickets/philippmossier/local-ai-chat-playground", (route) => {
+    const data = route.request().postDataJSON() as { anyway: boolean };
+    sent.push(data);
+    const missing = ["missing version: the version you used"];
+    const saved = data.anyway
+      ? { number: 2, ticket: "L2", source: "local", title: "x", state: "open", labels: [], comments: 0, updated_at: "2026-11-17T10:00:00Z", url: null, flow: null }
+      : null;
+    return route.fulfill({ json: { type: "bug", missing, cost_usd: 0.0004, saved } });
+  });
+  await page.goto("/#token=e2e");
+  await page.goto("/issues");
+
+  await page.getByRole("button", { name: "Write a ticket" }).click();
+  const form = page.getByRole("form", { name: "write a ticket" });
+  await expect(form).toContainText("never sent to GitHub");
+  const check = form.getByRole("button", { name: "Check and save" });
+  await expect(check).toBeDisabled(); // no title yet
+  await form.getByPlaceholder(/Title/).fill("The copy button copies the question");
+  await check.click();
+
+  await expect(form.getByRole("status")).toContainText("Reads as a bug. Not saved, it lacks:");
+  await expect(form.getByText("missing version: the version you used")).toBeVisible();
+  await form.getByRole("button", { name: "Save anyway" }).click();
+  await expect(page.getByText("Saved as L2: it is in the list below.")).toBeVisible();
+  expect(sent).toEqual([
+    { title: "The copy button copies the question", body: "", anyway: false },
+    { title: "The copy button copies the question", body: "", anyway: true },
+  ]);
+});
+
 test("Runs lists the runs on issues; the benchmark runs are under Evals", async ({ page }) => {
   await page.goto("/runs");
 

@@ -56,7 +56,7 @@ from pydantic import BaseModel, field_validator
 from cofabriq import tracing
 from cofabriq.files import stamp
 from cofabriq.git import files_at
-from cofabriq.issues.model import Issue
+from cofabriq.issues.model import Issue, key_label
 from cofabriq.loop import gate as gate_mod
 from cofabriq.loop import refine as refine_mod
 from cofabriq.loop.engine import Agent, AgentError, Guard, Halted
@@ -221,7 +221,7 @@ class Deps:
     prefix: str = "flow-"
 
     def worktree(self, issue: Issue) -> Path:
-        name = f"{self.prefix}{repo_slug(issue.repo)}-{issue.number}"
+        name = f"{self.prefix}{repo_slug(issue.repo)}-{issue.key}"
         return self.work_dir / name
 
 
@@ -279,6 +279,7 @@ def build_graph(deps: Deps) -> StateGraph[FlowState]:
         p = start_stage(
             repo=s.issue.repo,
             number=s.issue.number,
+            source=s.issue.source,
             commit=s.refined.commit,
             clone=deps.clone,
             worktree=deps.worktree(s.issue),
@@ -394,7 +395,7 @@ def build_graph(deps: Deps) -> StateGraph[FlowState]:
         gate, the judge's verdicts (a hook); unless blocked or not
         reviewed, the draft PR body and the change as a branch and a patch."""
         assert s.refined is not None and s.result is not None
-        stem = f"{repo_slug(s.issue.repo)}-{s.issue.number}-{stamp()}"
+        stem = f"{repo_slug(s.issue.repo)}-{s.issue.key}-{stamp()}"
         worktree = deps.worktree(s.issue)
         blocked = s.gated is not None and s.gated.status == "blocked"
         final = s.gated.result if s.gated is not None else s.result
@@ -427,7 +428,7 @@ def build_graph(deps: Deps) -> StateGraph[FlowState]:
             out.handoff = handoff_for(
                 deps.clone,
                 deps.runs_dir / f"{stem}.patch",
-                number=s.issue.number,
+                key=s.issue.key,
                 issue_title=s.issue.title,
                 result=s.gated.result,
                 title=out.draft.title,
@@ -555,8 +556,10 @@ def in_memory(deps: Deps) -> CompiledStateGraph[FlowState]:
     return build_graph(deps).compile(checkpointer=saver)
 
 
-def thread_id(issue: Issue) -> str:
-    return f"{issue.repo}#{issue.number}"
+def thread_id(repo: str, key: str) -> str:
+    """A flow's thread: `owner/name#51`, or `owner/name#L3` for a local
+    ticket (flows from before local tickets keep their plain numbers)."""
+    return f"{repo}#{key}"
 
 
 def thread_config(thread: str) -> RunnableConfig:
@@ -620,10 +623,10 @@ def read_status(graph: CompiledStateGraph[FlowState], thread: str) -> FlowStatus
     )
 
 
-_THREAD = re.compile(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+#\d+$")
+_THREAD = re.compile(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+#L?\d+$")
 
 type DepsFor = Callable[[str, float], Deps]  # (repo, spent so far) -> deps
-type Prepare = Callable[[str, int], Issue]  # (repo, number) -> the issue, or Refused
+type Prepare = Callable[[str, str], Issue]  # (repo, key) -> the issue, or Refused
 
 
 class Refused(Exception):
@@ -631,7 +634,7 @@ class Refused(Exception):
     issue, a flow already there). The CLI prints it, the API answers 409."""
 
 
-def _no_start(repo: str, number: int) -> Issue:
+def _no_start(repo: str, key: str) -> Issue:
     raise Refused("this server starts no flows")
 
 
@@ -689,23 +692,24 @@ class FlowRunner:
         return found
 
     def start(
-        self, repo: str, number: int, route: refine_mod.Route, again: bool = False
+        self, repo: str, key: str, route: refine_mod.Route, again: bool = False
     ) -> str:
         """Prepare the issue, then refine in the background up to the plan
         gate; the flow's thread. `again`: an ended flow on the issue is
         replaced (its checkpoints deleted; its trace, record and lessons stay
         in data/), and why it ended goes to refine. Refused: a flow is there
         (without `again`) or still going, or `prepare` said no."""
-        thread = f"{repo}#{number}"
+        thread = thread_id(repo, key)
+        name = key_label(key)
         current = self.status(thread)
         if current is not None and not again:
-            raise Refused(f"#{number} has a flow already: open it")
+            raise Refused(f"{name} has a flow already: open it")
         if current is not None and (current.running or current.waiting):
-            raise Refused(f"#{number} is still going: answer or reject its gate first")
-        issue = self.prepare(repo, number)
+            raise Refused(f"{name} is still going: answer or reject its gate first")
+        issue = self.prepare(repo, key)
         with self._lock:
             if thread in self._running:
-                raise Refused(f"#{number} is starting already")
+                raise Refused(f"{name} is starting already")
             self._running.add(thread)
             self._errors.pop(thread, None)
             self._traces.pop(thread, None)

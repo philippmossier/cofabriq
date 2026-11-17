@@ -5,7 +5,7 @@ import { type FlowView, Phase, useFlow, useFlowList } from "@/api/generated";
 import { FlowResult } from "@/components/result-card";
 import { StartFlow } from "@/components/start-flow";
 import { failureLines } from "@/lib/failure";
-import { againRoute, endedWell, issueUrl } from "@/lib/flows";
+import { againRoute, endedWell, ticketLabel } from "@/lib/flows";
 import { Fold, Loading, Missing, Pre, Section } from "@/components/bits";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -44,7 +44,7 @@ export function FlowsPage() {
         <h1 className="font-heading text-xl font-semibold">Flows</h1>
         <span className="text-sm text-muted-foreground">
           one per issue, the ones waiting for you first; start one from{" "}
-          <Link to="/issues" className="underline">Issues</Link> (or <code>cofabriq flow start &lt;n&gt;</code>)
+          <Link to="/issues" className="underline">Issues</Link> (or <code>cofabriq flow start &lt;n | L3&gt;</code>)
         </span>
       </div>
       {rows.length === 0 && (
@@ -69,11 +69,11 @@ export function FlowsPage() {
                 <TableRow key={f.thread}>
                   <TableCell>
                     <Link
-                      to="/flows/$owner/$name/$number"
-                      params={{ owner: owner!, name: name!, number: String(f.number) }}
+                      to="/flows/$owner/$name/$ticket"
+                      params={{ owner: owner!, name: name!, ticket: f.ticket }}
                       className="font-medium hover:underline"
                     >
-                      #{f.number} {f.title}
+                      {ticketLabel(f.ticket)} {f.title}
                     </Link>
                   </TableCell>
                   <TableCell>
@@ -116,8 +116,8 @@ function headline(f: FlowView, sent: Sent): string {
 }
 
 export function FlowPage() {
-  const { owner, name, number } = useParams({ from: "/flows/$owner/$name/$number" });
-  const q = useFlow(owner, name, Number(number), {
+  const { owner, name, ticket } = useParams({ from: "/flows/$owner/$name/$ticket" });
+  const q = useFlow(owner, name, ticket, {
     query: {
       select: (r) => (r.status === 200 ? r.data : null),
       // while it works, each second: a rejection ends it in under one
@@ -135,7 +135,7 @@ export function FlowPage() {
   const ended = !f.waiting && !f.running;
   // the header carries the spec's summary line
   const spec = f.problem ? <SpecReview s={f} facts={false} /> : null;
-  const github = <GitHubLink url={issueUrl(f.repo, f.number)} />;
+  const github = <GitHubLink url={f.url} />;
   const issue = <IssueText body={f.body} />;
   // at a gate the steps so far are context, not what is judged: folded
   const steps =
@@ -156,16 +156,18 @@ export function FlowPage() {
           ← Flows
         </Link>
         <h1 className="flex items-center gap-2 font-heading text-xl font-semibold">
-          #{f.number} {f.title}
-          <a
-            href={issueUrl(f.repo, f.number)}
-            target="_blank"
-            rel="noopener noreferrer"
-            title="the issue on GitHub"
-            className="text-muted-foreground hover:text-foreground"
-          >
-            <ExternalLink className="size-4" />
-          </a>
+          {ticketLabel(f.ticket)} {f.title}
+          {f.url && (
+            <a
+              href={f.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="the issue on GitHub"
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <ExternalLink className="size-4" />
+            </a>
+          )}
           <span className="text-sm font-normal text-muted-foreground">{f.repo}</span>
         </h1>
         <p className="flex flex-wrap items-center gap-x-1.5 text-sm text-muted-foreground">
@@ -183,7 +185,7 @@ export function FlowPage() {
             <h2 data-testid="flow-state" className="font-heading text-base font-medium">
               {headline(f, sent)}
             </h2>
-            {ended && f.record && <FlowResult file={f.record} number={f.number} />}
+            {ended && f.record && <FlowResult file={f.record} ticket={f.ticket} />}
             {ended && (
               <div className="space-y-1 border-t pt-3">
                 <p className="text-sm text-muted-foreground">
@@ -194,7 +196,7 @@ export function FlowPage() {
                 <StartFlow
                   owner={owner}
                   name={name}
-                  number={f.number}
+                  ticket={f.ticket}
                   canStart={token !== null}
                   route={againRoute(f)}
                   again

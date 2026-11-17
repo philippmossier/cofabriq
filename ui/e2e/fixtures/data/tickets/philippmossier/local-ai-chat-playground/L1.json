@@ -1,0 +1,20 @@
+{
+  "repo": "philippmossier/local-ai-chat-playground",
+  "number": 1,
+  "source": "local",
+  "title": "Shift+Enter sends the message instead of adding a new line",
+  "body": "Steps: type a line in the chat box, press Shift+Enter.\n\nActual: the message is sent.\nExpected: a new line in the box; Enter alone sends.\n\nChrome 131 on macOS 15, the playground at main.",
+  "state": "open",
+  "state_reason": null,
+  "author": null,
+  "labels": [],
+  "created_at": "2026-11-17T10:00:00Z",
+  "updated_at": "2026-11-17T10:00:00Z",
+  "closed_at": null,
+  "closed_by": null,
+  "comment_count": 0,
+  "comments": [],
+  "duplicate_of": [],
+  "duplicates": [],
+  "blocked_by": []
+}

@@ -23,7 +23,7 @@ const issues = createRoute({ getParentRoute: () => root, path: "/issues", compon
 const flows = createRoute({ getParentRoute: () => root, path: "/flows", component: FlowsPage });
 const flow = createRoute({
   getParentRoute: () => root,
-  path: "/flows/$owner/$name/$number",
+  path: "/flows/$owner/$name/$ticket",
   component: FlowPage,
 });
 

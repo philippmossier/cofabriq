@@ -6,7 +6,8 @@ import { Loading } from "@/components/bits";
 import { FlowState } from "@/components/flow-progress";
 import { IssueText } from "@/components/issue-text";
 import { StartFlow } from "@/components/start-flow";
-import { againRoute } from "@/lib/flows";
+import { WriteTicket } from "@/components/write-ticket";
+import { againRoute, ticketLabel } from "@/lib/flows";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -30,8 +31,8 @@ export function IssuesPage() {
   if (list.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        No repo to run flows on: it needs its issues (<code>cofabriq fetch-issues --repo …</code>) and{" "}
-        <code>[loop]</code> in its target file.
+        No repo to run flows on: it needs <code>[loop]</code> in its target file, and its issues (
+        <code>cofabriq fetch-issues --repo …</code>) or a local ticket (<code>cofabriq ticket new …</code>).
       </p>
     );
   }
@@ -43,6 +44,7 @@ export function IssuesPage() {
         <h1 className="font-heading text-xl font-semibold">Issues</h1>
         {list.length > 1 ? (
           <select
+            aria-label="repo"
             className="rounded-md border px-2 py-1 text-sm"
             value={repo}
             onChange={(e) => setPicked(e.target.value)}
@@ -58,15 +60,17 @@ export function IssuesPage() {
         )}
       </div>
       <p className="text-sm text-muted-foreground">
-        Open an issue to read it, pick bug or feature, then Start: it reads the issue fresh from GitHub, refuses
-        one with an open blocker, then an agent reads the code and writes a spec (about 20 s, one paid agent
-        session). You approve the plan, then the failing test, before any code is written.
+        Open an issue to read it, pick bug or feature, then Start: it reads the issue fresh from GitHub (a local
+        ticket as you wrote it), refuses one with an open blocker, then an agent reads the code and writes a spec
+        (about 20 s, one paid agent session). You approve the plan, then the failing test, before any code is
+        written.
       </p>
       {!token && (
         <p className="text-sm text-muted-foreground">
           Read-only here: open the URL that <code>cofabriq serve --write</code> printed to start flows.
         </p>
       )}
+      <WriteTicket key={`write-${repo}`} owner={repo.split("/")[0]!} name={repo.split("/")[1]!} canWrite={token !== null} />
       <IssueTable key={repo} repo={repo} canStart={token !== null} />
     </div>
   );
@@ -89,11 +93,11 @@ function WaitingForYou() {
           return (
             <li key={f.thread}>
               <Link
-                to="/flows/$owner/$name/$number"
-                params={{ owner, name, number: String(f.number) }}
+                to="/flows/$owner/$name/$ticket"
+                params={{ owner, name, ticket: f.ticket }}
                 className="hover:underline"
               >
-                #{f.number} {f.title}: approve {f.waiting === "plan" ? "the plan" : "the test"} →
+                {ticketLabel(f.ticket)} {f.title}: approve {f.waiting === "plan" ? "the plan" : "the test"} →
               </Link>
             </li>
           );
@@ -108,20 +112,20 @@ function IssueTable({ repo, canStart }: { repo: string; canStart: boolean }) {
   const q = useIssues(owner, name, { query: { select: (r) => (r.status === 200 ? r.data : []) } });
   const [search, setSearch] = useState("");
   const [closed, setClosed] = useState(false);
-  const [open, setOpen] = useState<number | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
   if (q.isPending) return <Loading what="issues" />;
   const needle = search.trim().toLowerCase().replace(/^#/, "");
   const rows = (q.data ?? []).filter(
     (i) =>
       (closed || i.state === "open") &&
-      (!needle || String(i.number) === needle || i.title.toLowerCase().includes(needle)),
+      (!needle || i.ticket.toLowerCase() === needle || i.title.toLowerCase().includes(needle)),
   );
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-4 text-sm">
         <input
           className="w-72 rounded-md border px-3 py-1"
-          placeholder="Search by number or title"
+          placeholder="Search by number (51, L3) or title"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -142,35 +146,41 @@ function IssueTable({ repo, canStart }: { repo: string; canStart: boolean }) {
         </TableHeader>
         <TableBody>
           {rows.map((i) => (
-            <Fragment key={i.number}>
+            <Fragment key={i.ticket}>
               <TableRow>
                 <TableCell className="max-w-xl">
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => setOpen(open === i.number ? null : i.number)}
-                      aria-expanded={open === i.number}
+                      onClick={() => setOpen(open === i.ticket ? null : i.ticket)}
+                      aria-expanded={open === i.ticket}
                       className="flex min-w-0 items-center gap-1 text-left hover:underline"
                     >
                       <ChevronRight
                         className={cn(
                           "size-4 shrink-0 text-muted-foreground transition-transform",
-                          open === i.number && "rotate-90",
+                          open === i.ticket && "rotate-90",
                         )}
                       />
                       <span className="truncate">
-                        <span className="text-muted-foreground">#{i.number}</span> {i.title}
+                        <span className="text-muted-foreground">{ticketLabel(i.ticket)}</span> {i.title}
                       </span>
                     </button>
-                    <a
-                      href={i.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      title="on GitHub"
-                      className="shrink-0 text-muted-foreground hover:text-foreground"
-                    >
-                      <ExternalLink className="size-3.5" />
-                    </a>
+                    {i.url ? (
+                      <a
+                        href={i.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="on GitHub"
+                        className="shrink-0 text-muted-foreground hover:text-foreground"
+                      >
+                        <ExternalLink className="size-3.5" />
+                      </a>
+                    ) : (
+                      <Badge variant="outline" title="written here, never on GitHub">
+                        local
+                      </Badge>
+                    )}
                     {i.state === "closed" && <Badge variant="outline">closed</Badge>}
                   </div>
                 </TableCell>
@@ -188,7 +198,7 @@ function IssueTable({ repo, canStart }: { repo: string; canStart: boolean }) {
                   <RunCell i={i} owner={owner} name={name} canStart={canStart} />
                 </TableCell>
               </TableRow>
-              {open === i.number && (
+              {open === i.ticket && (
                 <TableRow className="hover:bg-transparent">
                   <TableCell colSpan={4} className="whitespace-normal">
                     <Preview owner={owner} name={name} i={i} />
@@ -204,12 +214,12 @@ function IssueTable({ repo, canStart }: { repo: string; canStart: boolean }) {
 }
 
 function RunCell({ i, owner, name, canStart }: { i: IssueRow; owner: string; name: string; canStart: boolean }) {
-  if (!i.flow) return <StartFlow owner={owner} name={name} number={i.number} canStart={canStart} />;
+  if (!i.flow) return <StartFlow owner={owner} name={name} ticket={i.ticket} canStart={canStart} />;
   return (
     <div className="space-y-1.5">
       <Link
-        to="/flows/$owner/$name/$number"
-        params={{ owner, name, number: String(i.number) }}
+        to="/flows/$owner/$name/$ticket"
+        params={{ owner, name, ticket: i.ticket }}
         className="flex items-center gap-2 text-sm hover:underline"
       >
         <FlowState flow={i.flow} />
@@ -219,7 +229,7 @@ function RunCell({ i, owner, name, canStart }: { i: IssueRow; owner: string; nam
         <StartFlow
           owner={owner}
           name={name}
-          number={i.number}
+          ticket={i.ticket}
           canStart={canStart}
           route={againRoute(i.flow)}
           again
@@ -232,14 +242,16 @@ function RunCell({ i, owner, name, canStart }: { i: IssueRow; owner: string; nam
 /** The issue's text as last fetched: enough to pick bug or feature, and to
  * see whether it says what is wrong before paying for a spec. */
 function Preview({ owner, name, i }: { owner: string; name: string; i: IssueRow }) {
-  const q = useIssue(owner, name, i.number, { query: { select: (r) => (r.status === 200 ? r.data : null) } });
+  const q = useIssue(owner, name, i.ticket, { query: { select: (r) => (r.status === 200 ? r.data : null) } });
   if (q.isPending) return <Loading what="the issue" />;
   if (!q.data) return <p className="text-sm text-destructive">Not in the store any more.</p>;
   return (
     <div className="space-y-1 py-1">
       <IssueText body={q.data.body} />
       <p className="text-xs text-muted-foreground">
-        As last fetched ({i.comments} comment{i.comments === 1 ? "" : "s"} on GitHub); Start reads it fresh.
+        {i.source === "local"
+          ? "As you wrote it: a local ticket, on this machine only."
+          : `As last fetched (${i.comments} comment${i.comments === 1 ? "" : "s"} on GitHub); Start reads it fresh.`}
       </p>
     </div>
   );

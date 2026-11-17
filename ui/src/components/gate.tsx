@@ -31,7 +31,7 @@ export function GateBar({
     onSent({ approve, again });
     const data = { approve, reason: approve ? "" : reason, again };
     answer.mutate(
-      { owner, name, number: f.number, data },
+      { owner, name, ticket: f.ticket, data },
       {
         onSuccess: async (r) => {
           if ((r.status as number) === 401) {
@@ -40,7 +40,7 @@ export function GateBar({
           }
           setReason(""); // answered: the next gate (or a new flow) starts empty
           // it says "running" at once: don't wait for the next poll
-          await refreshFlow(client, owner, name, f.number);
+          await refreshFlow(client, owner, name, f.ticket);
         },
       },
     );

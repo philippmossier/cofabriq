@@ -45,9 +45,10 @@ def slug(title: str) -> str:
     return cut or "fix"
 
 
-def branch_for(number: int, title: str) -> str:
-    """`cofabriq/51-chat-title-is-cut-off-too-early`: one per issue."""
-    return f"{BRANCH_PREFIX}{number}-{slug(title)}"
+def branch_for(key: str, title: str) -> str:
+    """`cofabriq/51-chat-title-is-cut-off-too-early`: one per ticket (a
+    local one: `cofabriq/L3-...`)."""
+    return f"{BRANCH_PREFIX}{key}-{slug(title)}"
 
 
 def tree_of(clone: Path, base: str, diff: str, only: list[str] | None = None) -> str:

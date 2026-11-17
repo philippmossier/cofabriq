@@ -11,12 +11,15 @@ from cofabriq.cli.common import (
     embedder,
     github,
     neo4j_driver,
+    openai_key,
     target_repo,
+    ticket_app,
     triage_fn,
 )
 from cofabriq.cli.render import show_card
 from cofabriq.config import get_settings
 from cofabriq.context.store import postgres
+from cofabriq.issues import tickets as tickets_mod
 from cofabriq.issues import triage as triage_mod
 from cofabriq.issues import vectors
 from cofabriq.issues.fetch import fetch_created, fetch_issues, load_issues
@@ -72,6 +75,41 @@ def embed_issues(repo: str | None = None) -> None:
     with postgres.connect(settings.postgres_dsn) as conn:
         report = vectors.sync(conn, issues, embedder())
     typer.echo(f"{report.embedded} issues embedded, {report.unchanged} unchanged")
+
+
+@ticket_app.command("new")
+def ticket_new(
+    title: str,
+    body: Path | None = None,
+    repo: str | None = None,
+    anyway: bool = False,
+) -> None:
+    """Write a local ticket (`L1`, `L2`, ...) for `run` and `flow start`;
+    `--body` is a file with its text. One LLM call reads it first and says
+    what is missing (it fills nothing in); with gaps, it is saved only with
+    `--anyway`."""
+    settings = get_settings()
+    target = target_repo(repo)
+    text = body.read_text("utf-8") if body is not None else ""
+    components = triage_mod.load_components(settings.targets_dir, target)
+    triager = triage_mod.OpenAITriager(openai_key())
+    try:
+        found = tickets_mod.check(target, title, text, components, triager)
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"reads as a {found.type} (${found.cost_usd:.4f})")
+    for line in found.missing:
+        typer.echo(f"  - {line}")
+    if found.missing and not anyway:
+        typer.echo("not saved: add what is missing, or --anyway", err=True)
+        raise typer.Exit(code=1)
+    ticket = tickets_mod.new_ticket(settings.tickets_dir, target, title, text)
+    folder = tickets_mod.ticket_dir(settings.tickets_dir, target)
+    typer.echo(f"{ticket.key} -> {folder / f'{ticket.key}.json'}")
+    typer.echo(
+        f"-> cofabriq flow start {ticket.key} --repo {target} --type {found.type}"
+    )
 
 
 @app.command()

@@ -81,7 +81,7 @@ def handoff_for(
     clone: Path,
     patch: Path,
     *,
-    number: int,
+    key: str,
     issue_title: str,
     result: LoopResult,
     title: str,
@@ -100,7 +100,7 @@ def handoff_for(
             tests=[p for p in result.changed if p in result.repro or is_test(p, tests)],
             title=title,
             body=problem,
-            branch=handoff_mod.branch_for(number, issue_title),
+            branch=handoff_mod.branch_for(key, issue_title),
             patch=patch,
         )
     except subprocess.CalledProcessError as e:

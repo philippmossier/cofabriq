@@ -8,8 +8,32 @@ from typing import Literal, Protocol
 from pydantic import BaseModel, ConfigDict
 
 type Closer = Literal["pull_request", "commit"]
+type Source = Literal["github", "local"]  # local: written by the dev, never on GitHub
 
 REPO_NAME = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]*)/[A-Za-z0-9._-]+$")
+# a ticket's key as runs, flows, branches and routes name it: `51` or `L3`
+KEY = r"^L?(0|[1-9][0-9]*)$"
+_KEY = re.compile(KEY)
+
+
+def ticket_key(source: Source, number: int) -> str:
+    """`51` for GitHub's #51, `L3` for the dev's third local ticket."""
+    return f"L{number}" if source == "local" else str(number)
+
+
+def parse_key(key: str) -> tuple[Source, int]:
+    """The other way: `"L3"` -> `("local", 3)`, `"51"` -> `("github", 51)`;
+    ValueError for anything else (the key becomes part of paths)."""
+    if not _KEY.match(key):
+        raise ValueError(f"not a ticket key (51 or L3): {key!r}")
+    if key.startswith("L"):
+        return "local", int(key[1:])
+    return "github", int(key)
+
+
+def key_label(key: str) -> str:
+    """How a message names a ticket: `#51` (GitHub's way), `L3` as it is."""
+    return key if key.startswith("L") else f"#{key}"
 
 
 def check_repo(repo: str) -> str:
@@ -49,12 +73,15 @@ class Issue(BaseModel):
     fetched before the field existed). `closed_by` is what closed it last:
     a merged pull request or a commit that references it, None for a person
     or an open issue (and for stores fetched before the field existed).
+    `source` "local": a ticket the dev wrote (`issues/tickets.py`), its own
+    numbers (L1, L2, ...); stored issues before it existed are GitHub's.
     """
 
     model_config = ConfigDict(frozen=True)
 
     repo: str
     number: int
+    source: Source = "github"
     title: str
     body: str
     state: str  # open | closed
@@ -70,6 +97,14 @@ class Issue(BaseModel):
     duplicate_of: list[IssueRef]  # this issue is a duplicate of these
     duplicates: list[IssueRef]  # these were marked as duplicates of this one
     blocked_by: list[IssueRef] = []  # GitHub's native dependencies
+
+    @property
+    def key(self) -> str:
+        return ticket_key(self.source, self.number)
+
+    @property
+    def label(self) -> str:
+        return key_label(self.key)
 
 
 class IssueSource(Protocol):

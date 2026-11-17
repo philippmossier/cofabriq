@@ -160,8 +160,8 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 }
 
 /** A flow's run record as a result card, with the link to all of it. */
-export function FlowResult({ file, number }: { file: string; number: number }) {
-  const q = useRun(file, String(number), {
+export function FlowResult({ file, ticket }: { file: string; ticket: string }) {
+  const q = useRun(file, ticket, {
     query: { select: (r) => (r.status === 200 ? r.data : null) },
   });
   if (q.isPending) return <Loading what="the result" />;
@@ -171,7 +171,7 @@ export function FlowResult({ file, number }: { file: string; number: number }) {
       <ResultCard t={q.data} />
       <Link
         to="/runs/$file/$key"
-        params={{ file, key: String(number) }}
+        params={{ file, key: ticket }}
         className="text-sm font-medium hover:underline"
       >
         The whole run: test, diff, review, draft PR →

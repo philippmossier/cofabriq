@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     extracted_path: Path = Path("data/extracted.json")
     openai_api_key: SecretStr | None = None
     issues_dir: Path = Path("data/issues")
+    tickets_dir: Path = Path("data/tickets")  # the dev's local tickets (L1, L2, ...)
     verdicts_dir: Path = Path("data/verdicts")
     rerank_dir: Path = Path("data/rerank")
     readiness_dir: Path = Path("data/readiness")

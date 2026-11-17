@@ -133,7 +133,7 @@ def test_handoff_for_keeps_gits_failure_instead_of_raising(tmp_path: Path) -> No
     got = handoff_for(
         clone,
         tmp_path / "runs" / "r1.patch",
-        number=51,
+        key="51",
         issue_title="t",
         result=result,
         title="Fix #51: t",
@@ -178,5 +178,6 @@ def test_the_viewer_gives_the_fetch_command_and_only_the_records_patch(
 
 
 def test_the_branch_is_one_per_issue_and_safe() -> None:
-    assert branch_for(51, "../../x; rm -rf ~") == "cofabriq/51-x-rm-rf"
-    assert branch_for(3, "!!!") == "cofabriq/3-fix"
+    assert branch_for("51", "../../x; rm -rf ~") == "cofabriq/51-x-rm-rf"
+    assert branch_for("3", "!!!") == "cofabriq/3-fix"
+    assert branch_for("L3", "a local one") == "cofabriq/L3-a-local-one"

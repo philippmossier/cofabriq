@@ -40,6 +40,11 @@ repo_app = typer.Typer(
     help="Your own repo: `[loop]` proposed from its files, proven in the sandbox.",
 )
 app.add_typer(repo_app, name="repo")
+ticket_app = typer.Typer(
+    no_args_is_help=True,
+    help="Local tickets (L1, L2, ...): written here, never on GitHub.",
+)
+app.add_typer(ticket_app, name="ticket")
 
 
 @app.callback()

@@ -13,14 +13,14 @@ import { dropToken, writeAuth } from "@/lib/token";
 export function StartFlow({
   owner,
   name,
-  number,
+  ticket,
   canStart,
   again = false,
   route: initial = Route.bug,
 }: {
   owner: string;
   name: string;
-  number: number;
+  ticket: string;
   canStart: boolean;
   again?: boolean;
   route?: Route;
@@ -31,13 +31,13 @@ export function StartFlow({
   const start = useFlowStart({ fetch: writeAuth() });
   const send = () =>
     start.mutate(
-      { owner, name, number, data: { route, again } },
+      { owner, name, ticket, data: { route, again } },
       {
         onSuccess: async (r) => {
           if (r.status === 200) {
             // the flow says "running" at once: don't wait for the page's next poll
-            await refreshFlow(client, owner, name, number);
-            void navigate({ to: "/flows/$owner/$name/$number", params: { owner, name, number: String(number) } });
+            await refreshFlow(client, owner, name, ticket);
+            void navigate({ to: "/flows/$owner/$name/$ticket", params: { owner, name, ticket } });
           } else if ((r.status as number) === 401) {
             dropToken(); // the server restarted with a new token
           }
