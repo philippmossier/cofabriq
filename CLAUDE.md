@@ -15,9 +15,11 @@ gate + guided planning -> 0.6 lessons, the sentinel, screenshots, a harder
 set -> 0.7 duplicate retrieval (issues cleaned before embedding, an LLM rerank
 of the nearest 50) -> 0.8 runs started and followed in the browser (the step
 view), a test gate on every run with "write it again", `at`, sketches and
-proof in the spec -> next: a second reviewer model, risky-change routing ->
-later: a real repo with tests, self-host packaging. Current: v0.8.1.
-Playground only.
+proof in the spec -> 0.9 your own repo, read-only (`repo add` / `repo
+check`, local tickets and imported issues, the result pulled as a branch or a
+patch, a planted set on cofabriq itself) -> next: a second reviewer model,
+risky-change routing -> later: a repo without a map in its CLAUDE.md,
+self-host packaging. Current: v0.9.0. Draft PRs (`--apply`): playground only.
 
 ## Commands
 
