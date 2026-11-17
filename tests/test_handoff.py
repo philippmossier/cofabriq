@@ -245,7 +245,9 @@ def test_the_fetch_command_never_drops_a_commit_of_the_devs(tmp_path: Path) -> N
     clone, mine, base = dev_on_the_branch(tmp_path)
     (mine / "NOTES").write_text("mine\n")
     git(mine, "add", "NOTES")
-    git(mine, "-c", "user.email=dev@example.com", "commit", "-qm", "my own")
+    # the whole identity: CI's git has no user.name to fall back on
+    dev = ("-c", "user.name=dev", "-c", "user.email=dev@example.com")
+    git(mine, *dev, "commit", "-qm", "my own")
     kept = git(mine, "rev-parse", "HEAD")
 
     ran = run_card(mine, card_fetch(tmp_path, take(clone, base, AGAIN)))
